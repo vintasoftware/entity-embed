@@ -17,7 +17,7 @@ setup_requirements = ['pytest-runner', ]
 test_requirements = ['pytest>=3', ]
 
 setup(
-    author="Flávio Juvenal da Silva Junior",
+    author="Flávio Juvenal",
     author_email='flavio@vinta.com.br',
     python_requires='>=3.5',
     classifiers=[

@@ -48,8 +48,8 @@ master_doc = 'index'
 
 # General information about the project.
 project = 'entity-embed'
-copyright = "2021, Flávio Juvenal da Silva Junior"
-author = "Flávio Juvenal da Silva Junior"
+copyright = "2021, Vinta Serviços e Soluções Tecnológicas LTDA"
+author = "Flávio Juvenal"
 
 # The version info for the project you're documenting, acts as replacement
 # for |version| and |release|, also used in various other places throughout
