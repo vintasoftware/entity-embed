@@ -6,9 +6,6 @@ entity-embed
 .. image:: https://img.shields.io/pypi/v/entity-embed.svg
         :target: https://pypi.python.org/pypi/entity-embed
 
-.. image:: https://img.shields.io/travis/vintasoftware/entity-embed.svg
-        :target: https://travis-ci.com/vintasoftware/entity-embed
-
 .. image:: https://readthedocs.org/projects/entity-embed/badge/?version=latest
         :target: https://entity-embed.readthedocs.io/en/latest/?badge=latest
         :alt: Documentation Status
