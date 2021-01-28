@@ -5,6 +5,12 @@ from torch.autograd import Variable
 
 
 class StringEmbedCNN(nn.Module):
+    """
+    Module for embedding strings for fast edit distance computation,
+    based on "Convolutional Embedding for Edit Distance (SIGIR 20)".
+    Base code available at: https://github.com/xinyandai/string-embed
+    """
+
     def __init__(self, alphabet_len, max_str_len, n_channels, embedding_size, embed_dropout_p):
         super().__init__()
 
@@ -15,23 +21,25 @@ class StringEmbedCNN(nn.Module):
         self.conv1 = nn.Conv1d(
             in_channels=1, out_channels=n_channels, kernel_size=3, stride=1, padding=1, bias=False
         )
+
         self.flat_size = (max_str_len // 2) * alphabet_len * n_channels
         if self.flat_size == 0:
             raise ValueError("Too small alphabet, self.flat_size == 0")
-        self.fc1 = nn.Sequential(
-            nn.Linear(self.flat_size, self.embedding_size),
-            nn.Dropout(p=embed_dropout_p),
-        )
+
+        dense_layers = [nn.Linear(self.flat_size, self.embedding_size)]
+        if embed_dropout_p:
+            dense_layers.append(nn.Dropout(p=embed_dropout_p))
+        self.dense = nn.Sequential(*dense_layers)
 
     def forward(self, x):
         x_len = len(x)
-        x = x.reshape(-1, 1, self.max_str_len)
+        x = x.view(x.size(0), 1, -1)
 
         x = F.relu(self.conv1(x))
         x = F.max_pool1d(x, kernel_size=2)
 
         x = x.view(x_len, self.flat_size)
-        x = self.fc1(x)
+        x = self.dense(x)
 
         return x
 
