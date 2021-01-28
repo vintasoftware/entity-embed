@@ -91,7 +91,6 @@ class MaskedAttention(nn.Module):
         self.softmax = nn.Softmax(dim=1)
 
     def forward(self, h, x, lengths):
-        # TODO: try max trick for numeric stability
         scores = h.matmul(self.attention_weights)
         scores = self.softmax(scores)
 
