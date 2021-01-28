@@ -6,9 +6,9 @@ from torch.autograd import Variable
 
 class StringEmbedCNN(nn.Module):
     """
-    Module for embedding strings for fast edit distance computation,
-    based on "Convolutional Embedding for Edit Distance (SIGIR 20)".
-    Base code available at: https://github.com/xinyandai/string-embed
+    PyTorch nn.Module for embedding strings for fast edit distance computation,
+    based on "Convolutional Embedding for Edit Distance (SIGIR 20)"
+    (code: https://github.com/xinyandai/string-embed)
     """
 
     def __init__(self, alphabet_len, max_str_len, n_channels, embedding_size, embed_dropout_p):
@@ -44,7 +44,16 @@ class StringEmbedCNN(nn.Module):
         return x
 
 
-class AttentionModule(nn.Module):
+class Attention(nn.Module):
+    """
+    PyTorch nn.Module of an Attention mechanism for weighted averging of
+    hidden states produced by a RNN. Based on mechanisms discussed in
+    "Using millions of emoji occurrences to learn any-domain representations
+    for detecting sentiment, emotion and sarcasm (EMNLP 17)" (code https://github.com/huggingface/torchMoji)
+    and
+    "AutoBlock: A Hands-off Blocking Framework for Entity Matching (WSDM 20)"
+    """
+
     def __init__(self, embedding_size):
         super().__init__()
 
@@ -62,13 +71,17 @@ class AttentionModule(nn.Module):
         return representations
 
 
-class MaskedAttentionModule(nn.Module):
+class MaskedAttention(nn.Module):
     """
-    Class that implements a Self-Attention module that will be applied on the outputs of the GRU layer.
-    Based on:
-        https://github.com/huggingface/torchMoji/blob/198f7d4e0711a7d3cd01968812af0121c54477f8/torchmoji/attlayer.py
-        https://medium.com/huggingface/understanding-emotions-from-keras-to-pytorch-3ccb61d5a983
-        https://www.kaggle.com/andrelmfarias/bi-gru-with-self-attention-and-statistical-feat
+    PyTorch nn.Module of an Attention mechanism for weighted averging of
+    hidden states produced by a RNN. Based on mechanisms discussed in
+    "Using millions of emoji occurrences to learn any-domain representations
+    for detecting sentiment, emotion and sarcasm (EMNLP 17)" (code https://github.com/huggingface/torchMoji)
+    and
+    "AutoBlock: A Hands-off Blocking Framework for Entity Matching (WSDM 20)".
+
+    Different from the other Attention class, this one uses a mask
+    to handle variable length inputs on the same batch.
     """
 
     def __init__(self, embedding_size):
@@ -78,6 +91,7 @@ class MaskedAttentionModule(nn.Module):
         self.softmax = nn.Softmax(dim=1)
 
     def forward(self, h, x, lengths):
+        # TODO: try max trick for numeric stability
         scores = h.matmul(self.attention_weights)
         scores = self.softmax(scores)
 
@@ -101,7 +115,7 @@ class MaskedAttentionModule(nn.Module):
         return representations
 
 
-class MultitokenAttrAttentionModule(nn.Module):
+class MultitokenAttrAttention(nn.Module):
     def __init__(self, embedding_size, use_mask):
         super().__init__()
 
@@ -112,9 +126,9 @@ class MultitokenAttrAttentionModule(nn.Module):
             batch_first=True,
         )
         if use_mask:
-            self.attention = MaskedAttentionModule(embedding_size=embedding_size)
+            self.attention = MaskedAttention(embedding_size=embedding_size)
         else:
-            self.attention = AttentionModule(embedding_size=embedding_size)
+            self.attention = Attention(embedding_size=embedding_size)
 
     def forward(self, x, tensor_lengths):
         packed_x = nn.utils.rnn.pack_padded_sequence(
@@ -130,7 +144,7 @@ class MultitokenAttentionEmbed(nn.Module):
         super().__init__()
 
         self.embedding_net = embedding_net
-        self.attention_net = MultitokenAttrAttentionModule(
+        self.attention_net = MultitokenAttrAttention(
             embedding_size=embedding_net.embedding_size, use_mask=use_mask
         )
 
@@ -177,17 +191,7 @@ class MultitokenAverageEmbed(nn.Module):
         return representations
 
 
-class TripletNet(nn.Module):
-    def __init__(self, embedding_net):
-        super().__init__()
-        self.embedding_net = embedding_net
-
-    def forward(self, x):
-        x1, x2, x3 = x
-        return self.embedding_net(x1), self.embedding_net(x2), self.embedding_net(x3)
-
-
-class TupleSignatureModule(nn.Module):
+class TupleSignature(nn.Module):
     def __init__(self, attr_list):
         super().__init__()
         self.weights = nn.Parameter(torch.full((len(attr_list),), 1 / len(attr_list)))
@@ -250,7 +254,7 @@ class BlockerNet(nn.Module):
                 else:
                     self.embedding_net_dict[attr] = MultitokenAverageEmbed(embedding_net, use_mask)
         attr_list = list(attr_to_encoding_info.keys())
-        self.tuple_signature = TupleSignatureModule(attr_list)
+        self.tuple_signature = TupleSignature(attr_list)
 
     def forward(self, encoded_attr_tensor_list, tensor_lengths_list):
         embedding_net_list = self.embedding_net_dict.values()
