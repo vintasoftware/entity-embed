@@ -29,9 +29,9 @@ class StringEmbedCNN(nn.Module):
         dense_layers = [nn.Linear(self.flat_size, self.embedding_size)]
         if embed_dropout_p:
             dense_layers.append(nn.Dropout(p=embed_dropout_p))
-        self.dense = nn.Sequential(*dense_layers)
+        self.dense_net = nn.Sequential(*dense_layers)
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         x_len = len(x)
         x = x.view(x.size(0), 1, -1)
 
@@ -39,7 +39,7 @@ class StringEmbedCNN(nn.Module):
         x = F.max_pool1d(x, kernel_size=2)
 
         x = x.view(x_len, self.flat_size)
-        x = self.dense(x)
+        x = self.dense_net(x)
 
         return x
 
@@ -62,7 +62,7 @@ class Attention(nn.Module):
         )
         self.softmax = nn.Softmax(dim=1)
 
-    def forward(self, h, x, lengths):
+    def forward(self, h, x, **kwargs):
         scores = h.matmul(self.attention_weights)
         scores = self.softmax(scores)
         weighted = torch.mul(x, scores.unsqueeze(-1).expand_as(x))
@@ -90,7 +90,7 @@ class MaskedAttention(nn.Module):
         self.attention_weights = nn.Parameter(torch.FloatTensor(embedding_size).uniform_(-0.1, 0.1))
         self.softmax = nn.Softmax(dim=1)
 
-    def forward(self, h, x, lengths):
+    def forward(self, h, x, tensor_lenghts, **kwargs):
         scores = h.matmul(self.attention_weights)
         scores = self.softmax(scores)
 
@@ -98,7 +98,7 @@ class MaskedAttention(nn.Module):
         # See e.g. https://discuss.pytorch.org/t/self-attention-on-words-and-masking/5671/5
         max_len = h.size(1)
         idxes = torch.arange(0, max_len, out=torch.LongTensor(max_len)).unsqueeze(0)
-        mask = Variable((idxes < torch.LongTensor(lengths).unsqueeze(1)).float())
+        mask = Variable((idxes < torch.LongTensor(tensor_lenghts).unsqueeze(1)).float())
         if scores.data.is_cuda:
             mask = mask.cuda()
 
@@ -114,43 +114,32 @@ class MaskedAttention(nn.Module):
         return representations
 
 
-class MultitokenAttrAttention(nn.Module):
-    def __init__(self, embedding_size, use_mask):
-        super().__init__()
-
-        self.gru = nn.GRU(
-            input_size=embedding_size,
-            hidden_size=embedding_size // 2,
-            bidirectional=True,
-            batch_first=True,
-        )
-        if use_mask:
-            self.attention = MaskedAttention(embedding_size=embedding_size)
-        else:
-            self.attention = Attention(embedding_size=embedding_size)
-
-    def forward(self, x, tensor_lengths):
-        packed_x = nn.utils.rnn.pack_padded_sequence(
-            x, tensor_lengths, batch_first=True, enforce_sorted=False
-        )
-        packed_h, __ = self.gru(packed_x)
-        h, __ = nn.utils.rnn.pad_packed_sequence(packed_h, batch_first=True)
-        return self.attention(h, x, tensor_lengths)
-
-
 class MultitokenAttentionEmbed(nn.Module):
     def __init__(self, embedding_net, use_mask):
         super().__init__()
 
         self.embedding_net = embedding_net
-        self.attention_net = MultitokenAttrAttention(
-            embedding_size=embedding_net.embedding_size, use_mask=use_mask
+        self.gru = nn.GRU(
+            input_size=embedding_net.embedding_size,
+            hidden_size=embedding_net.embedding_size // 2,  # due to bidirectional, must divide by 2
+            bidirectional=True,
+            batch_first=True,
         )
+        if use_mask:
+            self.attention_net = MaskedAttention(embedding_size=embedding_net.embedding_size)
+        else:
+            self.attention_net = Attention(embedding_size=embedding_net.embedding_size)
 
-    def forward(self, x, tensor_lengths):
-        x_list = x.unbind(dim=1)
-        x_list = [self.embedding_net(x) for x in x_list]
-        return self.attention_net(torch.stack(x_list, dim=1), tensor_lengths)
+    def forward(self, x, tensor_lengths, **kwargs):
+        x_tokens = x.unbind(dim=1)
+        x_tokens = [self.embedding_net(x) for x in x_tokens]
+        x = torch.stack(x_tokens, dim=1)
+        packed_x = nn.utils.rnn.pack_padded_sequence(
+            x, tensor_lengths, batch_first=True, enforce_sorted=False
+        )
+        packed_h, __ = self.gru(packed_x)
+        h, __ = nn.utils.rnn.pad_packed_sequence(packed_h, batch_first=True)
+        return self.attention_net(h, x, tensor_lengths=tensor_lengths)
 
 
 class MultitokenAverageEmbed(nn.Module):
@@ -160,7 +149,7 @@ class MultitokenAverageEmbed(nn.Module):
         self.embedding_net = embedding_net
         self.use_mask = use_mask
 
-    def forward(self, x, tensor_lengths):
+    def forward(self, x, tensor_lengths, **kwargs):
         max_len = x.size(1)
         scores = torch.full((max_len,), 1 / max_len)
         if x.data.is_cuda:
@@ -191,17 +180,18 @@ class MultitokenAverageEmbed(nn.Module):
 
 
 class TupleSignature(nn.Module):
-    def __init__(self, attr_list):
+    def __init__(self, attr_info_dict):
         super().__init__()
-        self.weights = nn.Parameter(torch.full((len(attr_list),), 1 / len(attr_list)))
+        self.weights = nn.Parameter(torch.full((len(attr_info_dict),), 1 / len(attr_info_dict)))
 
-    def forward(self, attr_embedding_list):
+    def forward(self, attr_embedding_dict):
+        attr_embedding_list = list(attr_embedding_dict.values())
         return (torch.stack(attr_embedding_list) * self.weights[:, None, None]).sum(axis=0)
 
 
 def fix_signature_params(model):
     """
-    Force signature params between 0 and 1 and total sum 1
+    Force signature params between 0 and 1 and total sum as 1.
     """
     with torch.no_grad():
         sd = model.tuple_signature.state_dict()
@@ -219,14 +209,14 @@ def fix_signature_params(model):
             model.tuple_signature.load_state_dict(sd)
 
 
-def get_current_signature_weights(attr_list, model):
-    return list(zip(attr_list, model.tuple_signature.state_dict()["weights"]))
+def get_current_signature_weights(attr_info_dict, model):
+    return list(zip(attr_info_dict.keys(), model.tuple_signature.state_dict()["weights"]))
 
 
 class BlockerNet(nn.Module):
     def __init__(
         self,
-        attr_to_encoding_info,
+        attr_info_dict,
         n_channels=8,
         embedding_size=128,
         embed_dropout_p=0.2,
@@ -234,8 +224,10 @@ class BlockerNet(nn.Module):
         use_mask=False,
     ):
         super().__init__()
+        self.attr_info_dict = attr_info_dict
         self.embedding_net_dict = nn.ModuleDict()
-        for attr, one_hot_encoding_info in attr_to_encoding_info.items():
+
+        for attr, one_hot_encoding_info in attr_info_dict.items():
             embedding_net = StringEmbedCNN(
                 alphabet_len=one_hot_encoding_info.alphabet_len,
                 max_str_len=one_hot_encoding_info.max_str_len,
@@ -246,26 +238,18 @@ class BlockerNet(nn.Module):
             if not one_hot_encoding_info.is_multitoken:
                 self.embedding_net_dict[attr] = embedding_net
             else:
-                if use_attention:
-                    self.embedding_net_dict[attr] = MultitokenAttentionEmbed(
-                        embedding_net, use_mask
-                    )
-                else:
-                    self.embedding_net_dict[attr] = MultitokenAverageEmbed(embedding_net, use_mask)
-        attr_list = list(attr_to_encoding_info.keys())
-        self.tuple_signature = TupleSignature(attr_list)
+                embed_cls = MultitokenAttentionEmbed if use_attention else MultitokenAverageEmbed
+                self.embedding_net_dict[attr] = embed_cls(embedding_net, use_mask)
 
-    def forward(self, encoded_attr_tensor_list, tensor_lengths_list):
-        embedding_net_list = self.embedding_net_dict.values()
-        return F.normalize(
-            self.tuple_signature(
-                [
-                    embedding_net(encoded_attr_tensor, tensor_lengths)
-                    if isinstance(embedding_net, (MultitokenAttentionEmbed, MultitokenAverageEmbed))
-                    else embedding_net(encoded_attr_tensor)
-                    for embedding_net, encoded_attr_tensor, tensor_lengths in zip(
-                        embedding_net_list, encoded_attr_tensor_list, tensor_lengths_list
-                    )
-                ]
+        self.tuple_signature = TupleSignature(attr_info_dict)
+
+    def forward(self, tensor_dict, tensor_lenghts_dict):
+        attr_embedding_dict = {}
+
+        for attr, embedding_net in self.embedding_net_dict.items():
+            attr_embedding = embedding_net(
+                tensor_dict[attr], tensor_lengths=tensor_lenghts_dict[attr]
             )
-        )
+            attr_embedding_dict[attr] = attr_embedding
+
+        return F.normalize(self.tuple_signature(attr_embedding_dict))
