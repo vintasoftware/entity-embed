@@ -25,14 +25,14 @@ def _warn_empty_indices_tuple(epoch, idx, indices_tuple):
 def train_epoch(model, loss_func, mining_func, device, train_loader, optimizer, epoch):
     model.train()
 
-    for idx, (tensor_dict, tensor_lenghts_dict, labels) in enumerate(train_loader):
-        tensor_dict, tensor_lenghts_dict, labels = (
+    for idx, (tensor_dict, tensor_lengths_dict, labels) in enumerate(train_loader):
+        tensor_dict, tensor_lengths_dict, labels = (
             {attr: t.to(device) for attr, t in tensor_dict.items()},
-            tensor_lenghts_dict,
+            tensor_lengths_dict,
             labels.to(device),
         )
         optimizer.zero_grad()
-        embeddings = model(tensor_dict, tensor_lenghts_dict)
+        embeddings = model(tensor_dict, tensor_lengths_dict)
         indices_tuple = mining_func(embeddings, labels)
         _warn_empty_indices_tuple(epoch, idx, indices_tuple)
         loss = loss_func(embeddings, labels, indices_tuple=indices_tuple)

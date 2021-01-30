@@ -90,7 +90,7 @@ class MaskedAttention(nn.Module):
         self.attention_weights = nn.Parameter(torch.FloatTensor(embedding_size).uniform_(-0.1, 0.1))
         self.softmax = nn.Softmax(dim=1)
 
-    def forward(self, h, x, tensor_lenghts, **kwargs):
+    def forward(self, h, x, tensor_lengths, **kwargs):
         scores = h.matmul(self.attention_weights)
         scores = self.softmax(scores)
 
@@ -98,7 +98,7 @@ class MaskedAttention(nn.Module):
         # See e.g. https://discuss.pytorch.org/t/self-attention-on-words-and-masking/5671/5
         max_len = h.size(1)
         idxes = torch.arange(0, max_len, out=torch.LongTensor(max_len)).unsqueeze(0)
-        mask = Variable((idxes < torch.LongTensor(tensor_lenghts).unsqueeze(1)).float())
+        mask = Variable((idxes < torch.LongTensor(tensor_lengths).unsqueeze(1)).float())
         if scores.data.is_cuda:
             mask = mask.cuda()
 
@@ -243,12 +243,12 @@ class BlockerNet(nn.Module):
 
         self.tuple_signature = TupleSignature(attr_info_dict)
 
-    def forward(self, tensor_dict, tensor_lenghts_dict):
+    def forward(self, tensor_dict, tensor_lengths_dict):
         attr_embedding_dict = {}
 
         for attr, embedding_net in self.embedding_net_dict.items():
             attr_embedding = embedding_net(
-                tensor_dict[attr], tensor_lengths=tensor_lenghts_dict[attr]
+                tensor_dict[attr], tensor_lengths=tensor_lengths_dict[attr]
             )
             attr_embedding_dict[attr] = attr_embedding
 

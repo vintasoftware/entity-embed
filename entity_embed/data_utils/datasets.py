@@ -81,12 +81,12 @@ class PairDataset(Dataset):
         ]
         label_batch = [self.id_to_cluster_id[id_] for id_ in id_batch]
 
-        tensor_dict, tensor_lenghts_dict = _pad_aware_collate(
+        tensor_dict, tensor_lengths_dict = _pad_aware_collate(
             self.row_encoder.attr_info_dict, tensor_dict_batch
         )
         label_batch = default_collate(label_batch)
 
-        return tensor_dict, tensor_lenghts_dict, label_batch
+        return tensor_dict, tensor_lengths_dict, label_batch
 
     def __len__(self):
         return len(self.pos_id_list_batches)
@@ -105,11 +105,11 @@ class RowDataset(Dataset):
             self.row_encoder.build_tensor_dict(row, log_empty_vals=self.log_empty_vals)
             for row in row_batch
         ]
-        tensor_dict, tensor_lenghts_dict = _pad_aware_collate(
+        tensor_dict, tensor_lengths_dict = _pad_aware_collate(
             self.row_encoder.attr_info_dict, tensor_dict_batch
         )
 
-        return tensor_dict, tensor_lenghts_dict
+        return tensor_dict, tensor_lengths_dict
 
     def __len__(self):
         return len(self.row_list_batches)
