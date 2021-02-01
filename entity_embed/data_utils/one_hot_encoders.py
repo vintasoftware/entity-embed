@@ -1,10 +1,12 @@
 import logging
 from dataclasses import dataclass
+from typing import Callable, List
 
 import numpy as np
 import regex
 import torch
-import tqdm
+
+from .utils import compute_alphabet_and_max_str_len
 
 logger = logging.getLogger(__name__)
 
@@ -12,7 +14,8 @@ logger = logging.getLogger(__name__)
 @dataclass
 class OneHotEncodingInfo:
     is_multitoken: bool
-    alphabet_len: int
+    tokenizer: Callable[[str], List[str]]
+    alphabet: List[str]
     max_str_len: int
 
 
@@ -20,59 +23,23 @@ class OneHotEncodingInfo:
 tokenizer_re = regex.compile(r"[\w--_]+|[^[\w--_]\s]+", flags=regex.V1)
 
 
-def _default_tokenizer_fn(val):
+def default_tokenizer(val):
     return tokenizer_re.findall(val)
 
 
 class AttrOneHotEncoder:
-    def __init__(
-        self,
-        val_gen,
-        attr,
-        is_multitoken,
-        tokenizer_fn=None,
-        alphabet=None,
-        max_str_len=None,
-    ):
+    def __init__(self, attr, one_hot_encoding_info):
         self.attr = attr
-        self.is_multitoken = is_multitoken
-        if is_multitoken:
-            if tokenizer_fn is not None:
-                self.tokenizer_fn = tokenizer_fn
-            else:
-                self.tokenizer_fn = _default_tokenizer_fn
-
-        if alphabet is not None:
-            self.alphabet = alphabet
-
-        if max_str_len is not None:
-            self.max_str_len = max_str_len
-
-        # Compute alphabet or max_str_len from val_gen if is None
-        if alphabet is None or max_str_len is None:
-            actual_alphabet = set()
-            actual_max_str_len = 0
-            for val in val_gen:
-                actual_alphabet.update(list(val))
-                if not self.is_multitoken:
-                    str_len = len(val)
-                else:
-                    token_lens = [len(v) for v in self.tokenizer_fn(val)]
-                    str_len = max(token_lens) if token_lens else -1
-                actual_max_str_len = max(str_len, actual_max_str_len)
-
-            if alphabet is None:
-                self.alphabet = sorted(actual_alphabet)
-            if max_str_len is None:
-                self.max_str_len = actual_max_str_len
-
-        # Ensure max_str_len is pair to enable pooling later
-        if self.max_str_len % 2 != 0:
-            logger.warning(
-                f"{self.max_str_len=} must be pair to enable NN pooling. "
-                f"Updating to {self.max_str_len + 1}"
+        self.is_multitoken = one_hot_encoding_info.is_multitoken
+        self.tokenizer = one_hot_encoding_info.tokenizer
+        if self.is_multitoken and self.tokenizer is None:
+            raise ValueError(
+                f"{attr=} has {self.is_multitoken=} but {self.tokenizer=}. "
+                "Please set a tokenizer."
             )
-            self.max_str_len += 1
+
+        self.alphabet = one_hot_encoding_info.alphabet
+        self.max_str_len = one_hot_encoding_info.max_str_len
 
         self.char_to_ord = {c: i for i, c in enumerate(self.alphabet)}
 
@@ -92,7 +59,7 @@ class AttrOneHotEncoder:
         if not self.is_multitoken:
             return self._build_single_tensor(val)
         else:
-            val_tokens = self.tokenizer_fn(val)
+            val_tokens = self.tokenizer(val)
             if val_tokens:
                 token_t_list = [self._build_single_tensor(v) for v in val_tokens]
             else:
@@ -103,37 +70,52 @@ class AttrOneHotEncoder:
             else:
                 return torch.stack([self._build_single_tensor("")])
 
-    @property
-    def one_hot_encoding_info(self):
-        return OneHotEncodingInfo(
-            is_multitoken=self.is_multitoken,
-            alphabet_len=len(self.alphabet),
-            max_str_len=self.max_str_len,
-        )
-
 
 class RowOneHotEncoder:
     def __init__(
         self,
-        row_dict,
-        attr_list,
-        is_multitoken_attr_list=None,
-        tokenizer_fn=None,
-        alphabet=None,
-        show_progress=False,
+        attr_info_dict,
+        row_dict=None,
     ):
-        is_multitoken_attr_set = set(is_multitoken_attr_list) if is_multitoken_attr_list else set()
+        self.attr_info_dict = {}
         self.attr_to_encoder = {}
 
-        for attr in tqdm.tqdm(attr_list, disable=not show_progress):
-            encoder = AttrOneHotEncoder(
-                val_gen=(row[attr] for row in row_dict.values()),
-                attr=attr,
-                is_multitoken=attr in is_multitoken_attr_set,
-                tokenizer_fn=tokenizer_fn if attr in is_multitoken_attr_set else None,
+        for attr, one_hot_encoding_info in attr_info_dict.items():
+            alphabet = one_hot_encoding_info.alphabet
+            max_str_len = one_hot_encoding_info.max_str_len
+
+            if alphabet is None or max_str_len is None:
+                if row_dict is None:
+                    raise ValueError(
+                        f"Cannot compute alphabet and max_str_len for {attr=}. "
+                        "row_dict cannot be None if any of alphabet and max_str_len is None. "
+                        "Please set row_dict, a dictionary of id -> row with ALL your data (train, test, valid). "
+                        "Or call entity_embed.data_utils.compute_alphabet_and_max_str_len "
+                        "over ALL your data (train, test, valid) to compute alphabet and max_str_len for each attr. "
+                    )
+                else:
+                    logger.info(f"For {attr=}, computing actual alphabet and max_str_len")
+                    actual_alphabet, actual_max_str_len = compute_alphabet_and_max_str_len(
+                        attr_val_gen=(row[attr] for row in row_dict.values()),
+                        is_multitoken=one_hot_encoding_info.is_multitoken,
+                        tokenizer=one_hot_encoding_info.tokenizer,
+                    )
+                    if alphabet is None:
+                        logger.info(f"For {attr=}, using {actual_alphabet=}")
+                        alphabet = actual_alphabet
+                    if max_str_len is None:
+                        logger.info(f"For {attr=}, using {actual_max_str_len=}")
+                        max_str_len = actual_max_str_len
+
+            self.attr_info_dict[attr] = OneHotEncodingInfo(
+                is_multitoken=one_hot_encoding_info.is_multitoken,
+                tokenizer=one_hot_encoding_info.tokenizer,
                 alphabet=alphabet,
+                max_str_len=max_str_len,
             )
-            self.attr_to_encoder[attr] = encoder
+            self.attr_to_encoder[attr] = AttrOneHotEncoder(
+                attr=attr, one_hot_encoding_info=self.attr_info_dict[attr]
+            )
 
     def build_tensor_dict(self, row, log_empty_vals=False):
         tensor_dict = {}
@@ -143,9 +125,3 @@ class RowOneHotEncoder:
                 logger.warning(f"Found empty {attr=} at row={row}")
             tensor_dict[attr] = encoder.build_tensor(row[attr])
         return tensor_dict
-
-    @property
-    def attr_info_dict(self):
-        return {
-            attr: encoder.one_hot_encoding_info for attr, encoder in self.attr_to_encoder.items()
-        }

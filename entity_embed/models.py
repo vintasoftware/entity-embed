@@ -209,8 +209,8 @@ def fix_signature_params(model):
             model.tuple_signature.load_state_dict(sd)
 
 
-def get_current_signature_weights(attr_info_dict, model):
-    return list(zip(attr_info_dict.keys(), model.tuple_signature.state_dict()["weights"]))
+def get_current_signature_weights(model):
+    return list(zip(model.attr_info_dict.keys(), model.tuple_signature.state_dict()["weights"]))
 
 
 class BlockerNet(nn.Module):
@@ -229,7 +229,7 @@ class BlockerNet(nn.Module):
 
         for attr, one_hot_encoding_info in attr_info_dict.items():
             embedding_net = StringEmbedCNN(
-                alphabet_len=one_hot_encoding_info.alphabet_len,
+                alphabet_len=len(one_hot_encoding_info.alphabet),
                 max_str_len=one_hot_encoding_info.max_str_len,
                 n_channels=n_channels,
                 embedding_size=embedding_size,
