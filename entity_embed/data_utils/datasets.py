@@ -45,7 +45,7 @@ class PairDataset(Dataset):
         log_empty_vals=False,
     ):
         self.row_dict = row_dict
-        self.pair_list = utils.row_dict_to_id_pairs(row_dict, cluster_attr, out_type=list)
+        self.pair_list = list(utils.row_dict_to_id_pairs(row_dict, cluster_attr))
         self.id_to_cluster_id = {id_: row[cluster_attr] for id_, row in row_dict.items()}
         self.row_encoder = row_encoder
         self.random = random.Random(random_seed)

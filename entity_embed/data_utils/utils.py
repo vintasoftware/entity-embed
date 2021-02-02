@@ -1,21 +1,63 @@
 import itertools
 import logging
 import math
+import random
 from collections import defaultdict
 
 logger = logging.getLogger(__name__)
 
 
-def row_dict_to_id_pairs(row_dict, cluster_attr, out_type=list):
-    cluster_id_to_ids = defaultdict(list)
+def row_dict_to_cluster_dict(row_dict, cluster_attr):
+    cluster_dict = defaultdict(list)
     for id_, row in row_dict.items():
-        cluster_id_to_ids[row[cluster_attr]].append(id_)
+        cluster_dict[row[cluster_attr]].append(id_)
 
-    return out_type(
+    # must use sorted to always have smaller id on left of pair tuple
+    cluster_dict = {
+        cluster_id: sorted(cluster_id_list) for cluster_id, cluster_id_list in cluster_dict.items()
+    }
+
+    return cluster_dict
+
+
+def cluster_dict_to_id_pairs(cluster_dict):
+    return set(
         pair
-        for cluster in cluster_id_to_ids.values()
-        for pair in itertools.combinations(cluster, 2)
+        for cluster_id_list in cluster_dict.values()
+        for pair in itertools.combinations(cluster_id_list, 2)
     )
+
+
+def row_dict_to_id_pairs(row_dict, cluster_attr):
+    cluster_dict = row_dict_to_cluster_dict(row_dict, cluster_attr)
+    return cluster_dict_to_id_pairs(cluster_dict)
+
+
+def split_clusters(cluster_dict, train_len, valid_len, random_seed, only_plural_clusters=True):
+    rnd = random.Random(random_seed)
+    if only_plural_clusters:
+        # consider only clusters that have more than 1 entity for train and valid
+        maybe_plural_cluster_id_set = {
+            cluster_id
+            for cluster_id, cluster_id_list in cluster_dict.items()
+            if len(cluster_id_list) > 1
+        }
+    else:
+        maybe_plural_cluster_id_set = cluster_dict.keys()
+    train_cluster_id_set = set(rnd.sample(maybe_plural_cluster_id_set, train_len))
+    valid_cluster_id_set = set(
+        rnd.sample(maybe_plural_cluster_id_set - train_cluster_id_set, valid_len)
+    )
+    test_cluster_id_set = cluster_dict.keys() - train_cluster_id_set - valid_cluster_id_set
+
+    train_cluster_dict = {
+        cluster_id: cluster_dict[cluster_id] for cluster_id in train_cluster_id_set
+    }
+    valid_cluster_dict = {
+        cluster_id: cluster_dict[cluster_id] for cluster_id in valid_cluster_id_set
+    }
+    test_cluster_dict = {cluster_id: cluster_dict[cluster_id] for cluster_id in test_cluster_id_set}
+    return train_cluster_dict, valid_cluster_dict, test_cluster_dict
 
 
 def pair_count_to_row_count(pair_count):
