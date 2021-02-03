@@ -14,14 +14,6 @@ with open("HISTORY.rst") as history_file:
 with open("requirements.txt") as requirements_file:
     requirements = [str(req) for req in parse_requirements(requirements_file.readlines())]
 
-setup_requirements = [
-    "pytest-runner",
-]
-
-test_requirements = [
-    "pytest>=3",
-]
-
 setup(
     author="Flávio Juvenal",
     author_email="flavio@vinta.com.br",
@@ -50,9 +42,6 @@ setup(
     keywords="record linkage,entity resolution,deduplication,embedding",
     name="entity-embed",
     packages=find_packages(include=["entity_embed", "entity_embed.*"]),
-    setup_requires=setup_requirements,
-    test_suite="tests",
-    tests_require=test_requirements,
     url="https://github.com/vintasoftware/entity-embed",
     version="0.0.1",
     zip_safe=False,
