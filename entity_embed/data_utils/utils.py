@@ -4,6 +4,8 @@ import math
 import random
 from collections import defaultdict
 
+from ordered_set import OrderedSet
+
 logger = logging.getLogger(__name__)
 
 
@@ -44,8 +46,8 @@ def split_clusters(cluster_dict, train_len, valid_len, random_seed, only_plural_
         }
     else:
         maybe_plural_cluster_id_set = cluster_dict.keys()
-    train_cluster_id_set = set(rnd.sample(maybe_plural_cluster_id_set, train_len))
-    valid_cluster_id_set = set(
+    train_cluster_id_set = OrderedSet(rnd.sample(maybe_plural_cluster_id_set, train_len))
+    valid_cluster_id_set = OrderedSet(
         rnd.sample(maybe_plural_cluster_id_set - train_cluster_id_set, valid_len)
     )
     test_cluster_id_set = cluster_dict.keys() - train_cluster_id_set - valid_cluster_id_set
@@ -77,6 +79,9 @@ def compute_alphabet_and_max_str_len(attr_val_gen, is_multitoken, tokenizer):
             token_lens = [len(v) for v in tokenizer(attr_val)]
             str_len = max(token_lens) if token_lens else -1
         actual_max_str_len = max(str_len, actual_max_str_len)
+
+    # Sort alphabet for reproducibility
+    actual_alphabet = sorted(actual_alphabet)
 
     # Ensure max_str_len is pair to enable pooling later
     if actual_max_str_len % 2 != 0:
