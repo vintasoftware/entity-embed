@@ -2,8 +2,6 @@ import logging
 
 import torch
 
-from .models import fix_signature_params
-
 logger = logging.getLogger(__name__)
 
 
