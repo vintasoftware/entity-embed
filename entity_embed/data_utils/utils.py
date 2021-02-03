@@ -62,6 +62,28 @@ def split_clusters(cluster_dict, train_len, valid_len, random_seed, only_plural_
     return train_cluster_dict, valid_cluster_dict, test_cluster_dict
 
 
+def split_cluster_to_id_pairs(train_cluster_dict, valid_cluster_dict, test_cluster_dict):
+    train_true_pair_set = cluster_dict_to_id_pairs(train_cluster_dict)
+    valid_true_pair_set = cluster_dict_to_id_pairs(valid_cluster_dict)
+    test_true_pair_set = cluster_dict_to_id_pairs(test_cluster_dict)
+    return train_true_pair_set, valid_true_pair_set, test_true_pair_set
+
+
+def cluster_dict_to_filtered_row_dict(row_dict, cluster_dict):
+    return {
+        id_: row_dict[id_] for cluster_id_list in cluster_dict.values() for id_ in cluster_id_list
+    }
+
+
+def split_clusters_to_row_dicts(
+    row_dict, train_cluster_dict, valid_cluster_dict, test_cluster_dict
+):
+    train_row_dict = cluster_dict_to_filtered_row_dict(row_dict, train_cluster_dict)
+    valid_row_dict = cluster_dict_to_filtered_row_dict(row_dict, valid_cluster_dict)
+    test_row_dict = cluster_dict_to_filtered_row_dict(row_dict, test_cluster_dict)
+    return train_row_dict, valid_row_dict, test_row_dict
+
+
 def pair_count_to_row_count(pair_count):
     # positive solution of n for y of y = (n * (n - 1)) / 2
     # where y is pair_count and n is row_count
