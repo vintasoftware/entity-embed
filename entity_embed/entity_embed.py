@@ -24,7 +24,6 @@ from .data_utils.utils import (
 )
 from .evaluation import f1_score, pair_entity_ratio, precision_and_recall
 from .models import BlockerNet
-from .trainer import train_epoch
 
 logger = logging.getLogger(__name__)
 
