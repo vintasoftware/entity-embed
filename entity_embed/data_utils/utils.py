@@ -64,9 +64,13 @@ def split_clusters(
     train_cluster_id_set = OrderedSet(rnd.sample(all_cluster_id_set, train_len))
     all_minus_train_cluster_id_set = all_cluster_id_set - train_cluster_id_set
     valid_cluster_id_set = OrderedSet(rnd.sample(all_minus_train_cluster_id_set, valid_len))
-    test_cluster_id_set = OrderedSet(
-        rnd.sample(all_minus_train_cluster_id_set - valid_cluster_id_set, test_len)
-    )
+    test_cluster_id_set = all_minus_train_cluster_id_set - valid_cluster_id_set
+    if test_len < len(test_cluster_id_set):
+        test_cluster_id_set = OrderedSet(rnd.sample(test_cluster_id_set, test_len))
+
+    assert train_cluster_id_set.isdisjoint(valid_cluster_id_set)
+    assert train_cluster_id_set.isdisjoint(test_cluster_id_set)
+    assert valid_cluster_id_set.isdisjoint(test_cluster_id_set)
 
     train_cluster_dict = {
         cluster_id: cluster_dict[cluster_id] for cluster_id in train_cluster_id_set
