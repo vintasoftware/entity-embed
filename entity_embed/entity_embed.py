@@ -1,6 +1,5 @@
 import logging
 import os
-import time
 
 import pytorch_lightning as pl
 import torch
@@ -8,7 +7,6 @@ from n2 import HnswIndex
 from pytorch_metric_learning.distances import CosineSimilarity
 from pytorch_metric_learning.losses import NTXentLoss
 from pytorch_metric_learning.miners import BatchHardMiner
-from torch._C import Value
 from tqdm.auto import tqdm
 
 from .data_utils.datasets import PairDataset, RowDataset
@@ -17,8 +15,6 @@ from .data_utils.utils import (
     cluster_dict_to_id_pairs,
     count_cluster_dict_pairs,
     row_dict_to_cluster_dict,
-    row_dict_to_id_pairs,
-    split_cluster_to_id_pairs,
     split_clusters,
     split_clusters_to_row_dicts,
 )
@@ -75,8 +71,14 @@ class EntityEmbedDataModule(pl.LightningDataModule):
         self.test_cluster_len = test_cluster_len
         self.only_plural_clusters = only_plural_clusters
         self.log_empty_vals = log_empty_vals
-        self.pair_loader_kwargs = {"num_workers": os.cpu_count(), "multiprocessing_context": "fork"}
-        self.row_loader_kwargs = {"num_workers": os.cpu_count(), "multiprocessing_context": "fork"}
+        self.pair_loader_kwargs = pair_loader_kwargs or {
+            "num_workers": os.cpu_count(),
+            "multiprocessing_context": "fork",
+        }
+        self.row_loader_kwargs = row_loader_kwargs or {
+            "num_workers": os.cpu_count(),
+            "multiprocessing_context": "fork",
+        }
         self.random_seed = random_seed
 
         self.valid_true_pair_set = None
@@ -187,7 +189,8 @@ class LitEntityEmbed(pl.LightningModule):
         index_search_kwargs=None,
     ):
         super().__init__()
-        self.attr_info_dict = datamodule.row_encoder.attr_info_dict
+        self.row_encoder = datamodule.row_encoder
+        self.attr_info_dict = self.row_encoder.attr_info_dict
         self.blocker_net = BlockerNet(
             self.attr_info_dict,
             n_channels=n_channels,
@@ -218,7 +221,8 @@ class LitEntityEmbed(pl.LightningModule):
             "index_search_kwargs",
         )
 
-        # set self._datamodule to access valid_row_dict and valid_true_pair_set in validation_epoch_end
+        # set self._datamodule to access valid_row_dict and valid_true_pair_set
+        # in validation_epoch_end
         self._datamodule = datamodule
 
     def forward(self, tensor_dict, tensor_lengths_dict):
@@ -228,35 +232,6 @@ class LitEntityEmbed(pl.LightningModule):
         with torch.no_grad():
             if all(t.nelement() == 0 for t in indices_tuple):
                 logger.warning(f"Found empty indices_tuple at {self.current_epoch=}, {batch_idx=}")
-
-    def _fix_signature_weights(self):
-        """
-        Force signature weights between 0 and 1 and total sum as 1.
-        """
-        with torch.no_grad():
-            sd = self.blocker_net.tuple_signature.state_dict()
-            weights = sd["weights"]
-            one_tensor = torch.tensor([1.0]).to(weights.device)
-            if torch.any((weights < 0) | (weights > 1)) or not torch.isclose(
-                weights.sum(), one_tensor
-            ):
-                weights[weights < 0] = 0
-                weights_sum = weights.sum()
-                if weights_sum > 0:
-                    weights /= weights.sum()
-                else:
-                    print("Warning: all weights turned to 0. Setting all equal.")
-                    weights[[True] * len(weights)] = 1 / len(weights)
-                sd["weights"] = weights
-                self.blocker_net.tuple_signature.load_state_dict(sd)
-
-    def _get_signature_weights(self):
-        return list(
-            zip(
-                self.attr_info_dict.keys(),
-                self.blocker_net.tuple_signature.state_dict()["weights"],
-            )
-        )
 
     def training_step(self, batch, batch_idx):
         tensor_dict, tensor_lengths_dict, labels = batch
@@ -268,9 +243,14 @@ class LitEntityEmbed(pl.LightningModule):
         self.log("train_loss", loss)
         return loss
 
-    def training_epoch_end(self, outputs):
-        self._fix_signature_weights()
-        self.log_dict({f"signature_{k}": float(v) for k, v in self._get_signature_weights()})
+    def on_train_batch_end(self, outputs, batch, batch_idx, dataloader_idx):
+        self.blocker_net.fix_signature_weights()
+        self.log_dict(
+            {
+                f"signature_{attr}": weight
+                for attr, weight in self.blocker_net.get_signature_weights().items()
+            }
+        )
 
     def validation_step(self, batch, batch_idx):
         tensor_dict, tensor_lengths_dict = batch
@@ -334,7 +314,6 @@ class LitEntityEmbed(pl.LightningModule):
     def predict(
         self,
         row_dict,
-        row_encoder,
         batch_size,
         loader_kwargs=None,
         device=None,
@@ -346,7 +325,9 @@ class LitEntityEmbed(pl.LightningModule):
             else:
                 device = torch.device("cpu")
 
-        row_dataset = RowDataset(row_encoder=row_encoder, row_dict=row_dict, batch_size=batch_size)
+        row_dataset = RowDataset(
+            row_encoder=self.row_encoder, row_dict=row_dict, batch_size=batch_size
+        )
         row_loader = torch.utils.data.DataLoader(
             row_dataset,
             batch_size=None,  # batch size is set on RowDataset
@@ -365,10 +346,8 @@ class LitEntityEmbed(pl.LightningModule):
                 vector_list = []
                 for i, (tensor_dict, tensor_lengths_dict) in enumerate(row_loader):
                     tensor_dict = {attr: t.to(device) for attr, t in tensor_dict.items()}
-                    vector_list.extend(
-                        v.data.numpy()
-                        for v in blocker_net(tensor_dict, tensor_lengths_dict).cpu().unbind()
-                    )
+                    embeddings = blocker_net(tensor_dict, tensor_lengths_dict)
+                    vector_list.extend(v.data.numpy() for v in embeddings.cpu().unbind())
                     p_bar.update(1)
 
         vector_dict = dict(zip(row_dict.keys(), vector_list))
