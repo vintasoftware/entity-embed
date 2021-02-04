@@ -559,7 +559,7 @@ class ANNLinkageIndex:
             for i, neighbor_distance_list in enumerate(neighbor_and_distance_list_of_list):
                 left_id = other_index.vector_idx_to_id[i]
                 for j, distance in neighbor_distance_list:
-                    if i != j and distance <= distance_threshold:
+                    if distance <= distance_threshold:  # do NOT check for i != j here
                         right_id = index.vector_idx_to_id[j]
                         # must use sorted to always have smaller id on left of pair tuple
                         pair = tuple(sorted([left_id, right_id]))
