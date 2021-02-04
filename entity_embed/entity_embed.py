@@ -40,7 +40,7 @@ def build_row_encoder(attr_info_dict, row_dict=None):
     return RowOneHotEncoder(attr_info_dict=attr_info_dict, row_dict=row_dict)
 
 
-class EntityEmbedDataModule(pl.LightningDataModule):
+class DeduplicationDataModule(pl.LightningDataModule):
     def __init__(
         self,
         row_dict,
@@ -58,7 +58,7 @@ class EntityEmbedDataModule(pl.LightningDataModule):
         row_loader_kwargs=None,
         random_seed=42,
     ):
-        super().__init__(self)
+        super().__init__()
         self.row_dict = row_dict
         self.cluster_attr = cluster_attr
         self.row_encoder = row_encoder
@@ -111,10 +111,10 @@ class EntityEmbedDataModule(pl.LightningDataModule):
         )
 
         # If not test, drop test values
-        if stage == "fit" or stage is None:
+        if stage == "fit":
             self.test_true_pair_set = None
             self.test_row_dict = None
-        if stage == "test" or stage is None:
+        elif stage == "test":
             self.valid_true_pair_set = None
             self.train_row_dict = None
             self.valid_row_dict = None
@@ -164,6 +164,55 @@ class EntityEmbedDataModule(pl.LightningDataModule):
             **self.row_loader_kwargs,
         )
         return test_row_loader
+
+
+class LinkageDataModule(DeduplicationDataModule):
+    def __init__(
+        self,
+        row_dict,
+        cluster_attr,
+        row_encoder,
+        pos_pair_batch_size,
+        neg_pair_batch_size,
+        row_batch_size,
+        train_cluster_len,
+        valid_cluster_len,
+        test_cluster_len,
+        only_plural_clusters,
+        left_id_set,
+        right_id_set,
+        log_empty_vals=False,
+        pair_loader_kwargs=None,
+        row_loader_kwargs=None,
+        random_seed=42,
+    ):
+        super().__init__(
+            row_dict=row_dict,
+            cluster_attr=cluster_attr,
+            row_encoder=row_encoder,
+            pos_pair_batch_size=pos_pair_batch_size,
+            neg_pair_batch_size=neg_pair_batch_size,
+            row_batch_size=row_batch_size,
+            train_cluster_len=train_cluster_len,
+            valid_cluster_len=valid_cluster_len,
+            test_cluster_len=test_cluster_len,
+            only_plural_clusters=only_plural_clusters,
+            log_empty_vals=log_empty_vals,
+            pair_loader_kwargs=pair_loader_kwargs,
+            row_loader_kwargs=row_loader_kwargs,
+            random_seed=random_seed,
+        )
+        self.left_id_set = left_id_set
+        self.right_id_set = right_id_set
+
+    def _dict_filtered_from_id_set(self, d, id_set):
+        return {id_: row for id_, row in d.items() if id_ in id_set}
+
+    def separate_dict_left_right(self, d):
+        return (
+            self._dict_filtered_from_id_set(d, self.left_id_set),
+            self._dict_filtered_from_id_set(d, self.right_id_set),
+        )
 
 
 class EntityEmbed(pl.LightningModule):
@@ -361,6 +410,43 @@ class EntityEmbed(pl.LightningModule):
         return vector_dict
 
 
+class LinkageEmbed(EntityEmbed):
+    def _evaluate_with_ann(self, set_name, row_dict, embedding_batch_list, true_pair_set):
+        vector_list = []
+        for embedding_batch in embedding_batch_list:
+            vector_list.extend(v.data.numpy() for v in embedding_batch.cpu().unbind())
+        vector_dict = dict(zip(row_dict.keys(), vector_list))
+        left_vector_dict, right_vector_dict = self.datamodule.separate_dict_left_right(vector_dict)
+
+        ann_index = ANNLinkageIndex(embedding_size=self.blocker_net.embedding_size)
+        ann_index.insert_vector_dict(
+            left_vector_dict=left_vector_dict, right_vector_dict=right_vector_dict
+        )
+        ann_index.build(
+            index_build_kwargs=self.index_build_kwargs,
+        )
+
+        found_pair_set = ann_index.search_pairs(
+            k=self.ann_k,
+            sim_threshold=self.sim_threshold,
+            left_vector_dict=left_vector_dict,
+            right_vector_dict=right_vector_dict,
+            index_search_kwargs=self.index_search_kwargs,
+        )
+
+        precision, recall = precision_and_recall(found_pair_set, true_pair_set)
+        self.log_dict(
+            {
+                f"{set_name}_precision": precision,
+                f"{set_name}_recall": recall,
+                f"{set_name}_f1": f1_score(precision, recall),
+                f"{set_name}_pair_entity_ratio": pair_entity_ratio(
+                    len(found_pair_set), len(vector_list)
+                ),
+            }
+        )
+
+
 class ANNEntityIndex:
     def __init__(self, embedding_size):
         self.approx_knn_index = HnswIndex(dimension=embedding_size, metric="angular")
@@ -406,12 +492,81 @@ class ANNEntityIndex:
 
         found_pair_set = set()
         for i, neighbor_distance_list in enumerate(neighbor_and_distance_list_of_list):
+            left_id = self.vector_idx_to_id[i]
             for j, distance in neighbor_distance_list:
                 if i != j and distance <= distance_threshold:
+                    right_id = self.vector_idx_to_id[j]
                     # must use sorted to always have smaller id on left of pair tuple
-                    pair = tuple(sorted([self.vector_idx_to_id[i], self.vector_idx_to_id[j]]))
+                    pair = tuple(sorted([left_id, right_id]))
                     found_pair_set.add(pair)
 
         logger.debug(f"Building found_pair_set done. Found {len(found_pair_set)=} pairs.")
 
         return found_pair_set
+
+
+class ANNLinkageIndex:
+    def __init__(self, embedding_size):
+        self.left_index = ANNEntityIndex(embedding_size)
+        self.right_index = ANNEntityIndex(embedding_size)
+
+    def insert_vector_dict(self, left_vector_dict, right_vector_dict):
+        self.left_index.insert_vector_dict(vector_dict=left_vector_dict)
+        self.right_index.insert_vector_dict(vector_dict=right_vector_dict)
+
+    def build(
+        self,
+        index_build_kwargs=None,
+    ):
+        self.left_index.build(index_build_kwargs=index_build_kwargs)
+        self.right_index.build(index_build_kwargs=index_build_kwargs)
+
+    def search_pairs(
+        self,
+        k,
+        sim_threshold,
+        left_vector_dict,
+        right_vector_dict,
+        index_search_kwargs=None,
+        left_dataset_name="left",
+        right_dataset_name="right",
+    ):
+        if sim_threshold > 1 or sim_threshold < 0:
+            raise ValueError(f"{sim_threshold=} must be <= 1 and >= 0")
+
+        distance_threshold = 1 - sim_threshold
+        all_pair_set = set()
+
+        for dataset_name, index, vector_dict, other_index in [
+            (left_dataset_name, self.left_index, right_vector_dict, self.right_index),
+            (right_dataset_name, self.right_index, left_vector_dict, self.left_index),
+        ]:
+            logger.debug(f"Searching on approx_knn_index of {dataset_name=}...")
+
+            neighbor_and_distance_list_of_list = index.approx_knn_index.batch_search_by_vectors(
+                vs=vector_dict.values(),
+                k=k,
+                include_distances=True,
+                **index_search_kwargs
+                if index_search_kwargs
+                else {"ef_search": -1, "num_threads": os.cpu_count()},
+            )
+
+            logger.debug(
+                f"Search on approx_knn_index of {dataset_name=}... done, filling all_pair_set now..."
+            )
+
+            for i, neighbor_distance_list in enumerate(neighbor_and_distance_list_of_list):
+                left_id = other_index.vector_idx_to_id[i]
+                for j, distance in neighbor_distance_list:
+                    if i != j and distance <= distance_threshold:
+                        right_id = index.vector_idx_to_id[j]
+                        # must use sorted to always have smaller id on left of pair tuple
+                        pair = tuple(sorted([left_id, right_id]))
+                        all_pair_set.add(pair)
+
+            logger.debug(f"Filling all_pair_set with {dataset_name=} done.")
+
+        logger.debug(f"All searches done, all_pair_set filled. Found {len(all_pair_set)=} pairs.")
+
+        return all_pair_set
