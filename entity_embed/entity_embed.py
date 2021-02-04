@@ -59,7 +59,6 @@ class EntityEmbedDataModule(pl.LightningDataModule):
         random_seed=42,
     ):
         super().__init__(self)
-        # TODO: use files instead of row_dict
         self.row_dict = row_dict
         self.cluster_attr = cluster_attr
         self.row_encoder = row_encoder
