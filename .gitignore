@@ -145,5 +145,8 @@ cython_debug/
 # Windows
 Thumbs.db
 
+# Tensorboard logs
+notebooks/tb_logs/
+
 # Personal files
 _personal/
