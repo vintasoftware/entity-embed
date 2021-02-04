@@ -200,7 +200,12 @@ class LitEntityEmbed(pl.LightningModule):
             use_mask=use_mask,
         )
         self.losser = loss_cls(**loss_kwargs if loss_kwargs else {"temperature": 0.1})
-        self.miner = miner_cls(**miner_kwargs if miner_kwargs else {"distance": CosineSimilarity()})
+        if miner_cls:
+            self.miner = miner_cls(
+                **miner_kwargs if miner_kwargs else {"distance": CosineSimilarity()}
+            )
+        else:
+            self.miner = None
         self.optimizer_cls = optimizer_cls
         self.learning_rate = learning_rate
         self.optimizer_kwargs = optimizer_kwargs if optimizer_kwargs else {}
@@ -236,8 +241,11 @@ class LitEntityEmbed(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         tensor_dict, tensor_lengths_dict, labels = batch
         embeddings = self.blocker_net(tensor_dict, tensor_lengths_dict)
-        indices_tuple = self.miner(embeddings, labels)
-        self._warn_if_empty_indices_tuple(indices_tuple, batch_idx)
+        if self.miner:
+            indices_tuple = self.miner(embeddings, labels)
+            self._warn_if_empty_indices_tuple(indices_tuple, batch_idx)
+        else:
+            indices_tuple = None
         loss = self.losser(embeddings, labels, indices_tuple=indices_tuple)
 
         self.log("train_loss", loss)
