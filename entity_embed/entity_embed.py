@@ -205,6 +205,24 @@ class LinkageDataModule(DeduplicationDataModule):
         self.left_id_set = left_id_set
         self.right_id_set = right_id_set
 
+    def _set_filtered_from_id_sets(self, s):
+        return {
+            (id_1, id_2)
+            for (id_1, id_2) in s
+            if (id_1 in self.left_id_set and id_2 in self.right_id_set)
+            or (id_1 in self.right_id_set and id_2 in self.left_id_set)
+        }
+
+    def setup(self, stage=None):
+        super().setup(stage=stage)
+
+        # Ensure pair sets only have ids with datset sources like (left, right) or (right, left),
+        # i.e., no ids from the same dataset (left, left) or (right, right)
+        if self.valid_true_pair_set is not None:
+            self.valid_true_pair_set = self._set_filtered_from_id_sets(self.valid_true_pair_set)
+        if self.test_true_pair_set is not None:
+            self.test_true_pair_set = self._set_filtered_from_id_sets(self.test_true_pair_set)
+
     def _dict_filtered_from_id_set(self, d, id_set):
         return {id_: row for id_, row in d.items() if id_ in id_set}
 
