@@ -182,11 +182,17 @@ class MultitokenAverageEmbed(nn.Module):
 class TupleSignature(nn.Module):
     def __init__(self, attr_info_dict):
         super().__init__()
-        self.weights = nn.Parameter(torch.full((len(attr_info_dict),), 1 / len(attr_info_dict)))
+        if len(attr_info_dict) > 1:
+            self.weights = nn.Parameter(torch.full((len(attr_info_dict),), 1 / len(attr_info_dict)))
+        else:
+            self.weights = None
 
     def forward(self, attr_embedding_dict):
-        attr_embedding_list = list(attr_embedding_dict.values())
-        return (torch.stack(attr_embedding_list) * self.weights[:, None, None]).sum(axis=0)
+        if self.weights is not None:
+            attr_embedding_list = list(attr_embedding_dict.values())
+            return (torch.stack(attr_embedding_list) * self.weights[:, None, None]).sum(axis=0)
+        else:
+            return list(attr_embedding_dict.values())[0]
 
 
 class BlockerNet(nn.Module):
@@ -235,6 +241,9 @@ class BlockerNet(nn.Module):
         """
         Force signature weights between 0 and 1 and total sum as 1.
         """
+        if self.tuple_signature.weights is None:
+            return
+
         with torch.no_grad():
             sd = self.tuple_signature.state_dict()
             weights = sd["weights"]
@@ -254,6 +263,9 @@ class BlockerNet(nn.Module):
 
     def get_signature_weights(self):
         with torch.no_grad():
+            if self.tuple_signature.weights is None:
+                return {list(self.attr_info_dict.keys())[0]: 1.0}
+
             return {
                 attr: float(weight)
                 for attr, weight in zip(

@@ -6,6 +6,8 @@ from collections import defaultdict
 
 from ordered_set import OrderedSet
 
+from .union_find import UnionFind
+
 logger = logging.getLogger(__name__)
 
 
@@ -26,7 +28,8 @@ def cluster_dict_to_id_pairs(cluster_dict):
     return set(
         pair
         for cluster_id_list in cluster_dict.values()
-        for pair in itertools.combinations(cluster_id_list, 2)
+        # must use sorted to always have smaller id on left of pair tuple
+        for pair in itertools.combinations(sorted(cluster_id_list), 2)
     )
 
 
@@ -134,3 +137,12 @@ def compute_alphabet_and_max_str_len(attr_val_gen, is_multitoken, tokenizer):
         actual_max_str_len += 1
 
     return actual_alphabet, actual_max_str_len
+
+
+def id_pairs_to_cluster_mapping_and_dict(id_pairs):
+    uf = UnionFind()
+    uf.union_pairs(id_pairs)
+    cluster_dict = uf.component_dict()
+    # must be called after component_dict, because of find calls
+    cluster_mapping = uf.parents
+    return cluster_mapping, cluster_dict
