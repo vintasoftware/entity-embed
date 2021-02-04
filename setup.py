@@ -5,7 +5,7 @@
 from pkg_resources import parse_requirements
 from setuptools import find_packages, setup
 
-with open("README.md", "r", "utf-8") as readme_file:
+with open("README.md", "r", encoding="utf-8") as readme_file:
     readme = readme_file.read()
 
 with open("requirements.txt") as requirements_file:
