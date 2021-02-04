@@ -167,7 +167,7 @@ class EntityEmbedDataModule(pl.LightningDataModule):
         return test_row_loader
 
 
-class LitEntityEmbed(pl.LightningModule):
+class EntityEmbed(pl.LightningModule):
     def __init__(
         self,
         datamodule,
