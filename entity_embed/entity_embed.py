@@ -113,6 +113,10 @@ class EntityEmbedDataModule(pl.LightningDataModule):
         if stage == "fit" or stage is None:
             self.test_true_pair_set = None
             self.test_row_dict = None
+        if stage == "test" or stage is None:
+            self.valid_true_pair_set = None
+            self.train_row_dict = None
+            self.valid_row_dict = None
 
     def train_dataloader(self):
         train_pair_dataset = PairDataset(
@@ -352,7 +356,8 @@ class LitEntityEmbed(pl.LightningModule):
             else {"num_workers": os.cpu_count(), "multiprocessing_context": "fork"},
         )
 
-        self.blocker_net.eval()
+        blocker_net = self.blocker_net.to(device)
+        blocker_net.eval()
         with torch.no_grad():
             with tqdm(
                 total=len(row_loader), desc="# batch embedding", disable=not show_progress
@@ -362,7 +367,7 @@ class LitEntityEmbed(pl.LightningModule):
                     tensor_dict = {attr: t.to(device) for attr, t in tensor_dict.items()}
                     vector_list.extend(
                         v.data.numpy()
-                        for v in self.blocker_net(tensor_dict, tensor_lengths_dict).cpu().unbind()
+                        for v in blocker_net(tensor_dict, tensor_lengths_dict).cpu().unbind()
                     )
                     p_bar.update(1)
 

@@ -62,10 +62,11 @@ def split_clusters(
         )
 
     train_cluster_id_set = OrderedSet(rnd.sample(all_cluster_id_set, train_len))
-    valid_cluster_id_set = OrderedSet(
-        rnd.sample(all_cluster_id_set - train_cluster_id_set, valid_len)
+    all_minus_train_cluster_id_set = all_cluster_id_set - train_cluster_id_set
+    valid_cluster_id_set = OrderedSet(rnd.sample(all_minus_train_cluster_id_set, valid_len))
+    test_cluster_id_set = OrderedSet(
+        rnd.sample(all_minus_train_cluster_id_set - valid_cluster_id_set, test_len)
     )
-    test_cluster_id_set = cluster_dict.keys() - train_cluster_id_set - valid_cluster_id_set
 
     train_cluster_dict = {
         cluster_id: cluster_dict[cluster_id] for cluster_id in train_cluster_id_set
