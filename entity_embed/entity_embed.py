@@ -380,8 +380,15 @@ class EntityEmbed(pl.LightningModule):
         )
 
     def configure_optimizers(self):
+        parameters = list(self.parameters())
         optimizer = self.optimizer_cls(
-            self.parameters(), lr=self.learning_rate, **self.optimizer_kwargs
+            [
+                {"params": parameters[:-1], "lr": self.learning_rate},
+                # learn signature weights faster
+                {"params": [parameters[-1]], "lr": self.learning_rate * 100},
+            ],
+            lr=self.learning_rate,
+            **self.optimizer_kwargs,
         )
         return optimizer
 
