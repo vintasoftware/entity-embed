@@ -190,7 +190,8 @@ class TupleSignature(nn.Module):
     def forward(self, attr_embedding_dict):
         if self.weights is not None:
             attr_embedding_list = list(attr_embedding_dict.values())
-            return (torch.stack(attr_embedding_list) * self.weights[:, None, None]).sum(axis=0)
+            x = torch.stack(attr_embedding_list, dim=1)
+            return (x * self.weights.unsqueeze(-1).expand_as(x)).sum(axis=1)
         else:
             return list(attr_embedding_dict.values())[0]
 
