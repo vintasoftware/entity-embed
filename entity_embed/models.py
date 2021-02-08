@@ -205,6 +205,7 @@ class BlockerNet(nn.Module):
         embed_dropout_p=0.2,
         use_attention=True,
         use_mask=False,
+        zero_weight_at=0.01,
     ):
         super().__init__()
         self.attr_info_dict = attr_info_dict
@@ -226,6 +227,7 @@ class BlockerNet(nn.Module):
                 self.embedding_net_dict[attr] = embed_cls(embedding_net, use_mask)
 
         self.tuple_signature = TupleSignature(attr_info_dict)
+        self.zero_weight_at = zero_weight_at
 
     def forward(self, tensor_dict, tensor_lengths_dict):
         attr_embedding_dict = {}
@@ -241,6 +243,7 @@ class BlockerNet(nn.Module):
     def fix_signature_weights(self):
         """
         Force signature weights between 0 and 1 and total sum as 1.
+        Also, zero out weights below self.zero_weight_at.
         """
         if self.tuple_signature.weights is None:
             return
@@ -252,7 +255,7 @@ class BlockerNet(nn.Module):
             if torch.any((weights < 0) | (weights > 1)) or not torch.isclose(
                 weights.sum(), one_tensor
             ):
-                weights[weights < 0] = 0
+                weights[weights < self.zero_weight_at] = 0
                 weights_sum = weights.sum()
                 if weights_sum > 0:
                     weights /= weights.sum()

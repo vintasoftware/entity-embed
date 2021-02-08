@@ -16,11 +16,14 @@ from tqdm.auto import tqdm
 
 from .data_utils.datasets import PairDataset, RowDataset
 from .data_utils.one_hot_encoders import OneHotEncodingInfo, RowOneHotEncoder
-from .data_utils.utils import (cluster_dict_to_id_pairs,
-                               count_cluster_dict_pairs,
-                               row_dict_to_cluster_dict,
-                               separate_dict_left_right, split_clusters,
-                               split_clusters_to_row_dicts)
+from .data_utils.utils import (
+    cluster_dict_to_id_pairs,
+    count_cluster_dict_pairs,
+    row_dict_to_cluster_dict,
+    separate_dict_left_right,
+    split_clusters,
+    split_clusters_to_row_dicts,
+)
 from .evaluation import f1_score, pair_entity_ratio, precision_and_recall
 from .models import BlockerNet
 
@@ -235,6 +238,7 @@ class DedupEmbed(pl.LightningModule):
         embed_dropout_p=0.2,
         use_attention=True,
         use_mask=False,
+        zero_weight_at=0.05,
         loss_cls=NTXentLoss,
         loss_kwargs=None,
         miner_cls=BatchHardMiner,
@@ -259,6 +263,7 @@ class DedupEmbed(pl.LightningModule):
             embed_dropout_p=embed_dropout_p,
             use_attention=use_attention,
             use_mask=use_mask,
+            zero_weight_at=zero_weight_at,
         )
         self.losser = loss_cls(**loss_kwargs if loss_kwargs else {"temperature": 0.1})
         if miner_cls:
@@ -594,7 +599,6 @@ class BaseMultiSigEmbed(abc.ABC):
         tb_name="entity_embed",
         early_stopping_kwargs=None,
         trainer_kwargs=None,
-        zero_weight=0.05,
     ):
         row_encoder = self.row_encoder
         attr_list = list(row_encoder.attr_info_dict.keys())
@@ -621,7 +625,7 @@ class BaseMultiSigEmbed(abc.ABC):
             sig_weights = lt_module.get_signature_weights()
             used_attr_list = []
             for attr, weight in sig_weights.items():
-                if weight > zero_weight:
+                if weight > 0:
                     attr_list.remove(attr)
                     used_attr_list.append(attr)
 
