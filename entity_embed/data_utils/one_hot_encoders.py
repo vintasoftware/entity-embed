@@ -125,3 +125,15 @@ class RowOneHotEncoder:
                 logger.warning(f"Found empty {attr=} at row={row}")
             tensor_dict[attr] = encoder.build_tensor(row[attr])
         return tensor_dict
+
+    def build_attr_subset_encoder(self, attr_subset):
+        new_row_encoder = RowOneHotEncoder(attr_info_dict={})
+        new_row_encoder.attr_info_dict = {
+            attr: attr_info
+            for attr, attr_info in self.attr_info_dict.items()
+            if attr in attr_subset
+        }
+        new_row_encoder.attr_to_encoder = {
+            attr: encoder for attr, encoder in self.attr_to_encoder.items() if attr in attr_subset
+        }
+        return new_row_encoder

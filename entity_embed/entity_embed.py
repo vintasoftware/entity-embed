@@ -1,9 +1,14 @@
+import abc
+import datetime
 import logging
 import os
 
 import pytorch_lightning as pl
 import torch
 from n2 import HnswIndex
+from pytorch_lightning.callbacks.early_stopping import EarlyStopping
+from pytorch_lightning.loggers import TensorBoardLogger
+from pytorch_lightning.utilities.cloud_io import load as pl_load
 from pytorch_metric_learning.distances import CosineSimilarity
 from pytorch_metric_learning.losses import NTXentLoss
 from pytorch_metric_learning.miners import BatchHardMiner
@@ -22,22 +27,6 @@ from .evaluation import f1_score, pair_entity_ratio, precision_and_recall
 from .models import BlockerNet
 
 logger = logging.getLogger(__name__)
-
-
-def build_row_encoder(attr_info_dict, row_dict=None):
-    # Fix OneHotEncodingInfo from dicts and initialize RowOneHotEncoder.
-    for attr, one_hot_encoding_info in list(attr_info_dict.items()):
-        if not one_hot_encoding_info:
-            raise ValueError(
-                f'Please set the value of "{attr}" in attr_info_dict, '
-                f"found {one_hot_encoding_info}"
-            )
-        if not isinstance(one_hot_encoding_info, OneHotEncodingInfo):
-            attr_info_dict[attr] = OneHotEncodingInfo(**one_hot_encoding_info)
-
-    # For now on, one must use row_encoder instead of attr_info_dict,
-    # because RowOneHotEncoder fills None values of alphabet and max_str_len.
-    return RowOneHotEncoder(attr_info_dict=attr_info_dict, row_dict=row_dict)
 
 
 class DeduplicationDataModule(pl.LightningDataModule):
@@ -237,6 +226,7 @@ class EntityEmbed(pl.LightningModule):
     def __init__(
         self,
         datamodule,
+        model_sig_i=0,
         n_channels=8,
         embedding_size=128,
         embed_dropout_p=0.2,
@@ -248,6 +238,7 @@ class EntityEmbed(pl.LightningModule):
         miner_kwargs=None,
         optimizer_cls=torch.optim.Adam,
         learning_rate=0.001,
+        sig_lr_multiplier=100,
         optimizer_kwargs=None,
         ann_k=10,
         sim_threshold=0.5,
@@ -257,6 +248,7 @@ class EntityEmbed(pl.LightningModule):
         super().__init__()
         self.row_encoder = datamodule.row_encoder
         self.attr_info_dict = self.row_encoder.attr_info_dict
+        self.model_sig_i = model_sig_i
         self.blocker_net = BlockerNet(
             self.attr_info_dict,
             n_channels=n_channels,
@@ -274,6 +266,7 @@ class EntityEmbed(pl.LightningModule):
             self.miner = None
         self.optimizer_cls = optimizer_cls
         self.learning_rate = learning_rate
+        self.sig_lr_multiplier = sig_lr_multiplier
         self.optimizer_kwargs = optimizer_kwargs if optimizer_kwargs else {}
         self.ann_k = ann_k
         self.sim_threshold = sim_threshold
@@ -285,6 +278,7 @@ class EntityEmbed(pl.LightningModule):
             "miner_cls",
             "optimizer_cls",
             "learning_rate",
+            "sig_lr_multiplier",
             "optimizer_kwargs",
             "ann_k",
             "sim_threshold",
@@ -314,14 +308,14 @@ class EntityEmbed(pl.LightningModule):
             indices_tuple = None
         loss = self.losser(embeddings, labels, indices_tuple=indices_tuple)
 
-        self.log("train_loss", loss)
+        self.log(f"{self.model_sig_i}_train_loss", loss)
         return loss
 
     def on_train_batch_end(self, outputs, batch, batch_idx, dataloader_idx):
         self.blocker_net.fix_signature_weights()
         self.log_dict(
             {
-                f"signature_{attr}": weight
+                f"{self.model_sig_i}_signature_{attr}": weight
                 for attr, weight in self.blocker_net.get_signature_weights().items()
             }
         )
@@ -350,10 +344,10 @@ class EntityEmbed(pl.LightningModule):
         precision, recall = precision_and_recall(found_pair_set, true_pair_set)
         self.log_dict(
             {
-                f"{set_name}_precision": precision,
-                f"{set_name}_recall": recall,
-                f"{set_name}_f1": f1_score(precision, recall),
-                f"{set_name}_pair_entity_ratio": pair_entity_ratio(
+                f"{self.model_sig_i}_{set_name}_precision": precision,
+                f"{self.model_sig_i}_{set_name}_recall": recall,
+                f"{self.model_sig_i}_{set_name}_f1": f1_score(precision, recall),
+                f"{self.model_sig_i}_{set_name}_pair_entity_ratio": pair_entity_ratio(
                     len(found_pair_set), len(vector_list)
                 ),
             }
@@ -385,12 +379,15 @@ class EntityEmbed(pl.LightningModule):
             [
                 {"params": parameters[:-1], "lr": self.learning_rate},
                 # learn signature weights faster
-                {"params": [parameters[-1]], "lr": self.learning_rate * 100},
+                {"params": [parameters[-1]], "lr": self.learning_rate * self.sig_lr_multiplier},
             ],
             lr=self.learning_rate,
             **self.optimizer_kwargs,
         )
         return optimizer
+
+    def get_signature_weights(self):
+        return self.blocker_net.get_signature_weights()
 
     def predict(
         self,
@@ -462,14 +459,309 @@ class LinkageEmbed(EntityEmbed):
         precision, recall = precision_and_recall(found_pair_set, true_pair_set)
         self.log_dict(
             {
-                f"{set_name}_precision": precision,
-                f"{set_name}_recall": recall,
-                f"{set_name}_f1": f1_score(precision, recall),
-                f"{set_name}_pair_entity_ratio": pair_entity_ratio(
+                f"{self.model_sig_i}_{set_name}_precision": precision,
+                f"{self.model_sig_i}_{set_name}_recall": recall,
+                f"{self.model_sig_i}_{set_name}_f1": f1_score(precision, recall),
+                f"{self.model_sig_i}_{set_name}_pair_entity_ratio": pair_entity_ratio(
                     len(found_pair_set), len(vector_list)
                 ),
             }
         )
+
+
+class BaseMultiSigEmbed(abc.ABC):
+    def __init__(
+        self,
+        row_dict,
+        attr_info_dict,
+    ):
+        self.row_dict = row_dict
+        self.row_encoder = self._build_row_encoder(
+            initial_attr_info_dict=attr_info_dict, row_dict=row_dict
+        )
+        self.module_list = []
+
+    def _build_row_encoder(self, initial_attr_info_dict, row_dict):
+        attr_info_dict = dict(initial_attr_info_dict)
+
+        # Fix OneHotEncodingInfo from dicts and initialize RowOneHotEncoder.
+        for attr, one_hot_encoding_info in attr_info_dict.items():
+            if not one_hot_encoding_info:
+                raise ValueError(
+                    f'Please set the value of "{attr}" in attr_info_dict, '
+                    f"found {one_hot_encoding_info}"
+                )
+            if not isinstance(one_hot_encoding_info, OneHotEncodingInfo):
+                attr_info_dict[attr] = OneHotEncodingInfo(**one_hot_encoding_info)
+
+        # For now on, one must use row_encoder instead of attr_info_dict,
+        # because RowOneHotEncoder fills None values of alphabet and max_str_len.
+        return RowOneHotEncoder(attr_info_dict=attr_info_dict, row_dict=row_dict)
+
+    @abc.abstractmethod
+    def build_lt_module(self, model_sig_i, row_encoder, **kwargs):
+        pass
+
+    def build_trainer(
+        self,
+        gpus,
+        max_epochs,
+        check_val_every_n_epoch,
+        early_stopping_monitor,
+        tb_log_dir,
+        tb_name,
+        early_stopping_kwargs,
+        trainer_kwargs,
+    ):
+        if early_stopping_kwargs is None:
+            early_stopping_kwargs = {
+                "min_delta": 0.00,
+                "patience": 10,
+                "verbose": True,
+                "mode": "max",
+            }
+        early_stop_callback = EarlyStopping(monitor=early_stopping_monitor, **early_stopping_kwargs)
+        if trainer_kwargs is None:
+            trainer_kwargs = {
+                "logger": TensorBoardLogger(
+                    tb_log_dir, name=tb_name, version=datetime.datetime.now().isoformat()
+                )
+            }
+        return pl.Trainer(
+            gpus=gpus,
+            max_epochs=max_epochs,
+            check_val_every_n_epoch=check_val_every_n_epoch,
+            callbacks=[early_stop_callback],
+            **trainer_kwargs,
+        )
+
+    def _load_best_weights(self, trainer):
+        # Based on Trainer.__test_using_best_weights
+        model = trainer.get_model()
+        ckpt_path = trainer.checkpoint_callback.best_model_path
+
+        if trainer.accelerator_backend is not None and not trainer.use_tpu:
+            trainer.accelerator_backend.barrier()
+
+        ckpt = pl_load(ckpt_path, map_location=lambda storage, loc: storage)
+        model.load_state_dict(ckpt["state_dict"])
+        return model
+
+    def fit(
+        self,
+        gpus,
+        max_epochs,
+        check_val_every_n_epoch,
+        early_stopping_monitor="valid_recall",
+        tb_log_dir="tb_logs",
+        tb_name="entity_embed",
+        early_stopping_kwargs=None,
+        trainer_kwargs=None,
+        zero_weight=0.05,
+    ):
+        row_encoder = self.row_encoder
+        attr_list = list(row_encoder.attr_info_dict.keys())
+        model_sig_i = 0
+
+        while attr_list:
+            logger.info(f"Fit {model_sig_i=}, learning signature with {attr_list=}")
+
+            lt_module = self.build_lt_module(model_sig_i=model_sig_i, row_encoder=row_encoder)
+            trainer = self.build_trainer(
+                gpus=gpus,
+                max_epochs=max_epochs,
+                check_val_every_n_epoch=check_val_every_n_epoch,
+                early_stopping_monitor=f"{model_sig_i}_{early_stopping_monitor}",
+                tb_log_dir=tb_log_dir,
+                tb_name=tb_name,
+                early_stopping_kwargs=early_stopping_kwargs,
+                trainer_kwargs=trainer_kwargs,
+            )
+            trainer.fit(lt_module, lt_module.datamodule)
+            lt_module = self._load_best_weights(trainer)
+            self.module_list.append(lt_module)
+
+            sig_weights = lt_module.get_signature_weights()
+            used_attr_list = []
+            for attr, weight in sig_weights.items():
+                if weight > zero_weight:
+                    attr_list.remove(attr)
+                    used_attr_list.append(attr)
+
+            if attr_list:
+                row_encoder = row_encoder.build_attr_subset_encoder(attr_subset=attr_list)
+                model_sig_i += 1
+
+
+class MultiSigEntityEmbed(BaseMultiSigEmbed):
+    def __init__(
+        self,
+        # data kwargs
+        row_dict,
+        attr_info_dict,
+        cluster_attr,
+        pos_pair_batch_size,
+        neg_pair_batch_size,
+        row_batch_size,
+        train_cluster_len,
+        valid_cluster_len,
+        test_cluster_len,
+        only_plural_clusters,
+        log_empty_vals=False,
+        pair_loader_kwargs=None,
+        row_loader_kwargs=None,
+        random_seed=42,
+        # model kwargs
+        n_channels=8,
+        embedding_size=128,
+        embed_dropout_p=0.2,
+        use_attention=True,
+        use_mask=False,
+        loss_cls=NTXentLoss,
+        loss_kwargs=None,
+        miner_cls=BatchHardMiner,
+        miner_kwargs=None,
+        optimizer_cls=torch.optim.Adam,
+        learning_rate=0.001,
+        sig_lr_multiplier=10,
+        optimizer_kwargs=None,
+        ann_k=10,
+        sim_threshold=0.5,
+        index_build_kwargs=None,
+        index_search_kwargs=None,
+    ):
+        if cluster_attr in attr_info_dict:
+            raise ValueError(f"{cluster_attr=} can't be inside {attr_info_dict=}")
+
+        super().__init__(row_dict=row_dict, attr_info_dict=attr_info_dict)
+
+        self.lt_datamodule_kwargs = {
+            "row_dict": row_dict,
+            "cluster_attr": cluster_attr,
+            "pos_pair_batch_size": pos_pair_batch_size,
+            "neg_pair_batch_size": neg_pair_batch_size,
+            "row_batch_size": row_batch_size,
+            "train_cluster_len": train_cluster_len,
+            "valid_cluster_len": valid_cluster_len,
+            "test_cluster_len": test_cluster_len,
+            "only_plural_clusters": only_plural_clusters,
+            "log_empty_vals": log_empty_vals,
+            "pair_loader_kwargs": pair_loader_kwargs,
+            "row_loader_kwargs": row_loader_kwargs,
+            "random_seed": random_seed,
+        }
+
+        self.lt_module_kwargs = {
+            "n_channels": n_channels,
+            "embedding_size": embedding_size,
+            "embed_dropout_p": embed_dropout_p,
+            "use_attention": use_attention,
+            "use_mask": use_mask,
+            "loss_cls": loss_cls,
+            "loss_kwargs": loss_kwargs,
+            "miner_cls": miner_cls,
+            "miner_kwargs": miner_kwargs,
+            "optimizer_cls": optimizer_cls,
+            "learning_rate": learning_rate,
+            "sig_lr_multiplier": sig_lr_multiplier,
+            "optimizer_kwargs": optimizer_kwargs,
+            "ann_k": ann_k,
+            "sim_threshold": sim_threshold,
+            "index_build_kwargs": index_build_kwargs,
+            "index_search_kwargs": index_search_kwargs,
+        }
+
+    def build_lt_module(self, model_sig_i, row_encoder):
+        datamodule = DeduplicationDataModule(row_encoder=row_encoder, **self.lt_datamodule_kwargs)
+        return EntityEmbed(datamodule, model_sig_i=model_sig_i, **self.lt_module_kwargs)
+
+
+class MultiSigLinkageEmbed(BaseMultiSigEmbed):
+    def __init__(
+        self,
+        # data kwargs
+        row_dict,
+        attr_info_dict,
+        cluster_attr,
+        pos_pair_batch_size,
+        neg_pair_batch_size,
+        row_batch_size,
+        train_cluster_len,
+        valid_cluster_len,
+        test_cluster_len,
+        only_plural_clusters,
+        left_id_set,
+        right_id_set,
+        log_empty_vals=False,
+        pair_loader_kwargs=None,
+        row_loader_kwargs=None,
+        random_seed=42,
+        # model kwargs
+        n_channels=8,
+        embedding_size=128,
+        embed_dropout_p=0.2,
+        use_attention=True,
+        use_mask=False,
+        loss_cls=NTXentLoss,
+        loss_kwargs=None,
+        miner_cls=BatchHardMiner,
+        miner_kwargs=None,
+        optimizer_cls=torch.optim.Adam,
+        learning_rate=0.001,
+        sig_lr_multiplier=100,
+        optimizer_kwargs=None,
+        ann_k=10,
+        sim_threshold=0.5,
+        index_build_kwargs=None,
+        index_search_kwargs=None,
+    ):
+        if cluster_attr in attr_info_dict:
+            raise ValueError(f"{cluster_attr=} can't be inside {attr_info_dict=}")
+
+        # BaseMultiSigEmbed.__init__ sets self.row_encoder
+        super().__init__(row_dict=row_dict, attr_info_dict=attr_info_dict)
+
+        self.lt_datamodule_kwargs = {
+            "row_dict": row_dict,
+            "cluster_attr": cluster_attr,
+            "pos_pair_batch_size": pos_pair_batch_size,
+            "neg_pair_batch_size": neg_pair_batch_size,
+            "row_batch_size": row_batch_size,
+            "train_cluster_len": train_cluster_len,
+            "valid_cluster_len": valid_cluster_len,
+            "test_cluster_len": test_cluster_len,
+            "only_plural_clusters": only_plural_clusters,
+            "left_id_set": left_id_set,
+            "right_id_set": right_id_set,
+            "log_empty_vals": log_empty_vals,
+            "pair_loader_kwargs": pair_loader_kwargs,
+            "row_loader_kwargs": row_loader_kwargs,
+            "random_seed": random_seed,
+        }
+
+        self.lt_module_kwargs = {
+            "n_channels": n_channels,
+            "embedding_size": embedding_size,
+            "embed_dropout_p": embed_dropout_p,
+            "use_attention": use_attention,
+            "use_mask": use_mask,
+            "loss_cls": loss_cls,
+            "loss_kwargs": loss_kwargs,
+            "miner_cls": miner_cls,
+            "miner_kwargs": miner_kwargs,
+            "optimizer_cls": optimizer_cls,
+            "learning_rate": learning_rate,
+            "sig_lr_multiplier": sig_lr_multiplier,
+            "optimizer_kwargs": optimizer_kwargs,
+            "ann_k": ann_k,
+            "sim_threshold": sim_threshold,
+            "index_build_kwargs": index_build_kwargs,
+            "index_search_kwargs": index_search_kwargs,
+        }
+
+    def build_lt_module(self, model_sig_i, row_encoder):
+        datamodule = LinkageDataModule(row_encoder=row_encoder, **self.lt_datamodule_kwargs)
+        return LinkageEmbed(datamodule, model_sig_i=model_sig_i, **self.lt_module_kwargs)
 
 
 class ANNEntityIndex:
