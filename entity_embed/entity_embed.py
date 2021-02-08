@@ -16,21 +16,18 @@ from tqdm.auto import tqdm
 
 from .data_utils.datasets import PairDataset, RowDataset
 from .data_utils.one_hot_encoders import OneHotEncodingInfo, RowOneHotEncoder
-from .data_utils.utils import (
-    cluster_dict_to_id_pairs,
-    count_cluster_dict_pairs,
-    row_dict_to_cluster_dict,
-    separate_dict_left_right,
-    split_clusters,
-    split_clusters_to_row_dicts,
-)
+from .data_utils.utils import (cluster_dict_to_id_pairs,
+                               count_cluster_dict_pairs,
+                               row_dict_to_cluster_dict,
+                               separate_dict_left_right, split_clusters,
+                               split_clusters_to_row_dicts)
 from .evaluation import f1_score, pair_entity_ratio, precision_and_recall
 from .models import BlockerNet
 
 logger = logging.getLogger(__name__)
 
 
-class DeduplicationDataModule(pl.LightningDataModule):
+class DedupDataModule(pl.LightningDataModule):
     def __init__(
         self,
         row_dict,
@@ -167,7 +164,7 @@ class DeduplicationDataModule(pl.LightningDataModule):
         return test_row_loader
 
 
-class LinkageDataModule(DeduplicationDataModule):
+class LinkageDataModule(DedupDataModule):
     def __init__(
         self,
         row_dict,
@@ -228,7 +225,7 @@ class LinkageDataModule(DeduplicationDataModule):
         )
 
 
-class DeduplicationEmbed(pl.LightningModule):
+class DedupEmbed(pl.LightningModule):
     def __init__(
         self,
         datamodule,
@@ -244,10 +241,10 @@ class DeduplicationEmbed(pl.LightningModule):
         miner_kwargs=None,
         optimizer_cls=torch.optim.Adam,
         learning_rate=0.001,
-        sig_lr_multiplier=100,
+        sig_lr_multiplier=10,
         optimizer_kwargs=None,
         ann_k=10,
-        sim_threshold=0.5,
+        sim_threshold_list=[0.3, 0.5, 0.7, 0.9],
         index_build_kwargs=None,
         index_search_kwargs=None,
     ):
@@ -275,7 +272,7 @@ class DeduplicationEmbed(pl.LightningModule):
         self.sig_lr_multiplier = sig_lr_multiplier
         self.optimizer_kwargs = optimizer_kwargs if optimizer_kwargs else {}
         self.ann_k = ann_k
-        self.sim_threshold = sim_threshold
+        self.sim_threshold_list = sim_threshold_list
         self.index_build_kwargs = index_build_kwargs
         self.index_search_kwargs = index_search_kwargs
 
@@ -287,7 +284,7 @@ class DeduplicationEmbed(pl.LightningModule):
             "sig_lr_multiplier",
             "optimizer_kwargs",
             "ann_k",
-            "sim_threshold",
+            "sim_threshold_list",
             "index_build_kwargs",
             "index_search_kwargs",
         )
@@ -337,27 +334,30 @@ class DeduplicationEmbed(pl.LightningModule):
             vector_list.extend(v.data.numpy() for v in embedding_batch.cpu().unbind())
         vector_dict = dict(zip(row_dict.keys(), vector_list))
 
-        ann_index = ANNEntityIndex(embedding_size=self.blocker_net.embedding_size)
+        ann_index = ANNDedupIndex(embedding_size=self.blocker_net.embedding_size)
         ann_index.insert_vector_dict(vector_dict)
         ann_index.build(index_build_kwargs=self.index_build_kwargs)
 
-        found_pair_set = ann_index.search_pairs(
-            k=self.ann_k,
-            sim_threshold=self.sim_threshold,
-            index_search_kwargs=self.index_search_kwargs,
-        )
+        for sim_threshold in self.sim_threshold_list:
+            found_pair_set = ann_index.search_pairs(
+                k=self.ann_k,
+                sim_threshold=sim_threshold,
+                index_search_kwargs=self.index_search_kwargs,
+            )
 
-        precision, recall = precision_and_recall(found_pair_set, true_pair_set)
-        self.log_dict(
-            {
-                f"{self.model_sig_i}_{set_name}_precision": precision,
-                f"{self.model_sig_i}_{set_name}_recall": recall,
-                f"{self.model_sig_i}_{set_name}_f1": f1_score(precision, recall),
-                f"{self.model_sig_i}_{set_name}_pair_entity_ratio": pair_entity_ratio(
-                    len(found_pair_set), len(vector_list)
-                ),
-            }
-        )
+            precision, recall = precision_and_recall(found_pair_set, true_pair_set)
+            self.log_dict(
+                {
+                    f"{self.model_sig_i}_{set_name}_precision_at_{sim_threshold}": precision,
+                    f"{self.model_sig_i}_{set_name}_recall_at_{sim_threshold}": recall,
+                    f"{self.model_sig_i}_{set_name}_f1_at_{sim_threshold}": f1_score(
+                        precision, recall
+                    ),
+                    f"{self.model_sig_i}_{set_name}_pair_entity_ratio_at_{sim_threshold}": pair_entity_ratio(
+                        len(found_pair_set), len(vector_list)
+                    ),
+                }
+            )
 
     def validation_epoch_end(self, outputs):
         self._evaluate_with_ann(
@@ -438,7 +438,7 @@ class DeduplicationEmbed(pl.LightningModule):
         return vector_dict
 
 
-class LinkageEmbed(DeduplicationEmbed):
+class LinkageEmbed(DedupEmbed):
     def _evaluate_with_ann(self, set_name, row_dict, embedding_batch_list, true_pair_set):
         vector_list = []
         for embedding_batch in embedding_batch_list:
@@ -454,25 +454,28 @@ class LinkageEmbed(DeduplicationEmbed):
             index_build_kwargs=self.index_build_kwargs,
         )
 
-        found_pair_set = ann_index.search_pairs(
-            k=self.ann_k,
-            sim_threshold=self.sim_threshold,
-            left_vector_dict=left_vector_dict,
-            right_vector_dict=right_vector_dict,
-            index_search_kwargs=self.index_search_kwargs,
-        )
+        for sim_threshold in self.sim_threshold_list:
+            found_pair_set = ann_index.search_pairs(
+                k=self.ann_k,
+                sim_threshold=sim_threshold,
+                left_vector_dict=left_vector_dict,
+                right_vector_dict=right_vector_dict,
+                index_search_kwargs=self.index_search_kwargs,
+            )
 
-        precision, recall = precision_and_recall(found_pair_set, true_pair_set)
-        self.log_dict(
-            {
-                f"{self.model_sig_i}_{set_name}_precision": precision,
-                f"{self.model_sig_i}_{set_name}_recall": recall,
-                f"{self.model_sig_i}_{set_name}_f1": f1_score(precision, recall),
-                f"{self.model_sig_i}_{set_name}_pair_entity_ratio": pair_entity_ratio(
-                    len(found_pair_set), len(vector_list)
-                ),
-            }
-        )
+            precision, recall = precision_and_recall(found_pair_set, true_pair_set)
+            self.log_dict(
+                {
+                    f"{self.model_sig_i}_{set_name}_precision_at_{sim_threshold}": precision,
+                    f"{self.model_sig_i}_{set_name}_recall_at_{sim_threshold}": recall,
+                    f"{self.model_sig_i}_{set_name}_f1_at_{sim_threshold}": f1_score(
+                        precision, recall
+                    ),
+                    f"{self.model_sig_i}_{set_name}_pair_entity_ratio_at_{sim_threshold}": pair_entity_ratio(
+                        len(found_pair_set), len(vector_list)
+                    ),
+                }
+            )
 
     def predict(
         self,
@@ -550,7 +553,7 @@ class BaseMultiSigEmbed(abc.ABC):
         if early_stopping_kwargs is None:
             early_stopping_kwargs = {
                 "min_delta": 0.00,
-                "patience": 10,
+                "patience": 20,
                 "verbose": True,
                 "mode": "max",
             }
@@ -586,7 +589,7 @@ class BaseMultiSigEmbed(abc.ABC):
         gpus,
         max_epochs,
         check_val_every_n_epoch,
-        early_stopping_monitor="valid_recall",
+        early_stopping_monitor="valid_recall_at_0.9",
         tb_log_dir="tb_logs",
         tb_name="entity_embed",
         early_stopping_kwargs=None,
@@ -637,8 +640,8 @@ class BaseMultiSigEmbed(abc.ABC):
         pass
 
 
-class MultiSigDeduplicationEmbed(BaseMultiSigEmbed):
-    lt_module_cls = DeduplicationEmbed
+class MultiSigDedupEmbed(BaseMultiSigEmbed):
+    lt_module_cls = DedupEmbed
 
     def __init__(
         self,
@@ -672,7 +675,7 @@ class MultiSigDeduplicationEmbed(BaseMultiSigEmbed):
         sig_lr_multiplier=10,
         optimizer_kwargs=None,
         ann_k=10,
-        sim_threshold=0.5,
+        sim_threshold_list=[0.3, 0.5, 0.7, 0.9],
         index_build_kwargs=None,
         index_search_kwargs=None,
     ):
@@ -684,7 +687,7 @@ class MultiSigDeduplicationEmbed(BaseMultiSigEmbed):
             row_dict=row_dict, attr_info_dict=attr_info_dict, embedding_size=embedding_size
         )
 
-        self._datamodule = DeduplicationDataModule(
+        self._datamodule = DedupDataModule(
             row_dict=row_dict,
             cluster_attr=cluster_attr,
             pos_pair_batch_size=pos_pair_batch_size,
@@ -715,7 +718,7 @@ class MultiSigDeduplicationEmbed(BaseMultiSigEmbed):
             "sig_lr_multiplier": sig_lr_multiplier,
             "optimizer_kwargs": optimizer_kwargs,
             "ann_k": ann_k,
-            "sim_threshold": sim_threshold,
+            "sim_threshold_list": sim_threshold_list,
             "index_build_kwargs": index_build_kwargs,
             "index_search_kwargs": index_search_kwargs,
         }
@@ -784,7 +787,7 @@ class MultiSigLinkageEmbed(BaseMultiSigEmbed):
         sig_lr_multiplier=100,
         optimizer_kwargs=None,
         ann_k=10,
-        sim_threshold=0.5,
+        sim_threshold_list=[0.3, 0.5, 0.7, 0.9],
         index_build_kwargs=None,
         index_search_kwargs=None,
     ):
@@ -829,7 +832,7 @@ class MultiSigLinkageEmbed(BaseMultiSigEmbed):
             "sig_lr_multiplier": sig_lr_multiplier,
             "optimizer_kwargs": optimizer_kwargs,
             "ann_k": ann_k,
-            "sim_threshold": sim_threshold,
+            "sim_threshold_list": sim_threshold_list,
             "index_build_kwargs": index_build_kwargs,
             "index_search_kwargs": index_search_kwargs,
         }
@@ -864,7 +867,7 @@ class MultiSigLinkageEmbed(BaseMultiSigEmbed):
         return multisig_dict
 
 
-class ANNEntityIndex:
+class ANNDedupIndex:
     def __init__(self, embedding_size):
         self.approx_knn_index = HnswIndex(dimension=embedding_size, metric="angular")
         self.vector_idx_to_id = None
@@ -931,8 +934,8 @@ class ANNEntityIndex:
 
 class ANNLinkageIndex:
     def __init__(self, embedding_size):
-        self.left_index = ANNEntityIndex(embedding_size)
-        self.right_index = ANNEntityIndex(embedding_size)
+        self.left_index = ANNDedupIndex(embedding_size)
+        self.right_index = ANNDedupIndex(embedding_size)
 
     def insert_vector_dict(self, left_vector_dict, right_vector_dict):
         self.left_index.insert_vector_dict(vector_dict=left_vector_dict)
@@ -1025,6 +1028,33 @@ class MultiSigANNIndex(abc.ABC):
         pass
 
 
+class MultiSigANNDedupIndex(MultiSigANNIndex):
+    index_cls = ANNDedupIndex
+
+    def insert_multisig_dict(self, multisig_dict):
+        for key, index in self.index_dict.items():
+            index.insert_vector_dict(vector_dict=multisig_dict[key])
+
+    def search_pairs(
+        self,
+        k,
+        sim_threshold_dict,
+        index_search_kwargs=None,
+    ):
+        all_pair_set = set()
+
+        for key, index in self.index_dict.items():
+            all_pair_set.update(
+                index.search_pairs(
+                    k=k,
+                    sim_threshold=sim_threshold_dict[key],
+                    index_search_kwargs=index_search_kwargs,
+                )
+            )
+
+        return all_pair_set
+
+
 class MultiSigANNLinkageIndex(MultiSigANNIndex):
     index_cls = ANNLinkageIndex
 
@@ -1038,7 +1068,7 @@ class MultiSigANNLinkageIndex(MultiSigANNIndex):
     def search_pairs(
         self,
         k,
-        sim_threshold,
+        sim_threshold_dict,
         multisig_dict,
         index_search_kwargs=None,
         left_dataset_name="left",
@@ -1051,7 +1081,7 @@ class MultiSigANNLinkageIndex(MultiSigANNIndex):
             all_pair_set.update(
                 index.search_pairs(
                     k=k,
-                    sim_threshold=sim_threshold,
+                    sim_threshold=sim_threshold_dict[key],
                     left_vector_dict=left_vector_dict,
                     right_vector_dict=right_vector_dict,
                     index_search_kwargs=index_search_kwargs,
