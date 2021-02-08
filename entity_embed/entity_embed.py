@@ -35,6 +35,7 @@ class DedupDataModule(pl.LightningDataModule):
         self,
         row_dict,
         cluster_attr,
+        row_encoder,
         pos_pair_batch_size,
         neg_pair_batch_size,
         row_batch_size,
@@ -50,6 +51,7 @@ class DedupDataModule(pl.LightningDataModule):
         super().__init__()
         self.row_dict = row_dict
         self.cluster_attr = cluster_attr
+        self.row_encoder = row_encoder
         self.pos_pair_batch_size = pos_pair_batch_size
         self.neg_pair_batch_size = neg_pair_batch_size
         self.row_batch_size = row_batch_size
@@ -68,24 +70,11 @@ class DedupDataModule(pl.LightningDataModule):
         }
         self.random_seed = random_seed
 
-        self._row_encoder = None
         self.valid_true_pair_set = None
         self.test_true_pair_set = None
         self.train_row_dict = None
         self.valid_row_dict = None
         self.test_row_dict = None
-
-    @property
-    def row_encoder(self):
-        if self._row_encoder is None:
-            raise ValueError(
-                f"Please set row_encoder in {self.__class__.__name__} before using dataloaders"
-            )
-        return self._row_encoder
-
-    @row_encoder.setter
-    def row_encoder(self, row_encoder):
-        self._row_encoder = row_encoder
 
     def setup(self, stage=None):
         cluster_dict = row_dict_to_cluster_dict(self.row_dict, self.cluster_attr)
@@ -172,6 +161,7 @@ class LinkageDataModule(DedupDataModule):
         self,
         row_dict,
         cluster_attr,
+        row_encoder,
         pos_pair_batch_size,
         neg_pair_batch_size,
         row_batch_size,
@@ -189,6 +179,7 @@ class LinkageDataModule(DedupDataModule):
         super().__init__(
             row_dict=row_dict,
             cluster_attr=cluster_attr,
+            row_encoder=row_encoder,
             pos_pair_batch_size=pos_pair_batch_size,
             neg_pair_batch_size=neg_pair_batch_size,
             row_batch_size=row_batch_size,
@@ -232,6 +223,7 @@ class DedupEmbed(pl.LightningModule):
     def __init__(
         self,
         datamodule,
+        attr_info_dict,
         model_sig_i=0,
         n_channels=8,
         embedding_size=128,
@@ -253,18 +245,16 @@ class DedupEmbed(pl.LightningModule):
         index_search_kwargs=None,
     ):
         super().__init__()
-        self.row_encoder = datamodule.row_encoder
-        self.attr_info_dict = self.row_encoder.attr_info_dict
+        self.row_encoder = datamodule.row_encoder.build_attr_subset_encoder(attr_info_dict.keys())
+        self.attr_info_dict = attr_info_dict
         self.model_sig_i = model_sig_i
-        self.blocker_net = BlockerNet(
-            self.attr_info_dict,
-            n_channels=n_channels,
-            embedding_size=embedding_size,
-            embed_dropout_p=embed_dropout_p,
-            use_attention=use_attention,
-            use_mask=use_mask,
-            zero_weight_at=zero_weight_at,
-        )
+        self.n_channels = n_channels
+        self.embedding_size = embedding_size
+        self.embed_dropout_p = embed_dropout_p
+        self.use_attention = use_attention
+        self.use_mask = use_mask
+        self.zero_weight_at = zero_weight_at
+        self.build_model()  # sets self.blocker_net
         self.losser = loss_cls(**loss_kwargs if loss_kwargs else {"temperature": 0.1})
         if miner_cls:
             self.miner = miner_cls(
@@ -282,6 +272,12 @@ class DedupEmbed(pl.LightningModule):
         self.index_search_kwargs = index_search_kwargs
 
         self.save_hyperparameters(
+            "n_channels",
+            "embedding_size",
+            "embed_dropout_p",
+            "use_attention",
+            "use_mask",
+            "zero_weight_at",
             "loss_cls",
             "miner_cls",
             "optimizer_cls",
@@ -297,6 +293,22 @@ class DedupEmbed(pl.LightningModule):
         # set self._datamodule to access valid_row_dict and valid_true_pair_set
         # in validation_epoch_end
         self._datamodule = datamodule
+
+    def build_model(self):
+        self.blocker_net = BlockerNet(
+            self.attr_info_dict,
+            n_channels=self.n_channels,
+            embedding_size=self.embedding_size,
+            embed_dropout_p=self.embed_dropout_p,
+            use_attention=self.use_attention,
+            use_mask=self.use_mask,
+            zero_weight_at=self.zero_weight_at,
+        )
+
+    def replace_model_with_only_used_attrs(self, used_attrs):
+        self.attr_info_dict = {attr: self.attr_info_dict[attr] for attr in used_attrs}
+        self.row_encoder = self.row_encoder.build_attr_subset_encoder(self.attr_info_dict.keys())
+        self.build_model()
 
     def forward(self, tensor_dict, tensor_lengths_dict):
         return self.blocker_net(tensor_dict, tensor_lengths_dict)
@@ -510,13 +522,14 @@ class BaseMultiSigEmbed(abc.ABC):
         self.row_encoder = self._build_row_encoder(
             initial_attr_info_dict=attr_info_dict, row_dict=row_dict
         )
+        # RowOneHotEncoder fills None values of alphabet and max_str_len in attr_info_dict
+        self.all_attr_info_dict = self.row_encoder.attr_info_dict
         self.embedding_size = embedding_size
         self.lt_module_list = []
 
     def _build_row_encoder(self, initial_attr_info_dict, row_dict):
         attr_info_dict = dict(initial_attr_info_dict)
 
-        # Fix OneHotEncodingInfo from dicts and initialize RowOneHotEncoder.
         for attr, one_hot_encoding_info in attr_info_dict.items():
             if not one_hot_encoding_info:
                 raise ValueError(
@@ -526,8 +539,6 @@ class BaseMultiSigEmbed(abc.ABC):
             if not isinstance(one_hot_encoding_info, OneHotEncodingInfo):
                 attr_info_dict[attr] = OneHotEncodingInfo(**one_hot_encoding_info)
 
-        # For now on, one must use row_encoder instead of attr_info_dict,
-        # because RowOneHotEncoder fills None values of alphabet and max_str_len.
         return RowOneHotEncoder(attr_info_dict=attr_info_dict, row_dict=row_dict)
 
     @property
@@ -535,14 +546,18 @@ class BaseMultiSigEmbed(abc.ABC):
     def datamodule(self):
         pass
 
-    def build_lt_module(self, model_sig_i, row_encoder, **kwargs):
+    def build_lt_module(self, model_sig_i, attr_list, **kwargs):
         if self.lt_module_cls is None:
             raise NotImplementedError(
                 "Please set lt_module_cls attr in child classes of BaseMultiSigEmbed"
             )
 
-        self.datamodule.row_encoder = row_encoder
-        return self.lt_module_cls(self.datamodule, model_sig_i=model_sig_i, **self.lt_module_kwargs)
+        return self.lt_module_cls(
+            self.datamodule,
+            attr_info_dict={attr: self.all_attr_info_dict[attr] for attr in attr_list},
+            model_sig_i=model_sig_i,
+            **self.lt_module_kwargs,
+        )
 
     def build_trainer(
         self,
@@ -578,16 +593,48 @@ class BaseMultiSigEmbed(abc.ABC):
         )
 
     def _load_best_weights(self, trainer):
-        # Based on Trainer.__test_using_best_weights
         model = trainer.get_model()
+
+        # Replace model to remove the unncessary attrs
+        sig_weights = model.get_signature_weights()
+        used_attr_list = []
+        used_attr_index_list = []
+        has_unused_attr = False
+        for i, (attr, weight) in enumerate(sig_weights.items()):
+            if weight > model.zero_weight_at:
+                used_attr_list.append(attr)
+                used_attr_index_list.append(i)
+            else:
+                has_unused_attr = True
+        if has_unused_attr:
+            model.replace_model_with_only_used_attrs(used_attr_list)
+
+        # Load best weights in state_dict
         ckpt_path = trainer.checkpoint_callback.best_model_path
 
         if trainer.accelerator_backend is not None and not trainer.use_tpu:
             trainer.accelerator_backend.barrier()
 
         ckpt = pl_load(ckpt_path, map_location=lambda storage, loc: storage)
-        model.load_state_dict(ckpt["state_dict"])
-        return model
+        state_dict = ckpt["state_dict"]
+
+        if has_unused_attr:
+            # Remove dropped attrs from state_dict
+            new_state_dict = {
+                k: v for k, v in state_dict.items() for attr in used_attr_list if f".{attr}." in k
+            }
+
+            # Remove dropped attrs from signature weights in state_dict
+            if len(used_attr_list) > 1:
+                new_state_dict["blocker_net.tuple_signature.weights"] = torch.stack(
+                    [
+                        state_dict["blocker_net.tuple_signature.weights"][i]
+                        for i in used_attr_index_list
+                    ],
+                )
+                model.load_state_dict(new_state_dict)
+
+        return model, used_attr_list
 
     def fit(
         self,
@@ -600,14 +647,13 @@ class BaseMultiSigEmbed(abc.ABC):
         early_stopping_kwargs=None,
         trainer_kwargs=None,
     ):
-        row_encoder = self.row_encoder
-        attr_list = list(row_encoder.attr_info_dict.keys())
+        unused_attr_list = list(self.row_encoder.attr_info_dict.keys())
         model_sig_i = 0
 
-        while attr_list:
-            logger.info(f"Fit {model_sig_i=}, learning signature with {attr_list=}")
+        while unused_attr_list:
+            logger.info(f"Fit {model_sig_i=}, learning signature with {unused_attr_list=}")
 
-            lt_module = self.build_lt_module(model_sig_i=model_sig_i, row_encoder=row_encoder)
+            lt_module = self.build_lt_module(model_sig_i=model_sig_i, attr_list=unused_attr_list)
             trainer = self.build_trainer(
                 gpus=gpus,
                 max_epochs=max_epochs,
@@ -619,18 +665,13 @@ class BaseMultiSigEmbed(abc.ABC):
                 trainer_kwargs=trainer_kwargs,
             )
             trainer.fit(lt_module, lt_module.datamodule)
-            lt_module = self._load_best_weights(trainer)
+            lt_module, used_attr_list = self._load_best_weights(trainer)
             self.lt_module_list.append(lt_module)
 
-            sig_weights = lt_module.get_signature_weights()
-            used_attr_list = []
-            for attr, weight in sig_weights.items():
-                if weight > 0:
-                    attr_list.remove(attr)
-                    used_attr_list.append(attr)
+            for attr in used_attr_list:
+                unused_attr_list.remove(attr)
 
-            if attr_list:
-                row_encoder = row_encoder.build_attr_subset_encoder(attr_subset=attr_list)
+            if unused_attr_list:
                 model_sig_i += 1
 
     @property
@@ -694,6 +735,7 @@ class MultiSigDedupEmbed(BaseMultiSigEmbed):
         self._datamodule = DedupDataModule(
             row_dict=row_dict,
             cluster_attr=cluster_attr,
+            row_encoder=self.row_encoder,
             pos_pair_batch_size=pos_pair_batch_size,
             neg_pair_batch_size=neg_pair_batch_size,
             row_batch_size=row_batch_size,
@@ -806,6 +848,7 @@ class MultiSigLinkageEmbed(BaseMultiSigEmbed):
         self._datamodule = LinkageDataModule(
             row_dict=row_dict,
             cluster_attr=cluster_attr,
+            row_encoder=self.row_encoder,
             pos_pair_batch_size=pos_pair_batch_size,
             neg_pair_batch_size=neg_pair_batch_size,
             row_batch_size=row_batch_size,

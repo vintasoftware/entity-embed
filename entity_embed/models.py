@@ -208,7 +208,7 @@ class BlockerNet(nn.Module):
         zero_weight_at=0.01,
     ):
         super().__init__()
-        self.attr_info_dict = attr_info_dict
+        self.attr_info_dict = dict(attr_info_dict)
         self.embedding_size = embedding_size
         self.embedding_net_dict = nn.ModuleDict()
 
@@ -255,7 +255,7 @@ class BlockerNet(nn.Module):
             if torch.any((weights < 0) | (weights > 1)) or not torch.isclose(
                 weights.sum(), one_tensor
             ):
-                weights[weights < self.zero_weight_at] = 0
+                weights[weights <= self.zero_weight_at] = 0
                 weights_sum = weights.sum()
                 if weights_sum > 0:
                     weights /= weights.sum()
