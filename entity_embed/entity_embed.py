@@ -20,6 +20,7 @@ from .data_utils.utils import (
     cluster_dict_to_id_pairs,
     count_cluster_dict_pairs,
     row_dict_to_cluster_dict,
+    separate_dict_left_right,
     split_clusters,
     split_clusters_to_row_dicts,
 )
@@ -34,7 +35,6 @@ class DeduplicationDataModule(pl.LightningDataModule):
         self,
         row_dict,
         cluster_attr,
-        row_encoder,
         pos_pair_batch_size,
         neg_pair_batch_size,
         row_batch_size,
@@ -50,7 +50,6 @@ class DeduplicationDataModule(pl.LightningDataModule):
         super().__init__()
         self.row_dict = row_dict
         self.cluster_attr = cluster_attr
-        self.row_encoder = row_encoder
         self.pos_pair_batch_size = pos_pair_batch_size
         self.neg_pair_batch_size = neg_pair_batch_size
         self.row_batch_size = row_batch_size
@@ -69,11 +68,24 @@ class DeduplicationDataModule(pl.LightningDataModule):
         }
         self.random_seed = random_seed
 
+        self._row_encoder = None
         self.valid_true_pair_set = None
         self.test_true_pair_set = None
         self.train_row_dict = None
         self.valid_row_dict = None
         self.test_row_dict = None
+
+    @property
+    def row_encoder(self):
+        if self._row_encoder is None:
+            raise ValueError(
+                f"Please set row_encoder in {self.__class__.__name__} before using dataloaders"
+            )
+        return self._row_encoder
+
+    @row_encoder.setter
+    def row_encoder(self, row_encoder):
+        self._row_encoder = row_encoder
 
     def setup(self, stage=None):
         cluster_dict = row_dict_to_cluster_dict(self.row_dict, self.cluster_attr)
@@ -160,7 +172,6 @@ class LinkageDataModule(DeduplicationDataModule):
         self,
         row_dict,
         cluster_attr,
-        row_encoder,
         pos_pair_batch_size,
         neg_pair_batch_size,
         row_batch_size,
@@ -178,7 +189,6 @@ class LinkageDataModule(DeduplicationDataModule):
         super().__init__(
             row_dict=row_dict,
             cluster_attr=cluster_attr,
-            row_encoder=row_encoder,
             pos_pair_batch_size=pos_pair_batch_size,
             neg_pair_batch_size=neg_pair_batch_size,
             row_batch_size=row_batch_size,
@@ -212,17 +222,13 @@ class LinkageDataModule(DeduplicationDataModule):
         if self.test_true_pair_set is not None:
             self.test_true_pair_set = self._set_filtered_from_id_sets(self.test_true_pair_set)
 
-    def _dict_filtered_from_id_set(self, d, id_set):
-        return {id_: row for id_, row in d.items() if id_ in id_set}
-
     def separate_dict_left_right(self, d):
-        return (
-            self._dict_filtered_from_id_set(d, self.left_id_set),
-            self._dict_filtered_from_id_set(d, self.right_id_set),
+        return separate_dict_left_right(
+            d, left_id_set=self.left_id_set, right_id_set=self.right_id_set
         )
 
 
-class EntityEmbed(pl.LightningModule):
+class DeduplicationEmbed(pl.LightningModule):
     def __init__(
         self,
         datamodule,
@@ -432,7 +438,7 @@ class EntityEmbed(pl.LightningModule):
         return vector_dict
 
 
-class LinkageEmbed(EntityEmbed):
+class LinkageEmbed(DeduplicationEmbed):
     def _evaluate_with_ann(self, set_name, row_dict, embedding_batch_list, true_pair_set):
         vector_list = []
         for embedding_batch in embedding_batch_list:
@@ -468,18 +474,36 @@ class LinkageEmbed(EntityEmbed):
             }
         )
 
-
-class BaseMultiSigEmbed(abc.ABC):
-    def __init__(
+    def predict(
         self,
         row_dict,
-        attr_info_dict,
+        left_id_set,
+        right_id_set,
+        batch_size,
+        loader_kwargs=None,
+        device=None,
+        show_progress=True,
     ):
-        self.row_dict = row_dict
+        vector_dict = super().predict(
+            row_dict=row_dict,
+            batch_size=batch_size,
+            loader_kwargs=loader_kwargs,
+            device=device,
+            show_progress=show_progress,
+        )
+        left_vector_dict, right_vector_dict = separate_dict_left_right(
+            vector_dict, left_id_set=left_id_set, right_id_set=right_id_set
+        )
+        return left_vector_dict, right_vector_dict
+
+
+class BaseMultiSigEmbed(abc.ABC):
+    def __init__(self, row_dict, attr_info_dict, embedding_size):
         self.row_encoder = self._build_row_encoder(
             initial_attr_info_dict=attr_info_dict, row_dict=row_dict
         )
-        self.module_list = []
+        self.embedding_size = embedding_size
+        self.lt_module_list = []
 
     def _build_row_encoder(self, initial_attr_info_dict, row_dict):
         attr_info_dict = dict(initial_attr_info_dict)
@@ -498,9 +522,19 @@ class BaseMultiSigEmbed(abc.ABC):
         # because RowOneHotEncoder fills None values of alphabet and max_str_len.
         return RowOneHotEncoder(attr_info_dict=attr_info_dict, row_dict=row_dict)
 
+    @property
     @abc.abstractmethod
-    def build_lt_module(self, model_sig_i, row_encoder, **kwargs):
+    def datamodule(self):
         pass
+
+    def build_lt_module(self, model_sig_i, row_encoder, **kwargs):
+        if self.lt_module_cls is None:
+            raise NotImplementedError(
+                "Please set lt_module_cls attr in child classes of BaseMultiSigEmbed"
+            )
+
+        self.datamodule.row_encoder = row_encoder
+        return self.lt_module_cls(self.datamodule, model_sig_i=model_sig_i, **self.lt_module_kwargs)
 
     def build_trainer(
         self,
@@ -579,7 +613,7 @@ class BaseMultiSigEmbed(abc.ABC):
             )
             trainer.fit(lt_module, lt_module.datamodule)
             lt_module = self._load_best_weights(trainer)
-            self.module_list.append(lt_module)
+            self.lt_module_list.append(lt_module)
 
             sig_weights = lt_module.get_signature_weights()
             used_attr_list = []
@@ -592,8 +626,20 @@ class BaseMultiSigEmbed(abc.ABC):
                 row_encoder = row_encoder.build_attr_subset_encoder(attr_subset=attr_list)
                 model_sig_i += 1
 
+    @property
+    def multisig_dict_keys(self):
+        return [
+            tuple(lt_module.get_signature_weights().keys()) for lt_module in self.lt_module_list
+        ]
 
-class MultiSigEntityEmbed(BaseMultiSigEmbed):
+    @abc.abstractmethod
+    def predict(self, *args, **kwargs):
+        pass
+
+
+class MultiSigDeduplicationEmbed(BaseMultiSigEmbed):
+    lt_module_cls = DeduplicationEmbed
+
     def __init__(
         self,
         # data kwargs
@@ -633,23 +679,26 @@ class MultiSigEntityEmbed(BaseMultiSigEmbed):
         if cluster_attr in attr_info_dict:
             raise ValueError(f"{cluster_attr=} can't be inside {attr_info_dict=}")
 
-        super().__init__(row_dict=row_dict, attr_info_dict=attr_info_dict)
+        # BaseMultiSigEmbed.__init__ sets self.row_encoder and self.embedding_size
+        super().__init__(
+            row_dict=row_dict, attr_info_dict=attr_info_dict, embedding_size=embedding_size
+        )
 
-        self.lt_datamodule_kwargs = {
-            "row_dict": row_dict,
-            "cluster_attr": cluster_attr,
-            "pos_pair_batch_size": pos_pair_batch_size,
-            "neg_pair_batch_size": neg_pair_batch_size,
-            "row_batch_size": row_batch_size,
-            "train_cluster_len": train_cluster_len,
-            "valid_cluster_len": valid_cluster_len,
-            "test_cluster_len": test_cluster_len,
-            "only_plural_clusters": only_plural_clusters,
-            "log_empty_vals": log_empty_vals,
-            "pair_loader_kwargs": pair_loader_kwargs,
-            "row_loader_kwargs": row_loader_kwargs,
-            "random_seed": random_seed,
-        }
+        self._datamodule = DeduplicationDataModule(
+            row_dict=row_dict,
+            cluster_attr=cluster_attr,
+            pos_pair_batch_size=pos_pair_batch_size,
+            neg_pair_batch_size=neg_pair_batch_size,
+            row_batch_size=row_batch_size,
+            train_cluster_len=train_cluster_len,
+            valid_cluster_len=valid_cluster_len,
+            test_cluster_len=test_cluster_len,
+            only_plural_clusters=only_plural_clusters,
+            log_empty_vals=log_empty_vals,
+            pair_loader_kwargs=pair_loader_kwargs,
+            row_loader_kwargs=row_loader_kwargs,
+            random_seed=random_seed,
+        )
 
         self.lt_module_kwargs = {
             "n_channels": n_channels,
@@ -671,12 +720,36 @@ class MultiSigEntityEmbed(BaseMultiSigEmbed):
             "index_search_kwargs": index_search_kwargs,
         }
 
-    def build_lt_module(self, model_sig_i, row_encoder):
-        datamodule = DeduplicationDataModule(row_encoder=row_encoder, **self.lt_datamodule_kwargs)
-        return EntityEmbed(datamodule, model_sig_i=model_sig_i, **self.lt_module_kwargs)
+    @property
+    def datamodule(self):
+        return self._datamodule
+
+    def predict(
+        self,
+        row_dict,
+        batch_size,
+        loader_kwargs=None,
+        device=None,
+        show_progress=True,
+    ):
+        multisig_dict = {}
+
+        for lt_module in self.lt_module_list:
+            sig_attrs = lt_module.get_signature_weights().keys()
+            multisig_dict[sig_attrs] = lt_module.predict(
+                row_dict=row_dict,
+                batch_size=batch_size,
+                loader_kwargs=loader_kwargs,
+                device=device,
+                show_progress=show_progress,
+            )
+
+        return multisig_dict
 
 
 class MultiSigLinkageEmbed(BaseMultiSigEmbed):
+    lt_module_cls = LinkageEmbed
+
     def __init__(
         self,
         # data kwargs
@@ -718,26 +791,28 @@ class MultiSigLinkageEmbed(BaseMultiSigEmbed):
         if cluster_attr in attr_info_dict:
             raise ValueError(f"{cluster_attr=} can't be inside {attr_info_dict=}")
 
-        # BaseMultiSigEmbed.__init__ sets self.row_encoder
-        super().__init__(row_dict=row_dict, attr_info_dict=attr_info_dict)
+        # BaseMultiSigEmbed.__init__ sets self.row_encoder and self.embedding_size
+        super().__init__(
+            row_dict=row_dict, attr_info_dict=attr_info_dict, embedding_size=embedding_size
+        )
 
-        self.lt_datamodule_kwargs = {
-            "row_dict": row_dict,
-            "cluster_attr": cluster_attr,
-            "pos_pair_batch_size": pos_pair_batch_size,
-            "neg_pair_batch_size": neg_pair_batch_size,
-            "row_batch_size": row_batch_size,
-            "train_cluster_len": train_cluster_len,
-            "valid_cluster_len": valid_cluster_len,
-            "test_cluster_len": test_cluster_len,
-            "only_plural_clusters": only_plural_clusters,
-            "left_id_set": left_id_set,
-            "right_id_set": right_id_set,
-            "log_empty_vals": log_empty_vals,
-            "pair_loader_kwargs": pair_loader_kwargs,
-            "row_loader_kwargs": row_loader_kwargs,
-            "random_seed": random_seed,
-        }
+        self._datamodule = LinkageDataModule(
+            row_dict=row_dict,
+            cluster_attr=cluster_attr,
+            pos_pair_batch_size=pos_pair_batch_size,
+            neg_pair_batch_size=neg_pair_batch_size,
+            row_batch_size=row_batch_size,
+            train_cluster_len=train_cluster_len,
+            valid_cluster_len=valid_cluster_len,
+            test_cluster_len=test_cluster_len,
+            only_plural_clusters=only_plural_clusters,
+            left_id_set=left_id_set,
+            right_id_set=right_id_set,
+            log_empty_vals=log_empty_vals,
+            pair_loader_kwargs=pair_loader_kwargs,
+            row_loader_kwargs=row_loader_kwargs,
+            random_seed=random_seed,
+        )
 
         self.lt_module_kwargs = {
             "n_channels": n_channels,
@@ -759,15 +834,41 @@ class MultiSigLinkageEmbed(BaseMultiSigEmbed):
             "index_search_kwargs": index_search_kwargs,
         }
 
-    def build_lt_module(self, model_sig_i, row_encoder):
-        datamodule = LinkageDataModule(row_encoder=row_encoder, **self.lt_datamodule_kwargs)
-        return LinkageEmbed(datamodule, model_sig_i=model_sig_i, **self.lt_module_kwargs)
+    @property
+    def datamodule(self):
+        return self._datamodule
+
+    def predict(
+        self,
+        row_dict,
+        left_id_set,
+        right_id_set,
+        batch_size,
+        loader_kwargs=None,
+        device=None,
+        show_progress=True,
+    ):
+        multisig_dict = {}
+
+        for key, lt_module in zip(self.multisig_dict_keys, self.lt_module_list):
+            multisig_dict[key] = lt_module.predict(
+                row_dict=row_dict,
+                left_id_set=left_id_set,
+                right_id_set=right_id_set,
+                batch_size=batch_size,
+                loader_kwargs=loader_kwargs,
+                device=device,
+                show_progress=show_progress,
+            )
+
+        return multisig_dict
 
 
 class ANNEntityIndex:
     def __init__(self, embedding_size):
         self.approx_knn_index = HnswIndex(dimension=embedding_size, metric="angular")
         self.vector_idx_to_id = None
+        self.is_built = False
 
     def insert_vector_dict(self, vector_dict):
         for vector in vector_dict.values():
@@ -778,6 +879,9 @@ class ANNEntityIndex:
         self,
         index_build_kwargs=None,
     ):
+        if self.vector_idx_to_id is None:
+            raise ValueError("Please call insert_vector_dict first")
+
         self.approx_knn_index.build(
             **index_build_kwargs
             if index_build_kwargs
@@ -788,8 +892,11 @@ class ANNEntityIndex:
                 "n_threads": os.cpu_count(),
             }
         )
+        self.is_built = True
 
     def search_pairs(self, k, sim_threshold, index_search_kwargs=None):
+        if not self.is_built:
+            raise ValueError("Please call build first")
         if sim_threshold > 1 or sim_threshold < 0:
             raise ValueError(f"{sim_threshold=} must be <= 1 and >= 0")
 
@@ -885,5 +992,72 @@ class ANNLinkageIndex:
             logger.debug(f"Filling all_pair_set with {dataset_name=} done.")
 
         logger.debug(f"All searches done, all_pair_set filled. Found {len(all_pair_set)=} pairs.")
+
+        return all_pair_set
+
+
+class MultiSigANNIndex(abc.ABC):
+    index_cls = None
+
+    def __init__(self, multisig_dict_keys, embedding_size):
+        if self.index_cls is None:
+            raise NotImplementedError(
+                "Please set index_cls attr in child classes of MultiSigANNIndex"
+            )
+
+        self.index_dict = {}
+        for key in multisig_dict_keys:
+            self.index_dict[key] = self.index_cls(embedding_size=embedding_size)
+
+    @abc.abstractmethod
+    def insert_multisig_dict(self, *args, **kwargs):
+        pass
+
+    def build(
+        self,
+        index_build_kwargs=None,
+    ):
+        for index in self.index_dict.values():
+            index.build(index_build_kwargs)
+
+    @abc.abstractmethod
+    def search_pairs(self, *args, **kwargs):
+        pass
+
+
+class MultiSigANNLinkageIndex(MultiSigANNIndex):
+    index_cls = ANNLinkageIndex
+
+    def insert_multisig_dict(self, multisig_dict):
+        for key, index in self.index_dict.items():
+            left_vector_dict, right_vector_dict = multisig_dict[key]
+            index.insert_vector_dict(
+                left_vector_dict=left_vector_dict, right_vector_dict=right_vector_dict
+            )
+
+    def search_pairs(
+        self,
+        k,
+        sim_threshold,
+        multisig_dict,
+        index_search_kwargs=None,
+        left_dataset_name="left",
+        right_dataset_name="right",
+    ):
+        all_pair_set = set()
+
+        for key, index in self.index_dict.items():
+            left_vector_dict, right_vector_dict = multisig_dict[key]
+            all_pair_set.update(
+                index.search_pairs(
+                    k=k,
+                    sim_threshold=sim_threshold,
+                    left_vector_dict=left_vector_dict,
+                    right_vector_dict=right_vector_dict,
+                    index_search_kwargs=index_search_kwargs,
+                    left_dataset_name=left_dataset_name,
+                    right_dataset_name=right_dataset_name,
+                )
+            )
 
         return all_pair_set
