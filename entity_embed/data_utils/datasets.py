@@ -14,22 +14,24 @@ from . import utils
 logger = logging.getLogger(__name__)
 
 
-def _pad_aware_collate(attr_info_dict, tensor_dict_batch):
-    tensor_col_batch = zip(
-        *(t_dict.values() for t_dict in tensor_dict_batch)
-    )  # transpose, batch per column
-    tensor_dict = {}
-    tensor_lengths_dict = {}
+def _collate_tensor_dict(row_batch, row_encoder, log_empty_vals):
+    tensor_dict = {attr: [] for attr in row_encoder.attr_info_dict.keys()}
+    tensor_lengths_dict = {attr: [] for attr in row_encoder.attr_info_dict.keys()}
+    for row in row_batch:
+        row_tensor_dict, row_tensor_lengths_dict = row_encoder.build_tensor_dict(
+            row, log_empty_vals=log_empty_vals
+        )
+        if all(l == 0 for l in row_tensor_lengths_dict.values()):  # ignore empty rows
+            continue
+        for attr in row_encoder.attr_info_dict.keys():
+            tensor_dict[attr].append(row_tensor_dict[attr])
+            tensor_lengths_dict[attr].append(row_tensor_lengths_dict[attr])
 
-    for (attr, one_hot_encoding_info), tensor_list in zip(attr_info_dict.items(), tensor_col_batch):
+    for attr, one_hot_encoding_info in row_encoder.attr_info_dict.items():
         if one_hot_encoding_info.is_multitoken:
-            t = nn.utils.rnn.pad_sequence(tensor_list, batch_first=True)
-            tensor_dict[attr] = t
-            tensor_lengths_dict[attr] = [ti.size(0) for ti in tensor_list]
+            tensor_dict[attr] = nn.utils.rnn.pad_sequence(tensor_dict[attr], batch_first=True)
         else:
-            t = default_collate(tensor_list)
-            tensor_dict[attr] = t
-            tensor_lengths_dict[attr] = None
+            tensor_dict[attr] = default_collate(tensor_dict[attr])
     return tensor_dict, tensor_lengths_dict
 
 
@@ -73,20 +75,18 @@ class PairDataset(Dataset):
         neg_id_batch = self.random.sample(self.id_to_cluster_id.keys(), self.neg_batch_id_size)
         id_batch = pos_id_batch + neg_id_batch
 
-        tensor_dict_batch = [
-            self.row_encoder.build_tensor_dict(
-                self.row_dict[id_], log_empty_vals=self.log_empty_vals
-            )
-            for id_ in id_batch
-        ]
-        label_batch = [self.id_to_cluster_id[id_] for id_ in id_batch]
-
-        tensor_dict, tensor_lengths_dict = _pad_aware_collate(
-            self.row_encoder.attr_info_dict, tensor_dict_batch
+        tensor_dict, tensor_lengths_dict = _collate_tensor_dict(
+            row_batch=(self.row_dict[id_] for id_ in id_batch),
+            row_encoder=self.row_encoder,
+            log_empty_vals=self.log_empty_vals,
         )
-        label_batch = default_collate(label_batch)
+        label_batch = default_collate([self.id_to_cluster_id[id_] for id_ in id_batch])
 
-        return tensor_dict, tensor_lengths_dict, label_batch
+        return (
+            tensor_dict,
+            tensor_lengths_dict,
+            label_batch,
+        )
 
     def __len__(self):
         return len(self.pos_id_list_batches)
@@ -100,15 +100,9 @@ class RowDataset(Dataset):
 
     def __getitem__(self, idx):
         row_batch = self.row_list_batches[idx]
-
-        tensor_dict_batch = [
-            self.row_encoder.build_tensor_dict(row, log_empty_vals=self.log_empty_vals)
-            for row in row_batch
-        ]
-        tensor_dict, tensor_lengths_dict = _pad_aware_collate(
-            self.row_encoder.attr_info_dict, tensor_dict_batch
+        tensor_dict, tensor_lengths_dict = _collate_tensor_dict(
+            row_batch=row_batch, row_encoder=self.row_encoder, log_empty_vals=self.log_empty_vals
         )
-
         return tensor_dict, tensor_lengths_dict
 
     def __len__(self):
