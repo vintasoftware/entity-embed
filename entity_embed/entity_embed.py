@@ -237,7 +237,7 @@ class DedupEmbed(pl.LightningModule):
         miner_kwargs=None,
         optimizer_cls=torch.optim.Adam,
         learning_rate=0.001,
-        sig_lr_multiplier=10,
+        sig_lr_multiplier=100,
         optimizer_kwargs=None,
         ann_k=10,
         sim_threshold_list=[0.3, 0.5, 0.7, 0.9],
@@ -717,7 +717,7 @@ class MultiSigDedupEmbed(BaseMultiSigEmbed):
         miner_kwargs=None,
         optimizer_cls=torch.optim.Adam,
         learning_rate=0.001,
-        sig_lr_multiplier=10,
+        sig_lr_multiplier=100,
         optimizer_kwargs=None,
         ann_k=10,
         sim_threshold_list=[0.3, 0.5, 0.7, 0.9],
@@ -783,9 +783,8 @@ class MultiSigDedupEmbed(BaseMultiSigEmbed):
     ):
         multisig_dict = {}
 
-        for lt_module in self.lt_module_list:
-            sig_attrs = lt_module.get_signature_weights().keys()
-            multisig_dict[sig_attrs] = lt_module.predict(
+        for key, lt_module in zip(self.multisig_dict_keys, self.lt_module_list):
+            multisig_dict[key] = lt_module.predict(
                 row_dict=row_dict,
                 batch_size=batch_size,
                 loader_kwargs=loader_kwargs,
