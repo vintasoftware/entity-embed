@@ -150,3 +150,6 @@ notebooks/tb_logs/
 
 # Personal files
 _personal/
+
+# Releases directory
+release/
