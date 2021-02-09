@@ -15,6 +15,7 @@ from .data_utils.utils import (
     cluster_dict_to_id_pairs,
     count_cluster_dict_pairs,
     row_dict_to_cluster_dict,
+    separate_dict_left_right,
     split_clusters,
     split_clusters_to_row_dicts,
 )
@@ -223,13 +224,9 @@ class LinkageDataModule(DeduplicationDataModule):
         if self.test_true_pair_set is not None:
             self.test_true_pair_set = self._set_filtered_from_id_sets(self.test_true_pair_set)
 
-    def _dict_filtered_from_id_set(self, d, id_set):
-        return {id_: row for id_, row in d.items() if id_ in id_set}
-
     def separate_dict_left_right(self, d):
-        return (
-            self._dict_filtered_from_id_set(d, self.left_id_set),
-            self._dict_filtered_from_id_set(d, self.right_id_set),
+        return separate_dict_left_right(
+            d, left_id_set=self.left_id_set, right_id_set=self.right_id_set
         )
 
 
@@ -250,13 +247,18 @@ class EntityEmbed(pl.LightningModule):
         learning_rate=0.001,
         optimizer_kwargs=None,
         ann_k=10,
-        sim_threshold=0.5,
+        sim_threshold_list=[0.3, 0.5, 0.7, 0.9],
         index_build_kwargs=None,
         index_search_kwargs=None,
     ):
         super().__init__()
         self.row_encoder = datamodule.row_encoder
         self.attr_info_dict = self.row_encoder.attr_info_dict
+        self.n_channels = n_channels
+        self.embedding_size = embedding_size
+        self.embed_dropout_p = embed_dropout_p
+        self.use_attention = use_attention
+        self.use_mask = use_mask
         self.blocker_net = BlockerNet(
             self.attr_info_dict,
             n_channels=n_channels,
@@ -276,18 +278,23 @@ class EntityEmbed(pl.LightningModule):
         self.learning_rate = learning_rate
         self.optimizer_kwargs = optimizer_kwargs if optimizer_kwargs else {}
         self.ann_k = ann_k
-        self.sim_threshold = sim_threshold
+        self.sim_threshold_list = sim_threshold_list
         self.index_build_kwargs = index_build_kwargs
         self.index_search_kwargs = index_search_kwargs
 
         self.save_hyperparameters(
+            "n_channels",
+            "embedding_size",
+            "embed_dropout_p",
+            "use_attention",
+            "use_mask",
             "loss_cls",
             "miner_cls",
             "optimizer_cls",
             "learning_rate",
             "optimizer_kwargs",
             "ann_k",
-            "sim_threshold",
+            "sim_threshold_list",
             "index_build_kwargs",
             "index_search_kwargs",
         )
@@ -341,23 +348,24 @@ class EntityEmbed(pl.LightningModule):
         ann_index.insert_vector_dict(vector_dict)
         ann_index.build(index_build_kwargs=self.index_build_kwargs)
 
-        found_pair_set = ann_index.search_pairs(
-            k=self.ann_k,
-            sim_threshold=self.sim_threshold,
-            index_search_kwargs=self.index_search_kwargs,
-        )
+        for sim_threshold in self.sim_threshold_list:
+            found_pair_set = ann_index.search_pairs(
+                k=self.ann_k,
+                sim_threshold=sim_threshold,
+                index_search_kwargs=self.index_search_kwargs,
+            )
 
-        precision, recall = precision_and_recall(found_pair_set, true_pair_set)
-        self.log_dict(
-            {
-                f"{set_name}_precision": precision,
-                f"{set_name}_recall": recall,
-                f"{set_name}_f1": f1_score(precision, recall),
-                f"{set_name}_pair_entity_ratio": pair_entity_ratio(
-                    len(found_pair_set), len(vector_list)
-                ),
-            }
-        )
+            precision, recall = precision_and_recall(found_pair_set, true_pair_set)
+            self.log_dict(
+                {
+                    f"{set_name}_precision_at_{sim_threshold}": precision,
+                    f"{set_name}_recall_at_{sim_threshold}": recall,
+                    f"{set_name}_f1_at_{sim_threshold}": f1_score(precision, recall),
+                    f"{set_name}_pair_entity_ratio_at_{sim_threshold}": pair_entity_ratio(
+                        len(found_pair_set), len(vector_list)
+                    ),
+                }
+            )
 
     def validation_epoch_end(self, outputs):
         self._evaluate_with_ann(
@@ -384,6 +392,9 @@ class EntityEmbed(pl.LightningModule):
             self.parameters(), lr=self.learning_rate, **self.optimizer_kwargs
         )
         return optimizer
+
+    def get_signature_weights(self):
+        return self.blocker_net.get_signature_weights()
 
     def predict(
         self,
@@ -444,31 +455,55 @@ class LinkageEmbed(EntityEmbed):
             index_build_kwargs=self.index_build_kwargs,
         )
 
-        found_pair_set = ann_index.search_pairs(
-            k=self.ann_k,
-            sim_threshold=self.sim_threshold,
-            left_vector_dict=left_vector_dict,
-            right_vector_dict=right_vector_dict,
-            index_search_kwargs=self.index_search_kwargs,
-        )
+        for sim_threshold in self.sim_threshold_list:
+            found_pair_set = ann_index.search_pairs(
+                k=self.ann_k,
+                sim_threshold=sim_threshold,
+                left_vector_dict=left_vector_dict,
+                right_vector_dict=right_vector_dict,
+                index_search_kwargs=self.index_search_kwargs,
+            )
 
-        precision, recall = precision_and_recall(found_pair_set, true_pair_set)
-        self.log_dict(
-            {
-                f"{set_name}_precision": precision,
-                f"{set_name}_recall": recall,
-                f"{set_name}_f1": f1_score(precision, recall),
-                f"{set_name}_pair_entity_ratio": pair_entity_ratio(
-                    len(found_pair_set), len(vector_list)
-                ),
-            }
+            precision, recall = precision_and_recall(found_pair_set, true_pair_set)
+            self.log_dict(
+                {
+                    f"{set_name}_precision_at_{sim_threshold}": precision,
+                    f"{set_name}_recall_at_{sim_threshold}": recall,
+                    f"{set_name}_f1_at_{sim_threshold}": f1_score(precision, recall),
+                    f"{set_name}_pair_entity_ratio_at_{sim_threshold}": pair_entity_ratio(
+                        len(found_pair_set), len(vector_list)
+                    ),
+                }
+            )
+
+    def predict(
+        self,
+        row_dict,
+        left_id_set,
+        right_id_set,
+        batch_size,
+        loader_kwargs=None,
+        device=None,
+        show_progress=True,
+    ):
+        vector_dict = super().predict(
+            row_dict=row_dict,
+            batch_size=batch_size,
+            loader_kwargs=loader_kwargs,
+            device=device,
+            show_progress=show_progress,
         )
+        left_vector_dict, right_vector_dict = separate_dict_left_right(
+            vector_dict, left_id_set=left_id_set, right_id_set=right_id_set
+        )
+        return left_vector_dict, right_vector_dict
 
 
 class ANNEntityIndex:
     def __init__(self, embedding_size):
         self.approx_knn_index = HnswIndex(dimension=embedding_size, metric="angular")
         self.vector_idx_to_id = None
+        self.is_built = False
 
     def insert_vector_dict(self, vector_dict):
         for vector in vector_dict.values():
@@ -479,6 +514,9 @@ class ANNEntityIndex:
         self,
         index_build_kwargs=None,
     ):
+        if self.vector_idx_to_id is None:
+            raise ValueError("Please call insert_vector_dict first")
+
         self.approx_knn_index.build(
             **index_build_kwargs
             if index_build_kwargs
@@ -489,8 +527,11 @@ class ANNEntityIndex:
                 "n_threads": os.cpu_count(),
             }
         )
+        self.is_built = True
 
     def search_pairs(self, k, sim_threshold, index_search_kwargs=None):
+        if not self.is_built:
+            raise ValueError("Please call build first")
         if sim_threshold > 1 or sim_threshold < 0:
             raise ValueError(f"{sim_threshold=} must be <= 1 and >= 0")
 
@@ -549,6 +590,8 @@ class ANNLinkageIndex:
         left_dataset_name="left",
         right_dataset_name="right",
     ):
+        if not self.left_index.is_built or not self.right_index.is_built:
+            raise ValueError("Please call build first")
         if sim_threshold > 1 or sim_threshold < 0:
             raise ValueError(f"{sim_threshold=} must be <= 1 and >= 0")
 

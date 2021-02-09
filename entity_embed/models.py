@@ -105,6 +105,7 @@ class MaskedAttention(nn.Module):
         # apply mask and renormalize attention scores (weights)
         masked_scores = scores * mask
         att_sums = masked_scores.sum(dim=1, keepdim=True)  # sums per sequence
+        att_sums[att_sums == 0] = 1.0  # prevents division by zero on empty sequences
         scores = masked_scores.div(att_sums)
 
         # apply attention weights
@@ -134,8 +135,15 @@ class MultitokenAttentionEmbed(nn.Module):
         x_tokens = x.unbind(dim=1)
         x_tokens = [self.embedding_net(x) for x in x_tokens]
         x = torch.stack(x_tokens, dim=1)
+
+        # Pytorch can't handle zero length sequences,
+        # but attention_net will use the actual tensor_lengths with zeros
+        # https://github.com/pytorch/pytorch/issues/4582
+        # https://github.com/pytorch/pytorch/issues/50192
+        tensor_lengths_no_zero = [max(l, 1) for l in tensor_lengths]
+
         packed_x = nn.utils.rnn.pack_padded_sequence(
-            x, tensor_lengths, batch_first=True, enforce_sorted=False
+            x, tensor_lengths_no_zero, batch_first=True, enforce_sorted=False
         )
         packed_h, __ = self.gru(packed_x)
         h, __ = nn.utils.rnn.pad_packed_sequence(packed_h, batch_first=True)
@@ -169,8 +177,9 @@ class MultitokenAverageEmbed(nn.Module):
 
             # apply mask and renormalize
             masked_scores = scores * mask
-            sums = masked_scores.sum(dim=1, keepdim=True)  # sums per sequence
-            scores = masked_scores.div(sums)
+            att_sums = masked_scores.sum(dim=1, keepdim=True)  # sums per sequence
+            att_sums[att_sums == 0] = 1.0  # prevents division by zero on empty sequences
+            scores = masked_scores.div(att_sums)
 
         # compute average
         weighted = torch.mul(x, scores.unsqueeze(-1).expand_as(x))
