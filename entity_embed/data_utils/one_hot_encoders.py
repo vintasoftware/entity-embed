@@ -1,5 +1,4 @@
 import logging
-from collections import defaultdict
 from dataclasses import dataclass
 from typing import Callable, List
 
@@ -58,9 +57,7 @@ class AttrOneHotEncoder:
 
     def build_tensor(self, val):
         if not self.is_multitoken:
-            t = self._build_single_tensor(val)
-            token_length = 1 if val != "" else 0
-            return t, token_length
+            return self._build_single_tensor(val)
         else:
             val_tokens = self.tokenizer(val)
             if val_tokens:
@@ -69,9 +66,9 @@ class AttrOneHotEncoder:
                 token_t_list = []
 
             if len(token_t_list) > 0:
-                return torch.stack(token_t_list), len(token_t_list)
+                return torch.stack(token_t_list)
             else:
-                return torch.stack([self._build_single_tensor("")]), len(token_t_list)
+                return torch.stack([self._build_single_tensor("")])
 
 
 class RowOneHotEncoder:
@@ -122,25 +119,9 @@ class RowOneHotEncoder:
 
     def build_tensor_dict(self, row, log_empty_vals=False):
         tensor_dict = {}
-        tensor_lengths_dict = {}
 
         for attr, encoder in self.attr_to_encoder.items():
             if not row[attr] and log_empty_vals:
                 logger.warning(f"Found empty {attr=} at row={row}")
-            t, t_len = encoder.build_tensor(row[attr])
-            tensor_dict[attr] = t
-            tensor_lengths_dict[attr] = t_len
-
-        return tensor_dict, tensor_lengths_dict
-
-    def build_attr_subset_encoder(self, attr_subset):
-        new_row_encoder = RowOneHotEncoder(attr_info_dict={})
-        new_row_encoder.attr_info_dict = {
-            attr: attr_info
-            for attr, attr_info in self.attr_info_dict.items()
-            if attr in attr_subset
-        }
-        new_row_encoder.attr_to_encoder = {
-            attr: encoder for attr, encoder in self.attr_to_encoder.items() if attr in attr_subset
-        }
-        return new_row_encoder
+            tensor_dict[attr] = encoder.build_tensor(row[attr])
+        return tensor_dict

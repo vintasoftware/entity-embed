@@ -98,7 +98,7 @@ class MaskedAttention(nn.Module):
         # See e.g. https://discuss.pytorch.org/t/self-attention-on-words-and-masking/5671/5
         max_len = h.size(1)
         idxes = torch.arange(0, max_len, out=torch.LongTensor(max_len)).unsqueeze(0)
-        mask = Variable((idxes <= torch.LongTensor(tensor_lengths).unsqueeze(1)).float())
+        mask = Variable((idxes < torch.LongTensor(tensor_lengths).unsqueeze(1)).float())
         if scores.data.is_cuda:
             mask = mask.cuda()
 
@@ -134,15 +134,8 @@ class MultitokenAttentionEmbed(nn.Module):
         x_tokens = x.unbind(dim=1)
         x_tokens = [self.embedding_net(x) for x in x_tokens]
         x = torch.stack(x_tokens, dim=1)
-
-        # Pytorch can't handle zero length sequences,
-        # but attention_net will use the actual tensor_lengths with zeros
-        # https://github.com/pytorch/pytorch/issues/4582
-        # https://github.com/pytorch/pytorch/issues/50192
-        tensor_lengths_no_zero = [max(l, 1) for l in tensor_lengths]
-
         packed_x = nn.utils.rnn.pack_padded_sequence(
-            x, tensor_lengths_no_zero, batch_first=True, enforce_sorted=False
+            x, tensor_lengths, batch_first=True, enforce_sorted=False
         )
         packed_h, __ = self.gru(packed_x)
         h, __ = nn.utils.rnn.pad_packed_sequence(packed_h, batch_first=True)
@@ -170,7 +163,7 @@ class MultitokenAverageEmbed(nn.Module):
             # Compute a mask for the attention on the padded sequences
             # See e.g. https://discuss.pytorch.org/t/self-attention-on-words-and-masking/5671/5
             idxes = torch.arange(0, max_len, out=torch.LongTensor(max_len)).unsqueeze(0)
-            mask = Variable((idxes <= torch.LongTensor(tensor_lengths).unsqueeze(1)).float())
+            mask = Variable((idxes < torch.LongTensor(tensor_lengths).unsqueeze(1)).float())
             if x.data.is_cuda:
                 mask = mask.cuda()
 
