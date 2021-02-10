@@ -88,11 +88,10 @@ class MaskedAttention(nn.Module):
         super().__init__()
 
         self.attention_weights = nn.Parameter(torch.FloatTensor(embedding_size).uniform_(-0.1, 0.1))
-        self.softmax = nn.Softmax(dim=1)
 
     def forward(self, h, x, tensor_lengths, **kwargs):
-        scores = h.matmul(self.attention_weights)
-        scores = self.softmax(scores)
+        logits = h.matmul(self.attention_weights)
+        scores = (logits - logits.max()).exp()
 
         # Compute a mask for the attention on the padded sequences
         # See e.g. https://discuss.pytorch.org/t/self-attention-on-words-and-masking/5671/5
