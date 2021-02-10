@@ -11,6 +11,10 @@ from .union_find import UnionFind
 logger = logging.getLogger(__name__)
 
 
+def Enumerator(start=0, initial=()):
+    return defaultdict(itertools.count(start).__next__, initial)
+
+
 def row_dict_to_cluster_dict(row_dict, cluster_attr):
     cluster_dict = defaultdict(list)
     for id_, row in row_dict.items():
@@ -124,16 +128,21 @@ def pair_count_to_row_count(pair_count):
     return int((1 + math.sqrt(1 + 8 * pair_count)) / 2)
 
 
-def compute_alphabet_and_max_str_len(attr_val_gen, is_multitoken, tokenizer):
+def compute_alphabet_max_str_len_vocab_size(attr_val_gen, is_multitoken, tokenizer):
     actual_alphabet = set()
+    vocab = set()
     actual_max_str_len = 0
     for attr_val in attr_val_gen:
         actual_alphabet.update(list(attr_val))
         if not is_multitoken:
             str_len = len(attr_val)
         else:
-            token_lens = [len(v) for v in tokenizer(attr_val)]
-            str_len = max(token_lens) if token_lens else -1
+            tokens = tokenizer(attr_val)
+            if tokens:
+                str_len = max(len(v) for v in tokens)
+                vocab.update(tokens)
+            else:
+                str_len = -1
         actual_max_str_len = max(str_len, actual_max_str_len)
 
     # Sort alphabet for reproducibility
@@ -147,7 +156,7 @@ def compute_alphabet_and_max_str_len(attr_val_gen, is_multitoken, tokenizer):
         )
         actual_max_str_len += 1
 
-    return actual_alphabet, actual_max_str_len
+    return actual_alphabet, actual_max_str_len, len(vocab)
 
 
 def id_pairs_to_cluster_mapping_and_dict(id_pairs):

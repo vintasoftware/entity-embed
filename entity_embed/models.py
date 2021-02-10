@@ -11,18 +11,24 @@ class StringEmbedCNN(nn.Module):
     (code: https://github.com/xinyandai/string-embed)
     """
 
-    def __init__(self, alphabet_len, max_str_len, n_channels, embedding_size, embed_dropout_p):
+    def __init__(self, one_hot_encoding_info, n_channels, embedding_size, embed_dropout_p):
         super().__init__()
 
-        self.max_str_len = max_str_len
+        self.alphabet_len = len(one_hot_encoding_info.alphabet)
+        self.max_str_len = one_hot_encoding_info.max_str_len
         self.n_channels = n_channels
         self.embedding_size = embedding_size
 
         self.conv1 = nn.Conv1d(
-            in_channels=1, out_channels=n_channels, kernel_size=3, stride=1, padding=1, bias=False
+            in_channels=1,
+            out_channels=self.n_channels,
+            kernel_size=3,
+            stride=1,
+            padding=1,
+            bias=False,
         )
 
-        self.flat_size = (max_str_len // 2) * alphabet_len * n_channels
+        self.flat_size = (self.max_str_len // 2) * self.alphabet_len * self.n_channels
         if self.flat_size == 0:
             raise ValueError("Too small alphabet, self.flat_size == 0")
 
@@ -42,6 +48,22 @@ class StringEmbedCNN(nn.Module):
         x = self.dense_net(x)
 
         return x
+
+
+class SemanticEmbedNet(nn.Module):
+    def __init__(self, one_hot_encoding_info, embedding_size, embed_dropout_p):
+        super().__init__()
+
+        self.embedding_size = embedding_size
+        self.dense_net = nn.Sequential(
+            nn.Embedding(
+                num_embeddings=one_hot_encoding_info.vocab_size, embedding_dim=embedding_size
+            ),
+            nn.Dropout(p=embed_dropout_p),
+        )
+
+    def forward(self, x, **kwargs):
+        return self.dense_net(x)
 
 
 class Attention(nn.Module):
@@ -220,18 +242,30 @@ class BlockerNet(nn.Module):
         self.embedding_net_dict = nn.ModuleDict()
 
         for attr, one_hot_encoding_info in attr_info_dict.items():
-            embedding_net = StringEmbedCNN(
-                alphabet_len=len(one_hot_encoding_info.alphabet),
-                max_str_len=one_hot_encoding_info.max_str_len,
-                n_channels=n_channels,
-                embedding_size=embedding_size,
-                embed_dropout_p=embed_dropout_p,
-            )
+            if one_hot_encoding_info.is_semantic:
+                embedding_net = SemanticEmbedNet(
+                    one_hot_encoding_info=one_hot_encoding_info,
+                    embedding_size=embedding_size,
+                    embed_dropout_p=embed_dropout_p,
+                )
+            else:
+                embedding_net = StringEmbedCNN(
+                    one_hot_encoding_info=one_hot_encoding_info,
+                    n_channels=n_channels,
+                    embedding_size=embedding_size,
+                    embed_dropout_p=embed_dropout_p,
+                )
             if not one_hot_encoding_info.is_multitoken:
                 self.embedding_net_dict[attr] = embedding_net
             else:
-                embed_cls = MultitokenAttentionEmbed if use_attention else MultitokenAverageEmbed
-                self.embedding_net_dict[attr] = embed_cls(embedding_net, use_mask)
+                if use_attention:
+                    self.embedding_net_dict[attr] = MultitokenAttentionEmbed(
+                        embedding_net, use_mask=use_mask
+                    )
+                else:
+                    self.embedding_net_dict[attr] = MultitokenAverageEmbed(
+                        embedding_net, use_mask=use_mask
+                    )
 
         self.tuple_signature = TupleSignature(attr_info_dict)
 

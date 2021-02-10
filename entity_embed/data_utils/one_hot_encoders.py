@@ -1,5 +1,4 @@
 import logging
-from collections import defaultdict
 from dataclasses import dataclass
 from typing import Callable, List
 
@@ -7,7 +6,7 @@ import numpy as np
 import regex
 import torch
 
-from .utils import compute_alphabet_and_max_str_len
+from .utils import Enumerator, compute_alphabet_max_str_len_vocab_size
 
 logger = logging.getLogger(__name__)
 
@@ -15,9 +14,11 @@ logger = logging.getLogger(__name__)
 @dataclass
 class OneHotEncodingInfo:
     is_multitoken: bool
+    is_semantic: bool
     tokenizer: Callable[[str], List[str]]
     alphabet: List[str]
     max_str_len: int
+    vocab_size: int
 
 
 # Unicode \w without _ is [\w--_]
@@ -32,6 +33,7 @@ class AttrOneHotEncoder:
     def __init__(self, attr, one_hot_encoding_info):
         self.attr = attr
         self.is_multitoken = one_hot_encoding_info.is_multitoken
+        self.is_semantic = one_hot_encoding_info.is_semantic
         self.tokenizer = one_hot_encoding_info.tokenizer
         if self.is_multitoken and self.tokenizer is None:
             raise ValueError(
@@ -43,18 +45,24 @@ class AttrOneHotEncoder:
         self.max_str_len = one_hot_encoding_info.max_str_len
 
         self.char_to_ord = {c: i for i, c in enumerate(self.alphabet)}
+        self.token_to_idx = Enumerator()
 
     def _one_hot_encode(self, val):
         return [self.char_to_ord[c] for c in val]
 
     def _build_single_tensor(self, val):
-        # encoded_arr is a one hot encoded bidimensional tensor
-        # where the rows represent characters and the columns positions in the string.
-        ord_encoded_val = self._one_hot_encode(val)
-        encoded_arr = np.zeros((len(self.alphabet), self.max_str_len), dtype=np.float32)
-        if len(ord_encoded_val) > 0:
-            encoded_arr[ord_encoded_val, range(len(ord_encoded_val))] = 1.0
-        return torch.from_numpy(encoded_arr)
+        if self.is_semantic:
+            # encoded_arr is a lookup_tensor like in
+            # https://pytorch.org/tutorials/beginner/nlp/word_embeddings_tutorial.html
+            return torch.tensor(self.token_to_idx[val], dtype=torch.long)
+        else:
+            # encoded_arr is a one hot encoded bidimensional tensor
+            # where the rows represent characters and the columns positions in the string.
+            ord_encoded_val = self._one_hot_encode(val)
+            encoded_arr = np.zeros((len(self.alphabet), self.max_str_len), dtype=np.float32)
+            if len(ord_encoded_val) > 0:
+                encoded_arr[ord_encoded_val, range(len(ord_encoded_val))] = 1.0
+            return torch.from_numpy(encoded_arr)
 
     def build_tensor(self, val):
         if not self.is_multitoken:
@@ -86,19 +94,24 @@ class RowOneHotEncoder:
         for attr, one_hot_encoding_info in attr_info_dict.items():
             alphabet = one_hot_encoding_info.alphabet
             max_str_len = one_hot_encoding_info.max_str_len
+            vocab_size = one_hot_encoding_info.vocab_size
 
-            if alphabet is None or max_str_len is None:
+            if alphabet is None or max_str_len is None or vocab_size is None:
                 if row_dict is None:
                     raise ValueError(
-                        f"Cannot compute alphabet and max_str_len for {attr=}. "
-                        "row_dict cannot be None if any of alphabet and max_str_len is None. "
+                        f"Cannot compute alphabet / max_str_len / vocab_size for {attr=}. "
+                        "row_dict cannot be None if any of alphabet / max_str_len / vocab_size is None. "
                         "Please set row_dict, a dictionary of id -> row with ALL your data (train, test, valid). "
-                        "Or call entity_embed.data_utils.compute_alphabet_and_max_str_len "
+                        "Or call entity_embed.data_utils.compute_alphabet_max_str_len_vocab_size "
                         "over ALL your data (train, test, valid) to compute alphabet and max_str_len for each attr. "
                     )
                 else:
                     logger.info(f"For {attr=}, computing actual alphabet and max_str_len")
-                    actual_alphabet, actual_max_str_len = compute_alphabet_and_max_str_len(
+                    (
+                        actual_alphabet,
+                        actual_max_str_len,
+                        vocab_size,
+                    ) = compute_alphabet_max_str_len_vocab_size(
                         attr_val_gen=(row[attr] for row in row_dict.values()),
                         is_multitoken=one_hot_encoding_info.is_multitoken,
                         tokenizer=one_hot_encoding_info.tokenizer,
@@ -112,9 +125,11 @@ class RowOneHotEncoder:
 
             self.attr_info_dict[attr] = OneHotEncodingInfo(
                 is_multitoken=one_hot_encoding_info.is_multitoken,
+                is_semantic=one_hot_encoding_info.is_semantic,
                 tokenizer=one_hot_encoding_info.tokenizer,
                 alphabet=alphabet,
                 max_str_len=max_str_len,
+                vocab_size=vocab_size,
             )
             self.attr_to_encoder[attr] = AttrOneHotEncoder(
                 attr=attr, one_hot_encoding_info=self.attr_info_dict[attr]
