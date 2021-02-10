@@ -2,7 +2,7 @@ import itertools
 import logging
 import math
 import random
-from collections import defaultdict
+from collections import Counter, defaultdict
 
 from ordered_set import OrderedSet
 
@@ -128,9 +128,8 @@ def pair_count_to_row_count(pair_count):
     return int((1 + math.sqrt(1 + 8 * pair_count)) / 2)
 
 
-def compute_alphabet_max_str_len_vocab_size(attr_val_gen, is_multitoken, tokenizer):
+def compute_alphabet_and_max_str_len(attr_val_gen, is_multitoken, tokenizer):
     actual_alphabet = set()
-    vocab = set()
     actual_max_str_len = 0
     for attr_val in attr_val_gen:
         actual_alphabet.update(list(attr_val))
@@ -140,7 +139,6 @@ def compute_alphabet_max_str_len_vocab_size(attr_val_gen, is_multitoken, tokeniz
             tokens = tokenizer(attr_val)
             if tokens:
                 str_len = max(len(v) for v in tokens)
-                vocab.update(tokens)
             else:
                 str_len = -1
         actual_max_str_len = max(str_len, actual_max_str_len)
@@ -156,7 +154,15 @@ def compute_alphabet_max_str_len_vocab_size(attr_val_gen, is_multitoken, tokeniz
         )
         actual_max_str_len += 1
 
-    return actual_alphabet, actual_max_str_len, len(vocab)
+    return actual_alphabet, actual_max_str_len
+
+
+def compute_vocab(attr_val_gen, tokenizer):
+    vocab_counter = Counter()
+    for attr_val in attr_val_gen:
+        tokens = tokenizer(attr_val)
+        vocab_counter.update(tokens)
+    return vocab_counter
 
 
 def id_pairs_to_cluster_mapping_and_dict(id_pairs):

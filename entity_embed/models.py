@@ -56,9 +56,7 @@ class SemanticEmbedNet(nn.Module):
 
         self.embedding_size = embedding_size
         self.dense_net = nn.Sequential(
-            nn.Embedding(
-                num_embeddings=one_hot_encoding_info.vocab_size, embedding_dim=embedding_size
-            ),
+            nn.Embedding.from_pretrained(one_hot_encoding_info.vocab.vectors),
             nn.Dropout(p=embed_dropout_p),
         )
 

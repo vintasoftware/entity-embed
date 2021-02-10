@@ -34,7 +34,7 @@ def build_row_encoder(attr_info_dict, row_dict=None):
                 f"found {one_hot_encoding_info}"
             )
         if not isinstance(one_hot_encoding_info, OneHotEncodingInfo):
-            attr_info_dict[attr] = OneHotEncodingInfo(**one_hot_encoding_info)
+            attr_info_dict[attr] = OneHotEncodingInfo(**one_hot_encoding_info, vocab=None)
 
     # For now on, one must use row_encoder instead of attr_info_dict,
     # because RowOneHotEncoder fills None values of alphabet and max_str_len.
