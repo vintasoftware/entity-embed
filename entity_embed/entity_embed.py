@@ -241,20 +241,15 @@ class PreSplitLinkageDataModule(LinkageDataModule):
         row_batch_size,
         train_true_pair_set,
         valid_true_pair_set,
-        test_true_pair_set,
         pair_loader_kwargs=None,
         row_loader_kwargs=None,
         random_seed=42,
     ):
         left_id_set = {
-            pair[0]
-            for pair_set in (train_true_pair_set, valid_true_pair_set, test_true_pair_set)
-            for pair in pair_set
+            pair[0] for pair_set in (train_true_pair_set, valid_true_pair_set) for pair in pair_set
         }
         right_id_set = {
-            pair[1]
-            for pair_set in (train_true_pair_set, valid_true_pair_set, test_true_pair_set)
-            for pair in pair_set
+            pair[1] for pair_set in (train_true_pair_set, valid_true_pair_set) for pair in pair_set
         }
 
         super().__init__(
@@ -277,7 +272,7 @@ class PreSplitLinkageDataModule(LinkageDataModule):
 
         self.train_true_pair_set = train_true_pair_set
         self.valid_true_pair_set = valid_true_pair_set
-        self.test_true_pair_set = test_true_pair_set
+        self.test_true_pair_set = None
 
     def setup(self, stage=None):
         train_cluster_mapping, train_cluster_dict = id_pairs_to_cluster_mapping_and_dict(
@@ -286,35 +281,32 @@ class PreSplitLinkageDataModule(LinkageDataModule):
         valid_cluster_mapping, valid_cluster_dict = id_pairs_to_cluster_mapping_and_dict(
             self.valid_true_pair_set
         )
-        test_cluster_mapping, test_cluster_dict = id_pairs_to_cluster_mapping_and_dict(
-            self.test_true_pair_set
-        )
 
         cluster_mapping = {}
         cluster_enumerator = Enumerator()
         for split_name, part_cluster_mapping in [
             ("train", train_cluster_mapping),
             ("valid", valid_cluster_mapping),
-            ("test", test_cluster_mapping),
         ]:
             for id_, cluster_id in part_cluster_mapping.items():
                 cluster_mapping[id_] = cluster_enumerator[f"{split_name}-{cluster_id}"]
 
         logger.info("Train pair count: %s", len(self.train_true_pair_set))
         logger.info("Valid pair count: %s", len(self.valid_true_pair_set))
-        logger.info("Test pair count: %s", len(self.test_true_pair_set))
-
-        new_cluster_id = max(cluster_mapping.values()) + 1
-        for row in self.row_dict.values():
-            row[self.cluster_attr] = cluster_mapping.get(row["id"], new_cluster_id)
-            new_cluster_id += 1
 
         self.train_row_dict, self.valid_row_dict, self.test_row_dict = split_clusters_to_row_dicts(
             row_dict=self.row_dict,
             train_cluster_dict=train_cluster_dict,
             valid_cluster_dict=valid_cluster_dict,
-            test_cluster_dict=test_cluster_dict,
+            test_cluster_dict={},
         )
+
+        for part_row_dict, part_cluster_mapping in [
+            (self.train_row_dict, train_cluster_mapping),
+            (self.valid_row_dict, valid_cluster_mapping),
+        ]:
+            for id_, row in part_row_dict.items():
+                row[self.cluster_attr] = part_cluster_mapping[id_]
 
 
 class EntityEmbed(pl.LightningModule):
