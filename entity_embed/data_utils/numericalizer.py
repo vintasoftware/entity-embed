@@ -151,6 +151,15 @@ class RowNumericalizer:
             max_str_len = numericalize_info.max_str_len
             vocab = None
 
+            # Check if tokenizer function is set
+            if (
+                field_type in (FieldType.MULTITOKEN, FieldType.SEMANTIC_MULTITOKEN)
+                and tokenizer is None
+            ):
+                raise ValueError(
+                    f"{attr=} has {field_type=} but {self.tokenizer=}. Please set a tokenizer."
+                )
+
             # Compute vocab if necessary
             if field_type in (FieldType.SEMANTIC_STRING, FieldType.SEMANTIC_MULTITOKEN):
                 if numericalize_info.vocab is None:
@@ -190,15 +199,6 @@ class RowNumericalizer:
                     if max_str_len is None:
                         logger.info(f"For {attr=}, using {actual_max_str_len=}")
                         max_str_len = actual_max_str_len
-
-            # Check if tokenizer function is set
-            if (
-                field_type in (FieldType.MULTITOKEN, FieldType.SEMANTIC_MULTITOKEN)
-                and tokenizer is None
-            ):
-                raise ValueError(
-                    f"{attr=} has {field_type=} but {self.tokenizer=}. Please set a tokenizer."
-                )
 
             field_type_to_numericalizer_cls = {
                 FieldType.STRING: StringNumericalizer,
