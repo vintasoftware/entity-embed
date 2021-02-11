@@ -60,6 +60,8 @@ def default_tokenizer(val):
 
 
 class StringNumericalizer:
+    is_multitoken = False
+
     def __init__(self, attr, numericalize_info):
         self.attr = attr
         self.alphabet = numericalize_info.alphabet
@@ -77,11 +79,12 @@ class StringNumericalizer:
         if len(ord_encoded_val) > 0:
             encoded_arr[ord_encoded_val, range(len(ord_encoded_val))] = 1.0
         t = torch.from_numpy(encoded_arr)
-        token_length = 1 if val != "" else 0
-        return t, token_length
+        return t
 
 
 class SemanticStringNumericalizer:
+    is_multitoken = False
+
     def __init__(self, attr, numericalize_info):
         self.attr = attr
         self.vocab = numericalize_info.vocab
@@ -90,11 +93,12 @@ class SemanticStringNumericalizer:
         # encoded_arr is a lookup_tensor like in
         # https://pytorch.org/tutorials/beginner/nlp/word_embeddings_tutorial.html
         t = torch.tensor(self.vocab[val], dtype=torch.long)
-        token_length = 1 if val != "" else 0
-        return t, token_length
+        return t
 
 
 class MultitokenNumericalizer:
+    is_multitoken = True
+
     def __init__(self, attr, numericalize_info):
         self.attr = attr
         self.tokenizer = numericalize_info.tokenizer
@@ -104,16 +108,16 @@ class MultitokenNumericalizer:
 
     def build_tensor(self, val):
         val_tokens = self.tokenizer(val)
-        token_t_list = []
+        t_list = []
         for v in val_tokens:
             if v != "":
-                t, __ = self.string_numericalizer.build_tensor(v)
-                token_t_list.append(t)
+                t = self.string_numericalizer.build_tensor(v)
+                t_list.append(t)
 
-        if len(token_t_list) > 0:
-            return torch.stack(token_t_list), len(token_t_list)
+        if len(t_list) > 0:
+            return torch.stack(t_list), len(t_list)
         else:
-            t, __ = self.string_numericalizer.build_tensor("")
+            t = self.string_numericalizer.build_tensor("")
             return torch.stack([t]), 0
 
 
@@ -216,18 +220,20 @@ class RowNumericalizer:
                 attr=attr, numericalize_info=self.attr_info_dict[attr]
             )
 
-    def build_tensor_dict(self, row, log_empty_vals=False):
+    def build_tensor_dict(self, row):
         tensor_dict = {}
-        tensor_lengths_dict = {}
+        sequence_length_dict = {}
 
         for attr, numericalizer in self.attr_to_numericalizer.items():
-            if not row[attr] and log_empty_vals:
-                logger.warning(f"Found empty {attr=} at row={row}")
-            t, t_len = numericalizer.build_tensor(row[attr])
+            if numericalizer.is_multitoken:
+                t, sequence_length = numericalizer.build_tensor(row[attr])
+            else:
+                t = numericalizer.build_tensor(row[attr])
+                sequence_length = None
             tensor_dict[attr] = t
-            tensor_lengths_dict[attr] = t_len
+            sequence_length_dict[attr] = sequence_length
 
-        return tensor_dict, tensor_lengths_dict
+        return tensor_dict, sequence_length_dict
 
     def build_attr_subset_numericalizer(self, attr_subset):
         new_row_numericalizer = RowNumericalizer(attr_info_dict={})

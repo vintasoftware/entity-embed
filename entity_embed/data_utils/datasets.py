@@ -12,23 +12,21 @@ from . import utils
 logger = logging.getLogger(__name__)
 
 
-def _collate_tensor_dict(row_batch, row_numericalizer, log_empty_vals):
+def _collate_tensor_dict(row_batch, row_numericalizer):
     tensor_dict = {attr: [] for attr in row_numericalizer.attr_info_dict.keys()}
-    tensor_lengths_dict = {attr: [] for attr in row_numericalizer.attr_info_dict.keys()}
+    sequence_length_dict = {attr: [] for attr in row_numericalizer.attr_info_dict.keys()}
     for row in row_batch:
-        row_tensor_dict, row_tensor_lengths_dict = row_numericalizer.build_tensor_dict(
-            row, log_empty_vals=log_empty_vals
-        )
+        row_tensor_dict, row_sequence_length_dict = row_numericalizer.build_tensor_dict(row)
         for attr in row_numericalizer.attr_info_dict.keys():
             tensor_dict[attr].append(row_tensor_dict[attr])
-            tensor_lengths_dict[attr].append(row_tensor_lengths_dict[attr])
+            sequence_length_dict[attr].append(row_sequence_length_dict[attr])
 
     for attr, numericalize_info in row_numericalizer.attr_info_dict.items():
         if numericalize_info.is_multitoken:
             tensor_dict[attr] = nn.utils.rnn.pad_sequence(tensor_dict[attr], batch_first=True)
         else:
             tensor_dict[attr] = default_collate(tensor_dict[attr])
-    return tensor_dict, tensor_lengths_dict
+    return tensor_dict, sequence_length_dict
 
 
 class PairDataset(Dataset):
@@ -40,7 +38,6 @@ class PairDataset(Dataset):
         pos_pair_batch_size,
         neg_pair_batch_size,
         random_seed=42,
-        log_empty_vals=False,
     ):
         self.row_dict = row_dict
         self.pair_list = list(utils.row_dict_to_id_pairs(row_dict, cluster_attr))
@@ -48,7 +45,6 @@ class PairDataset(Dataset):
         self.cluster_dict = utils.row_dict_to_cluster_dict(row_dict, cluster_attr)
         self.row_numericalizer = row_numericalizer
         self.random = random.Random(random_seed)
-        self.log_empty_vals = log_empty_vals
 
         self.neg_batch_id_size = utils.pair_count_to_row_count(neg_pair_batch_size)
         actual_neg_pair_batch_size = (self.neg_batch_id_size * (self.neg_batch_id_size - 1)) // 2
@@ -84,16 +80,15 @@ class PairDataset(Dataset):
 
         id_batch = pos_id_batch | neg_id_batch
 
-        tensor_dict, tensor_lengths_dict = _collate_tensor_dict(
+        tensor_dict, sequence_length_dict = _collate_tensor_dict(
             row_batch=(self.row_dict[id_] for id_ in id_batch),
             row_numericalizer=self.row_numericalizer,
-            log_empty_vals=self.log_empty_vals,
         )
         label_batch = default_collate([self.id_to_cluster_id[id_] for id_ in id_batch])
 
         return (
             tensor_dict,
-            tensor_lengths_dict,
+            sequence_length_dict,
             label_batch,
         )
 
@@ -102,19 +97,17 @@ class PairDataset(Dataset):
 
 
 class RowDataset(Dataset):
-    def __init__(self, row_dict, row_numericalizer, batch_size, log_empty_vals=False):
+    def __init__(self, row_dict, row_numericalizer, batch_size):
         self.row_numericalizer = row_numericalizer
         self.row_list_batches = list(more_itertools.chunked(row_dict.values(), batch_size))
-        self.log_empty_vals = log_empty_vals
 
     def __getitem__(self, idx):
         row_batch = self.row_list_batches[idx]
-        tensor_dict, tensor_lengths_dict = _collate_tensor_dict(
+        tensor_dict, sequence_length_dict = _collate_tensor_dict(
             row_batch=row_batch,
             row_numericalizer=self.row_numericalizer,
-            log_empty_vals=self.log_empty_vals,
         )
-        return tensor_dict, tensor_lengths_dict
+        return tensor_dict, sequence_length_dict
 
     def __len__(self):
         return len(self.row_list_batches)

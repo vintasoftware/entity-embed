@@ -57,7 +57,6 @@ class DeduplicationDataModule(pl.LightningDataModule):
         valid_cluster_len,
         test_cluster_len,
         only_plural_clusters,
-        log_empty_vals=False,
         pair_loader_kwargs=None,
         row_loader_kwargs=None,
         random_seed=42,
@@ -73,7 +72,6 @@ class DeduplicationDataModule(pl.LightningDataModule):
         self.valid_cluster_len = valid_cluster_len
         self.test_cluster_len = test_cluster_len
         self.only_plural_clusters = only_plural_clusters
-        self.log_empty_vals = log_empty_vals
         self.pair_loader_kwargs = pair_loader_kwargs or {
             "num_workers": os.cpu_count(),
             "multiprocessing_context": "fork",
@@ -131,7 +129,6 @@ class DeduplicationDataModule(pl.LightningDataModule):
             pos_pair_batch_size=self.pos_pair_batch_size,
             neg_pair_batch_size=self.neg_pair_batch_size,
             random_seed=self.random_seed,
-            log_empty_vals=self.log_empty_vals,
         )
         train_pair_loader = torch.utils.data.DataLoader(
             train_pair_dataset,
@@ -185,7 +182,6 @@ class LinkageDataModule(DeduplicationDataModule):
         only_plural_clusters,
         left_id_set,
         right_id_set,
-        log_empty_vals=False,
         pair_loader_kwargs=None,
         row_loader_kwargs=None,
         random_seed=42,
@@ -201,7 +197,6 @@ class LinkageDataModule(DeduplicationDataModule):
             valid_cluster_len=valid_cluster_len,
             test_cluster_len=test_cluster_len,
             only_plural_clusters=only_plural_clusters,
-            log_empty_vals=log_empty_vals,
             pair_loader_kwargs=pair_loader_kwargs,
             row_loader_kwargs=row_loader_kwargs,
             random_seed=random_seed,
@@ -306,8 +301,8 @@ class EntityEmbed(pl.LightningModule):
         # in validation_epoch_end
         self._datamodule = datamodule
 
-    def forward(self, tensor_dict, tensor_lengths_dict):
-        return self.blocker_net(tensor_dict, tensor_lengths_dict)
+    def forward(self, tensor_dict, sequence_length_dict):
+        return self.blocker_net(tensor_dict, sequence_length_dict)
 
     def _warn_if_empty_indices_tuple(self, indices_tuple, batch_idx):
         with torch.no_grad():
@@ -315,8 +310,8 @@ class EntityEmbed(pl.LightningModule):
                 logger.warning(f"Found empty indices_tuple at {self.current_epoch=}, {batch_idx=}")
 
     def training_step(self, batch, batch_idx):
-        tensor_dict, tensor_lengths_dict, labels = batch
-        embeddings = self.blocker_net(tensor_dict, tensor_lengths_dict)
+        tensor_dict, sequence_length_dict, labels = batch
+        embeddings = self.blocker_net(tensor_dict, sequence_length_dict)
         if self.miner:
             indices_tuple = self.miner(embeddings, labels)
             self._warn_if_empty_indices_tuple(indices_tuple, batch_idx)
@@ -337,8 +332,8 @@ class EntityEmbed(pl.LightningModule):
         )
 
     def validation_step(self, batch, batch_idx):
-        tensor_dict, tensor_lengths_dict = batch
-        embedding_batch = self.blocker_net(tensor_dict, tensor_lengths_dict)
+        tensor_dict, sequence_length_dict = batch
+        embedding_batch = self.blocker_net(tensor_dict, sequence_length_dict)
         return embedding_batch
 
     def _evaluate_with_ann(self, set_name, row_dict, embedding_batch_list, true_pair_set):
@@ -379,8 +374,8 @@ class EntityEmbed(pl.LightningModule):
         )
 
     def test_step(self, batch, batch_idx):
-        tensor_dict, tensor_lengths_dict = batch
-        return self.blocker_net(tensor_dict, tensor_lengths_dict)
+        tensor_dict, sequence_length_dict = batch
+        return self.blocker_net(tensor_dict, sequence_length_dict)
 
     def test_epoch_end(self, outputs):
         self._evaluate_with_ann(
@@ -432,9 +427,9 @@ class EntityEmbed(pl.LightningModule):
                 total=len(row_loader), desc="# batch embedding", disable=not show_progress
             ) as p_bar:
                 vector_list = []
-                for i, (tensor_dict, tensor_lengths_dict) in enumerate(row_loader):
+                for i, (tensor_dict, sequence_length_dict) in enumerate(row_loader):
                     tensor_dict = {attr: t.to(device) for attr, t in tensor_dict.items()}
-                    embeddings = blocker_net(tensor_dict, tensor_lengths_dict)
+                    embeddings = blocker_net(tensor_dict, sequence_length_dict)
                     vector_list.extend(v.data.numpy() for v in embeddings.cpu().unbind())
                     p_bar.update(1)
 

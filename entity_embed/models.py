@@ -111,7 +111,7 @@ class MaskedAttention(nn.Module):
 
         self.attention_weights = nn.Parameter(torch.FloatTensor(embedding_size).uniform_(-0.1, 0.1))
 
-    def forward(self, h, x, tensor_lengths, **kwargs):
+    def forward(self, h, x, sequence_lengths, **kwargs):
         logits = h.matmul(self.attention_weights)
         scores = (logits - logits.max()).exp()
 
@@ -119,7 +119,7 @@ class MaskedAttention(nn.Module):
         # See e.g. https://discuss.pytorch.org/t/self-attention-on-words-and-masking/5671/5
         max_len = h.size(1)
         idxes = torch.arange(0, max_len, out=torch.LongTensor(max_len)).unsqueeze(0)
-        mask = Variable((idxes < torch.LongTensor(tensor_lengths).unsqueeze(1)).float())
+        mask = Variable((idxes < torch.LongTensor(sequence_lengths).unsqueeze(1)).float())
         if scores.data.is_cuda:
             mask = mask.cuda()
 
@@ -152,23 +152,23 @@ class MultitokenAttentionEmbed(nn.Module):
         else:
             self.attention_net = Attention(embedding_size=embedding_net.embedding_size)
 
-    def forward(self, x, tensor_lengths, **kwargs):
+    def forward(self, x, sequence_lengths, **kwargs):
         x_tokens = x.unbind(dim=1)
         x_tokens = [self.embedding_net(x) for x in x_tokens]
         x = torch.stack(x_tokens, dim=1)
 
         # Pytorch can't handle zero length sequences,
-        # but attention_net will use the actual tensor_lengths with zeros
+        # but attention_net will use the actual sequence_lengths with zeros
         # https://github.com/pytorch/pytorch/issues/4582
         # https://github.com/pytorch/pytorch/issues/50192
-        tensor_lengths_no_zero = [max(l, 1) for l in tensor_lengths]
+        sequence_lengths_no_zero = [max(l, 1) for l in sequence_lengths]
 
         packed_x = nn.utils.rnn.pack_padded_sequence(
-            x, tensor_lengths_no_zero, batch_first=True, enforce_sorted=False
+            x, sequence_lengths_no_zero, batch_first=True, enforce_sorted=False
         )
         packed_h, __ = self.gru(packed_x)
         h, __ = nn.utils.rnn.pad_packed_sequence(packed_h, batch_first=True)
-        return self.attention_net(h, x, tensor_lengths=tensor_lengths)
+        return self.attention_net(h, x, sequence_lengths=sequence_lengths)
 
 
 class MultitokenAverageEmbed(nn.Module):
@@ -178,7 +178,7 @@ class MultitokenAverageEmbed(nn.Module):
         self.embedding_net = embedding_net
         self.use_mask = use_mask
 
-    def forward(self, x, tensor_lengths, **kwargs):
+    def forward(self, x, sequence_lengths, **kwargs):
         max_len = x.size(1)
         scores = torch.full((max_len,), 1 / max_len)
         if x.data.is_cuda:
@@ -192,7 +192,7 @@ class MultitokenAverageEmbed(nn.Module):
             # Compute a mask for the attention on the padded sequences
             # See e.g. https://discuss.pytorch.org/t/self-attention-on-words-and-masking/5671/5
             idxes = torch.arange(0, max_len, out=torch.LongTensor(max_len)).unsqueeze(0)
-            mask = Variable((idxes < torch.LongTensor(tensor_lengths).unsqueeze(1)).float())
+            mask = Variable((idxes < torch.LongTensor(sequence_lengths).unsqueeze(1)).float())
             if x.data.is_cuda:
                 mask = mask.cuda()
 
@@ -284,12 +284,12 @@ class BlockerNet(nn.Module):
 
         self.tuple_signature = TupleSignature(attr_info_dict)
 
-    def forward(self, tensor_dict, tensor_lengths_dict):
+    def forward(self, tensor_dict, sequence_length_dict):
         attr_embedding_dict = {}
 
         for attr, embedding_net in self.embedding_net_dict.items():
             attr_embedding = embedding_net(
-                tensor_dict[attr], tensor_lengths=tensor_lengths_dict[attr]
+                tensor_dict[attr], sequence_lengths=sequence_length_dict[attr]
             )
             attr_embedding_dict[attr] = attr_embedding
 
