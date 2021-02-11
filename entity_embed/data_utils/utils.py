@@ -107,6 +107,17 @@ def split_clusters_to_row_dicts(
     return train_row_dict, valid_row_dict, test_row_dict
 
 
+def dict_filtered_from_id_set(d, id_set):
+    return {id_: row for id_, row in d.items() if id_ in id_set}
+
+
+def separate_dict_left_right(d, left_id_set, right_id_set):
+    return (
+        dict_filtered_from_id_set(d, left_id_set),
+        dict_filtered_from_id_set(d, right_id_set),
+    )
+
+
 def pair_count_to_row_count(pair_count):
     # positive solution of n for y of y = (n * (n - 1)) / 2
     # where y is pair_count and n is row_count
