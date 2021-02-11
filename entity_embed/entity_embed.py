@@ -12,8 +12,10 @@ from tqdm.auto import tqdm
 from .data_utils.datasets import PairDataset, RowDataset
 from .data_utils.numericalizer import NumericalizeInfo, RowNumericalizer
 from .data_utils.utils import (
+    Enumerator,
     cluster_dict_to_id_pairs,
     count_cluster_dict_pairs,
+    id_pairs_to_cluster_mapping_and_dict,
     row_dict_to_cluster_dict,
     separate_dict_left_right,
     split_clusters,
@@ -225,6 +227,93 @@ class LinkageDataModule(DeduplicationDataModule):
     def separate_dict_left_right(self, d):
         return separate_dict_left_right(
             d, left_id_set=self.left_id_set, right_id_set=self.right_id_set
+        )
+
+
+class PreSplitLinkageDataModule(LinkageDataModule):
+    def __init__(
+        self,
+        row_dict,
+        cluster_attr,
+        row_numericalizer,
+        pos_pair_batch_size,
+        neg_pair_batch_size,
+        row_batch_size,
+        train_true_pair_set,
+        valid_true_pair_set,
+        test_true_pair_set,
+        pair_loader_kwargs=None,
+        row_loader_kwargs=None,
+        random_seed=42,
+    ):
+        left_id_set = {
+            pair[0]
+            for pair_set in (train_true_pair_set, valid_true_pair_set, test_true_pair_set)
+            for pair in pair_set
+        }
+        right_id_set = {
+            pair[1]
+            for pair_set in (train_true_pair_set, valid_true_pair_set, test_true_pair_set)
+            for pair in pair_set
+        }
+
+        super().__init__(
+            row_dict=row_dict,
+            cluster_attr=cluster_attr,
+            row_numericalizer=row_numericalizer,
+            pos_pair_batch_size=pos_pair_batch_size,
+            neg_pair_batch_size=neg_pair_batch_size,
+            row_batch_size=row_batch_size,
+            train_cluster_len=None,
+            valid_cluster_len=None,
+            test_cluster_len=None,
+            only_plural_clusters=False,
+            left_id_set=left_id_set,
+            right_id_set=right_id_set,
+            pair_loader_kwargs=pair_loader_kwargs,
+            row_loader_kwargs=row_loader_kwargs,
+            random_seed=random_seed,
+        )
+
+        self.train_true_pair_set = train_true_pair_set
+        self.valid_true_pair_set = valid_true_pair_set
+        self.test_true_pair_set = test_true_pair_set
+
+    def setup(self, stage=None):
+        train_cluster_mapping, train_cluster_dict = id_pairs_to_cluster_mapping_and_dict(
+            self.train_true_pair_set
+        )
+        valid_cluster_mapping, valid_cluster_dict = id_pairs_to_cluster_mapping_and_dict(
+            self.valid_true_pair_set
+        )
+        test_cluster_mapping, test_cluster_dict = id_pairs_to_cluster_mapping_and_dict(
+            self.test_true_pair_set
+        )
+
+        cluster_mapping = {}
+        cluster_enumerator = Enumerator()
+        for split_name, part_cluster_mapping in [
+            ("train", train_cluster_mapping),
+            ("valid", valid_cluster_mapping),
+            ("test", test_cluster_mapping),
+        ]:
+            for id_, cluster_id in part_cluster_mapping.items():
+                cluster_mapping[id_] = cluster_enumerator[f"{split_name}-{cluster_id}"]
+
+        logger.info("Train pair count: %s", len(self.train_true_pair_set))
+        logger.info("Valid pair count: %s", len(self.valid_true_pair_set))
+        logger.info("Test pair count: %s", len(self.test_true_pair_set))
+
+        new_cluster_id = max(cluster_mapping.values()) + 1
+        for row in self.row_dict.values():
+            row[self.cluster_attr] = cluster_mapping.get(row["id"], new_cluster_id)
+            new_cluster_id += 1
+
+        self.train_row_dict, self.valid_row_dict, self.test_row_dict = split_clusters_to_row_dicts(
+            row_dict=self.row_dict,
+            train_cluster_dict=train_cluster_dict,
+            valid_cluster_dict=valid_cluster_dict,
+            test_cluster_dict=test_cluster_dict,
         )
 
 

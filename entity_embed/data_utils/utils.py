@@ -12,6 +12,10 @@ from .union_find import UnionFind
 logger = logging.getLogger(__name__)
 
 
+def Enumerator(start=0, initial=()):
+    return defaultdict(itertools.count(start).__next__, initial)
+
+
 def row_dict_to_cluster_dict(row_dict, cluster_attr):
     cluster_dict = defaultdict(list)
     for id_, row in row_dict.items():
