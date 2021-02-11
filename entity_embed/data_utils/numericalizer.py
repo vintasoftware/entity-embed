@@ -234,17 +234,3 @@ class RowNumericalizer:
             sequence_length_dict[attr] = sequence_length
 
         return tensor_dict, sequence_length_dict
-
-    def build_attr_subset_numericalizer(self, attr_subset):
-        new_row_numericalizer = RowNumericalizer(attr_info_dict={})
-        new_row_numericalizer.attr_info_dict = {
-            attr: attr_info
-            for attr, attr_info in self.attr_info_dict.items()
-            if attr in attr_subset
-        }
-        new_row_numericalizer.attr_to_numericalizer = {
-            attr: numericalizer
-            for attr, numericalizer in self.attr_to_numericalizer.items()
-            if attr in attr_subset
-        }
-        return new_row_numericalizer
