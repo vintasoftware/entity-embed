@@ -11,6 +11,8 @@ class StringEmbedCNN(nn.Module):
     PyTorch nn.Module for embedding strings for fast edit distance computation,
     based on "Convolutional Embedding for Edit Distance (SIGIR 20)"
     (code: https://github.com/xinyandai/string-embed)
+
+    The tensor shape expected here is produced by StringNumericalizer.
     """
 
     def __init__(self, numericalize_info, n_channels, embedding_size, embed_dropout_p):

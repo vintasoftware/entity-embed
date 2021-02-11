@@ -74,6 +74,7 @@ class StringNumericalizer:
     def build_tensor(self, val):
         # encoded_arr is a one hot encoded bidimensional tensor
         # where the rows represent characters and the columns positions in the string.
+        # This is the shape expected by StringEmbedCNN.
         ord_encoded_val = self._ord_encode(val)
         encoded_arr = np.zeros((len(self.alphabet), self.max_str_len), dtype=np.float32)
         if len(ord_encoded_val) > 0:
