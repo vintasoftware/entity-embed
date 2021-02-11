@@ -3,6 +3,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 
+from .data_utils.numericalizer import FieldType
+
 
 class StringEmbedCNN(nn.Module):
     """
@@ -11,11 +13,11 @@ class StringEmbedCNN(nn.Module):
     (code: https://github.com/xinyandai/string-embed)
     """
 
-    def __init__(self, one_hot_encoding_info, n_channels, embedding_size, embed_dropout_p):
+    def __init__(self, numericalize_info, n_channels, embedding_size, embed_dropout_p):
         super().__init__()
 
-        self.alphabet_len = len(one_hot_encoding_info.alphabet)
-        self.max_str_len = one_hot_encoding_info.max_str_len
+        self.alphabet_len = len(numericalize_info.alphabet)
+        self.max_str_len = numericalize_info.max_str_len
         self.n_channels = n_channels
         self.embedding_size = embedding_size
 
@@ -51,12 +53,12 @@ class StringEmbedCNN(nn.Module):
 
 
 class SemanticEmbedNet(nn.Module):
-    def __init__(self, one_hot_encoding_info, embedding_size, embed_dropout_p):
+    def __init__(self, numericalize_info, embedding_size, embed_dropout_p):
         super().__init__()
 
         self.embedding_size = embedding_size
         self.dense_net = nn.Sequential(
-            nn.Embedding.from_pretrained(one_hot_encoding_info.vocab.vectors),
+            nn.Embedding.from_pretrained(numericalize_info.vocab.vectors),
             nn.Dropout(p=embed_dropout_p),
         )
 
@@ -239,23 +241,33 @@ class BlockerNet(nn.Module):
         self.embedding_size = embedding_size
         self.embedding_net_dict = nn.ModuleDict()
 
-        for attr, one_hot_encoding_info in attr_info_dict.items():
-            if one_hot_encoding_info.is_semantic:
-                embedding_net = SemanticEmbedNet(
-                    one_hot_encoding_info=one_hot_encoding_info,
-                    embedding_size=embedding_size,
-                    embed_dropout_p=embed_dropout_p,
-                )
-            else:
+        for attr, numericalize_info in attr_info_dict.items():
+            if numericalize_info.field_type in (
+                FieldType.STRING,
+                FieldType.MULTITOKEN,
+            ):
                 embedding_net = StringEmbedCNN(
-                    one_hot_encoding_info=one_hot_encoding_info,
+                    numericalize_info=numericalize_info,
                     n_channels=n_channels,
                     embedding_size=embedding_size,
                     embed_dropout_p=embed_dropout_p,
                 )
-            if not one_hot_encoding_info.is_multitoken:
-                self.embedding_net_dict[attr] = embedding_net
+            elif numericalize_info.field_type in (
+                FieldType.SEMANTIC_STRING,
+                FieldType.SEMANTIC_MULTITOKEN,
+            ):
+                embedding_net = SemanticEmbedNet(
+                    numericalize_info=numericalize_info,
+                    embedding_size=embedding_size,
+                    embed_dropout_p=embed_dropout_p,
+                )
             else:
+                raise ValueError(f"Unexpected {numericalize_info.field_type=}")
+
+            if numericalize_info.field_type in (
+                FieldType.MULTITOKEN,
+                FieldType.SEMANTIC_MULTITOKEN,
+            ):
                 if use_attention:
                     self.embedding_net_dict[attr] = MultitokenAttentionEmbed(
                         embedding_net, use_mask=use_mask
@@ -264,6 +276,11 @@ class BlockerNet(nn.Module):
                     self.embedding_net_dict[attr] = MultitokenAverageEmbed(
                         embedding_net, use_mask=use_mask
                     )
+            elif numericalize_info.field_type in (
+                FieldType.STRING,
+                FieldType.SEMANTIC_STRING,
+            ):
+                self.embedding_net_dict[attr] = embedding_net
 
         self.tuple_signature = TupleSignature(attr_info_dict)
 
