@@ -10,7 +10,7 @@ from pytorch_metric_learning.miners import BatchHardMiner
 from tqdm.auto import tqdm
 
 from .data_utils.datasets import PairDataset, RowDataset
-from .data_utils.one_hot_encoders import OneHotEncodingInfo, RowOneHotEncoder
+from .data_utils.numericalizer import NumericalizeInfo, RowNumericalizer
 from .data_utils.utils import (
     cluster_dict_to_id_pairs,
     count_cluster_dict_pairs,
@@ -25,20 +25,23 @@ from .models import BlockerNet
 logger = logging.getLogger(__name__)
 
 
-def build_row_encoder(attr_info_dict, row_dict=None):
-    # Fix OneHotEncodingInfo from dicts and initialize RowOneHotEncoder.
-    for attr, one_hot_encoding_info in list(attr_info_dict.items()):
-        if not one_hot_encoding_info:
+def build_row_numericalizer(attr_info_dict, row_dict=None):
+    # Fix NumericalizeInfo from dicts and initialize RowNumericalizer.
+    for attr, numericalize_info in list(attr_info_dict.items()):
+        if not numericalize_info:
             raise ValueError(
-                f'Please set the value of "{attr}" in attr_info_dict, '
-                f"found {one_hot_encoding_info}"
+                f'Please set the value of "{attr}" in attr_info_dict, {numericalize_info}'
             )
-        if not isinstance(one_hot_encoding_info, OneHotEncodingInfo):
-            attr_info_dict[attr] = OneHotEncodingInfo(**one_hot_encoding_info)
+        if not isinstance(numericalize_info, NumericalizeInfo):
+            numericalize_info["tokenizer"] = numericalize_info.get("tokenizer")
+            numericalize_info["alphabet"] = numericalize_info.get("alphabet")
+            numericalize_info["max_str_len"] = numericalize_info.get("max_str_len")
+            numericalize_info["vocab"] = numericalize_info.get("vocab")
+            attr_info_dict[attr] = NumericalizeInfo(**numericalize_info)
 
-    # For now on, one must use row_encoder instead of attr_info_dict,
-    # because RowOneHotEncoder fills None values of alphabet and max_str_len.
-    return RowOneHotEncoder(attr_info_dict=attr_info_dict, row_dict=row_dict)
+    # For now on, one must use row_numericalizer instead of attr_info_dict,
+    # because RowNumericalizer fills None values of alphabet and max_str_len.
+    return RowNumericalizer(attr_info_dict=attr_info_dict, row_dict=row_dict)
 
 
 class DeduplicationDataModule(pl.LightningDataModule):
@@ -46,7 +49,7 @@ class DeduplicationDataModule(pl.LightningDataModule):
         self,
         row_dict,
         cluster_attr,
-        row_encoder,
+        row_numericalizer,
         pos_pair_batch_size,
         neg_pair_batch_size,
         row_batch_size,
@@ -54,7 +57,6 @@ class DeduplicationDataModule(pl.LightningDataModule):
         valid_cluster_len,
         test_cluster_len,
         only_plural_clusters,
-        log_empty_vals=False,
         pair_loader_kwargs=None,
         row_loader_kwargs=None,
         random_seed=42,
@@ -62,7 +64,7 @@ class DeduplicationDataModule(pl.LightningDataModule):
         super().__init__()
         self.row_dict = row_dict
         self.cluster_attr = cluster_attr
-        self.row_encoder = row_encoder
+        self.row_numericalizer = row_numericalizer
         self.pos_pair_batch_size = pos_pair_batch_size
         self.neg_pair_batch_size = neg_pair_batch_size
         self.row_batch_size = row_batch_size
@@ -70,7 +72,6 @@ class DeduplicationDataModule(pl.LightningDataModule):
         self.valid_cluster_len = valid_cluster_len
         self.test_cluster_len = test_cluster_len
         self.only_plural_clusters = only_plural_clusters
-        self.log_empty_vals = log_empty_vals
         self.pair_loader_kwargs = pair_loader_kwargs or {
             "num_workers": os.cpu_count(),
             "multiprocessing_context": "fork",
@@ -124,11 +125,10 @@ class DeduplicationDataModule(pl.LightningDataModule):
         train_pair_dataset = PairDataset(
             row_dict=self.train_row_dict,
             cluster_attr=self.cluster_attr,
-            row_encoder=self.row_encoder,
+            row_numericalizer=self.row_numericalizer,
             pos_pair_batch_size=self.pos_pair_batch_size,
             neg_pair_batch_size=self.neg_pair_batch_size,
             random_seed=self.random_seed,
-            log_empty_vals=self.log_empty_vals,
         )
         train_pair_loader = torch.utils.data.DataLoader(
             train_pair_dataset,
@@ -141,7 +141,7 @@ class DeduplicationDataModule(pl.LightningDataModule):
     def val_dataloader(self):
         valid_row_dataset = RowDataset(
             row_dict=self.valid_row_dict,
-            row_encoder=self.row_encoder,
+            row_numericalizer=self.row_numericalizer,
             batch_size=self.row_batch_size,
         )
         valid_row_loader = torch.utils.data.DataLoader(
@@ -155,7 +155,7 @@ class DeduplicationDataModule(pl.LightningDataModule):
     def test_dataloader(self):
         test_row_dataset = RowDataset(
             row_dict=self.test_row_dict,
-            row_encoder=self.row_encoder,
+            row_numericalizer=self.row_numericalizer,
             batch_size=self.row_batch_size,
         )
         test_row_loader = torch.utils.data.DataLoader(
@@ -172,7 +172,7 @@ class LinkageDataModule(DeduplicationDataModule):
         self,
         row_dict,
         cluster_attr,
-        row_encoder,
+        row_numericalizer,
         pos_pair_batch_size,
         neg_pair_batch_size,
         row_batch_size,
@@ -182,7 +182,6 @@ class LinkageDataModule(DeduplicationDataModule):
         only_plural_clusters,
         left_id_set,
         right_id_set,
-        log_empty_vals=False,
         pair_loader_kwargs=None,
         row_loader_kwargs=None,
         random_seed=42,
@@ -190,7 +189,7 @@ class LinkageDataModule(DeduplicationDataModule):
         super().__init__(
             row_dict=row_dict,
             cluster_attr=cluster_attr,
-            row_encoder=row_encoder,
+            row_numericalizer=row_numericalizer,
             pos_pair_batch_size=pos_pair_batch_size,
             neg_pair_batch_size=neg_pair_batch_size,
             row_batch_size=row_batch_size,
@@ -198,7 +197,6 @@ class LinkageDataModule(DeduplicationDataModule):
             valid_cluster_len=valid_cluster_len,
             test_cluster_len=test_cluster_len,
             only_plural_clusters=only_plural_clusters,
-            log_empty_vals=log_empty_vals,
             pair_loader_kwargs=pair_loader_kwargs,
             row_loader_kwargs=row_loader_kwargs,
             random_seed=random_seed,
@@ -252,8 +250,8 @@ class EntityEmbed(pl.LightningModule):
         index_search_kwargs=None,
     ):
         super().__init__()
-        self.row_encoder = datamodule.row_encoder
-        self.attr_info_dict = self.row_encoder.attr_info_dict
+        self.row_numericalizer = datamodule.row_numericalizer
+        self.attr_info_dict = self.row_numericalizer.attr_info_dict
         self.n_channels = n_channels
         self.embedding_size = embedding_size
         self.embed_dropout_p = embed_dropout_p
@@ -303,8 +301,8 @@ class EntityEmbed(pl.LightningModule):
         # in validation_epoch_end
         self._datamodule = datamodule
 
-    def forward(self, tensor_dict, tensor_lengths_dict):
-        return self.blocker_net(tensor_dict, tensor_lengths_dict)
+    def forward(self, tensor_dict, sequence_length_dict):
+        return self.blocker_net(tensor_dict, sequence_length_dict)
 
     def _warn_if_empty_indices_tuple(self, indices_tuple, batch_idx):
         with torch.no_grad():
@@ -312,8 +310,8 @@ class EntityEmbed(pl.LightningModule):
                 logger.warning(f"Found empty indices_tuple at {self.current_epoch=}, {batch_idx=}")
 
     def training_step(self, batch, batch_idx):
-        tensor_dict, tensor_lengths_dict, labels = batch
-        embeddings = self.blocker_net(tensor_dict, tensor_lengths_dict)
+        tensor_dict, sequence_length_dict, labels = batch
+        embeddings = self.blocker_net(tensor_dict, sequence_length_dict)
         if self.miner:
             indices_tuple = self.miner(embeddings, labels)
             self._warn_if_empty_indices_tuple(indices_tuple, batch_idx)
@@ -334,8 +332,8 @@ class EntityEmbed(pl.LightningModule):
         )
 
     def validation_step(self, batch, batch_idx):
-        tensor_dict, tensor_lengths_dict = batch
-        embedding_batch = self.blocker_net(tensor_dict, tensor_lengths_dict)
+        tensor_dict, sequence_length_dict = batch
+        embedding_batch = self.blocker_net(tensor_dict, sequence_length_dict)
         return embedding_batch
 
     def _evaluate_with_ann(self, set_name, row_dict, embedding_batch_list, true_pair_set):
@@ -376,8 +374,8 @@ class EntityEmbed(pl.LightningModule):
         )
 
     def test_step(self, batch, batch_idx):
-        tensor_dict, tensor_lengths_dict = batch
-        return self.blocker_net(tensor_dict, tensor_lengths_dict)
+        tensor_dict, sequence_length_dict = batch
+        return self.blocker_net(tensor_dict, sequence_length_dict)
 
     def test_epoch_end(self, outputs):
         self._evaluate_with_ann(
@@ -411,7 +409,7 @@ class EntityEmbed(pl.LightningModule):
                 device = torch.device("cpu")
 
         row_dataset = RowDataset(
-            row_encoder=self.row_encoder, row_dict=row_dict, batch_size=batch_size
+            row_numericalizer=self.row_numericalizer, row_dict=row_dict, batch_size=batch_size
         )
         row_loader = torch.utils.data.DataLoader(
             row_dataset,
@@ -429,9 +427,9 @@ class EntityEmbed(pl.LightningModule):
                 total=len(row_loader), desc="# batch embedding", disable=not show_progress
             ) as p_bar:
                 vector_list = []
-                for i, (tensor_dict, tensor_lengths_dict) in enumerate(row_loader):
+                for i, (tensor_dict, sequence_length_dict) in enumerate(row_loader):
                     tensor_dict = {attr: t.to(device) for attr, t in tensor_dict.items()}
-                    embeddings = blocker_net(tensor_dict, tensor_lengths_dict)
+                    embeddings = blocker_net(tensor_dict, sequence_length_dict)
                     vector_list.extend(v.data.numpy() for v in embeddings.cpu().unbind())
                     p_bar.update(1)
 
