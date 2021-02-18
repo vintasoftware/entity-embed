@@ -96,6 +96,58 @@ class PairDataset(Dataset):
         return len(self.pos_id_list_batches)
 
 
+class PairwiseDataset(Dataset):
+    def __init__(
+        self,
+        row_dict,
+        true_pos_pair_set,
+        true_neg_pair_set,
+        row_numericalizer,
+        pair_batch_size,
+        random_seed=42,
+    ):
+        self.row_dict = row_dict
+        pair_list = [
+            (pair, int(pair in true_pos_pair_set))
+            for pair in list(true_pos_pair_set | true_neg_pair_set)
+        ]
+        self.row_numericalizer = row_numericalizer
+        self.random = random.Random(random_seed)
+
+        self.random.shuffle(pair_list)
+        self.pair_batches = list(more_itertools.chunked(pair_list, pair_batch_size))
+
+    def __getitem__(self, idx):
+        left_id_list = []
+        right_id_list = []
+        target_list = []
+        for (left_id, right_id), target in self.pair_batches[idx]:
+            left_id_list.append(left_id)
+            right_id_list.append(right_id)
+            target_list.append(target)
+
+        left_tensor_dict, left_sequence_length_dict = _collate_tensor_dict(
+            row_batch=(self.row_dict[id_] for id_ in left_id_list),
+            row_numericalizer=self.row_numericalizer,
+        )
+        right_tensor_dict, right_sequence_length_dict = _collate_tensor_dict(
+            row_batch=(self.row_dict[id_] for id_ in right_id_list),
+            row_numericalizer=self.row_numericalizer,
+        )
+        target = default_collate(target_list)
+
+        return (
+            left_tensor_dict,
+            left_sequence_length_dict,
+            right_tensor_dict,
+            right_sequence_length_dict,
+            target,
+        )
+
+    def __len__(self):
+        return len(self.pair_batches)
+
+
 class RowDataset(Dataset):
     def __init__(self, row_dict, row_numericalizer, batch_size):
         self.row_numericalizer = row_numericalizer

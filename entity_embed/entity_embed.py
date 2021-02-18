@@ -1,3 +1,4 @@
+import itertools
 import logging
 import os
 
@@ -9,7 +10,7 @@ from pytorch_metric_learning.losses import NTXentLoss
 from pytorch_metric_learning.miners import BatchHardMiner
 from tqdm.auto import tqdm
 
-from .data_utils.datasets import PairDataset, RowDataset
+from .data_utils.datasets import PairDataset, PairwiseDataset, RowDataset
 from .data_utils.numericalizer import NumericalizeInfo, RowNumericalizer
 from .data_utils.utils import (
     Enumerator,
@@ -230,83 +231,132 @@ class LinkageDataModule(DeduplicationDataModule):
         )
 
 
-class PreSplitLinkageDataModule(LinkageDataModule):
+class PairwiseDataModule(pl.LightningDataModule):
     def __init__(
         self,
         row_dict,
-        cluster_attr,
         row_numericalizer,
-        pos_pair_batch_size,
-        neg_pair_batch_size,
+        pair_batch_size,
         row_batch_size,
-        train_true_pair_set,
-        valid_true_pair_set,
+        train_true_pos_pair_set,
+        train_true_neg_pair_set,
+        valid_true_pos_pair_set,
+        valid_true_neg_pair_set,
+        test_true_pos_pair_set,
+        test_true_neg_pair_set,
         pair_loader_kwargs=None,
         row_loader_kwargs=None,
         random_seed=42,
     ):
-        left_id_set = {
-            pair[0] for pair_set in (train_true_pair_set, valid_true_pair_set) for pair in pair_set
-        }
-        right_id_set = {
-            pair[1] for pair_set in (train_true_pair_set, valid_true_pair_set) for pair in pair_set
-        }
+        super().__init__()
 
-        super().__init__(
-            row_dict=row_dict,
-            cluster_attr=cluster_attr,
-            row_numericalizer=row_numericalizer,
-            pos_pair_batch_size=pos_pair_batch_size,
-            neg_pair_batch_size=neg_pair_batch_size,
-            row_batch_size=row_batch_size,
-            train_cluster_len=None,
-            valid_cluster_len=None,
-            test_cluster_len=None,
-            only_plural_clusters=False,
-            left_id_set=left_id_set,
-            right_id_set=right_id_set,
-            pair_loader_kwargs=pair_loader_kwargs,
-            row_loader_kwargs=row_loader_kwargs,
-            random_seed=random_seed,
-        )
+        self.row_dict = row_dict
+        self.row_numericalizer = row_numericalizer
+        self.pair_batch_size = pair_batch_size
+        self.row_batch_size = row_batch_size
+        self.pair_loader_kwargs = pair_loader_kwargs or {
+            "num_workers": os.cpu_count(),
+            "multiprocessing_context": "fork",
+        }
+        self.row_loader_kwargs = row_loader_kwargs or {
+            "num_workers": os.cpu_count(),
+            "multiprocessing_context": "fork",
+        }
+        self.random_seed = random_seed
 
-        self.train_true_pair_set = train_true_pair_set
-        self.valid_true_pair_set = valid_true_pair_set
+        self.train_true_pos_pair_set = train_true_pos_pair_set
+        self.train_true_neg_pair_set = train_true_neg_pair_set
+        self.valid_true_pos_pair_set = valid_true_pos_pair_set
+        self.valid_true_neg_pair_set = valid_true_neg_pair_set
+        self.test_true_pos_pair_set = test_true_pos_pair_set
+        self.test_true_neg_pair_set = test_true_neg_pair_set
+
+        all_pair_sets = [
+            train_true_pos_pair_set,
+            train_true_neg_pair_set,
+            valid_true_pos_pair_set,
+            valid_true_neg_pair_set,
+            test_true_pos_pair_set,
+            test_true_neg_pair_set,
+        ]
+        self.left_id_set = {pair[0] for pair_set in all_pair_sets for pair in pair_set}
+        self.right_id_set = {pair[1] for pair_set in all_pair_sets for pair in pair_set}
+        self.valid_true_pair_set = None
         self.test_true_pair_set = None
 
     def setup(self, stage=None):
-        train_cluster_mapping, train_cluster_dict = id_pairs_to_cluster_mapping_and_dict(
-            self.train_true_pair_set
+        if stage == "fit":
+            self.train_row_dict = {
+                id_: self.row_dict[id_]
+                for id_ in itertools.chain.from_iterable(
+                    self.train_true_pos_pair_set | self.train_true_neg_pair_set
+                )
+            }
+            self.valid_row_dict = {
+                id_: self.row_dict[id_]
+                for id_ in itertools.chain.from_iterable(
+                    self.valid_true_pos_pair_set | self.valid_true_neg_pair_set
+                )
+            }
+            self.valid_true_pair_set = self.valid_true_pos_pair_set
+        elif stage == "test":
+            self.test_row_dict = {
+                id_: self.row_dict[id_]
+                for id_ in itertools.chain.from_iterable(
+                    self.test_true_pos_pair_set | self.test_true_neg_pair_set
+                )
+            }
+            self.test_true_pair_set = self.test_true_pos_pair_set
+
+    def train_dataloader(self):
+        train_pairwise_dataset = PairwiseDataset(
+            row_dict=self.train_row_dict,
+            true_pos_pair_set=self.train_true_pos_pair_set,
+            true_neg_pair_set=self.train_true_neg_pair_set,
+            row_numericalizer=self.row_numericalizer,
+            pair_batch_size=self.pair_batch_size,
+            random_seed=self.random_seed,
         )
-        valid_cluster_mapping, valid_cluster_dict = id_pairs_to_cluster_mapping_and_dict(
-            self.valid_true_pair_set
+        train_pairwise_loader = torch.utils.data.DataLoader(
+            train_pairwise_dataset,
+            batch_size=None,  # batch size is set on PairwiseDataset
+            shuffle=True,
+            **self.pair_loader_kwargs,
         )
+        return train_pairwise_loader
 
-        cluster_mapping = {}
-        cluster_enumerator = Enumerator()
-        for split_name, part_cluster_mapping in [
-            ("train", train_cluster_mapping),
-            ("valid", valid_cluster_mapping),
-        ]:
-            for id_, cluster_id in part_cluster_mapping.items():
-                cluster_mapping[id_] = cluster_enumerator[f"{split_name}-{cluster_id}"]
-
-        logger.info("Train pair count: %s", len(self.train_true_pair_set))
-        logger.info("Valid pair count: %s", len(self.valid_true_pair_set))
-
-        self.train_row_dict, self.valid_row_dict, self.test_row_dict = split_clusters_to_row_dicts(
-            row_dict=self.row_dict,
-            train_cluster_dict=train_cluster_dict,
-            valid_cluster_dict=valid_cluster_dict,
-            test_cluster_dict={},
+    def val_dataloader(self):
+        valid_row_dataset = RowDataset(
+            row_dict=self.valid_row_dict,
+            row_numericalizer=self.row_numericalizer,
+            batch_size=self.row_batch_size,
         )
+        valid_row_loader = torch.utils.data.DataLoader(
+            valid_row_dataset,
+            batch_size=None,  # batch size is set on RowDataset
+            shuffle=False,
+            **self.row_loader_kwargs,
+        )
+        return valid_row_loader
 
-        for part_row_dict, part_cluster_mapping in [
-            (self.train_row_dict, train_cluster_mapping),
-            (self.valid_row_dict, valid_cluster_mapping),
-        ]:
-            for id_, row in part_row_dict.items():
-                row[self.cluster_attr] = part_cluster_mapping[id_]
+    def test_dataloader(self):
+        test_row_dataset = RowDataset(
+            row_dict=self.test_row_dict,
+            row_numericalizer=self.row_numericalizer,
+            batch_size=self.row_batch_size,
+        )
+        test_row_loader = torch.utils.data.DataLoader(
+            test_row_dataset,
+            batch_size=None,  # batch size is set on RowDataset
+            shuffle=False,
+            **self.row_loader_kwargs,
+        )
+        return test_row_loader
+
+    def separate_dict_left_right(self, d):
+        return separate_dict_left_right(
+            d, left_id_set=self.left_id_set, right_id_set=self.right_id_set
+        )
 
 
 class EntityEmbed(pl.LightningModule):
@@ -576,6 +626,63 @@ class LinkageEmbed(EntityEmbed):
             vector_dict, left_id_set=left_id_set, right_id_set=right_id_set
         )
         return left_vector_dict, right_vector_dict
+
+
+class PairwiseLinkageEmbed(LinkageEmbed):
+    def __init__(
+        self,
+        datamodule,
+        n_channels=8,
+        embedding_size=128,
+        embed_dropout_p=0.2,
+        use_attention=True,
+        use_mask=False,
+        loss_cls=torch.nn.CosineEmbeddingLoss,
+        loss_kwargs={"margin": 0.5},
+        optimizer_cls=torch.optim.Adam,
+        learning_rate=0.001,
+        optimizer_kwargs=None,
+        ann_k=10,
+        sim_threshold_list=[0.3, 0.5, 0.7, 0.9],
+        index_build_kwargs=None,
+        index_search_kwargs=None,
+    ):
+        miner_cls = None
+        miner_kwargs = None
+        super().__init__(
+            datamodule=datamodule,
+            n_channels=n_channels,
+            embedding_size=embedding_size,
+            embed_dropout_p=embed_dropout_p,
+            use_attention=use_attention,
+            use_mask=use_mask,
+            loss_cls=loss_cls,
+            loss_kwargs=loss_kwargs,
+            miner_cls=miner_cls,
+            miner_kwargs=miner_kwargs,
+            optimizer_cls=optimizer_cls,
+            learning_rate=learning_rate,
+            optimizer_kwargs=optimizer_kwargs,
+            ann_k=ann_k,
+            sim_threshold_list=sim_threshold_list,
+            index_build_kwargs=index_build_kwargs,
+            index_search_kwargs=index_search_kwargs,
+        )
+
+    def training_step(self, batch, batch_idx):
+        (
+            left_tensor_dict,
+            left_sequence_length_dict,
+            right_tensor_dict,
+            right_sequence_length_dict,
+            target,
+        ) = batch
+        left_embeddings = self.blocker_net(left_tensor_dict, left_sequence_length_dict)
+        right_embeddings = self.blocker_net(right_tensor_dict, right_sequence_length_dict)
+        loss = self.losser(left_embeddings, right_embeddings, target)
+
+        self.log("train_loss", loss)
+        return loss
 
 
 class ANNEntityIndex:
