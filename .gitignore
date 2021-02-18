@@ -148,5 +148,9 @@ Thumbs.db
 # Tensorboard logs
 notebooks/tb_logs/
 
+# torchtext cache
+.vector_cache/
+notebooks/.vector_cache
+
 # Personal files
 _personal/
