@@ -1,6 +1,7 @@
 """Top-level package for entity-embed."""
 import logging
 
+from .data_utils.numericalizer import default_tokenizer  # noqa
 from .entity_embed import *  # noqa
 
 __author__ = """Flávio Juvenal"""

@@ -2,7 +2,8 @@ import itertools
 import logging
 import math
 import random
-from collections import defaultdict
+from collections import Counter, defaultdict
+from importlib import import_module
 
 from ordered_set import OrderedSet
 
@@ -132,8 +133,11 @@ def compute_alphabet_and_max_str_len(attr_val_gen, is_multitoken, tokenizer):
         if not is_multitoken:
             str_len = len(attr_val)
         else:
-            token_lens = [len(v) for v in tokenizer(attr_val)]
-            str_len = max(token_lens) if token_lens else -1
+            tokens = tokenizer(attr_val)
+            if tokens:
+                str_len = max(len(v) for v in tokens)
+            else:
+                str_len = -1
         actual_max_str_len = max(str_len, actual_max_str_len)
 
     # Sort alphabet for reproducibility
@@ -150,6 +154,14 @@ def compute_alphabet_and_max_str_len(attr_val_gen, is_multitoken, tokenizer):
     return actual_alphabet, actual_max_str_len
 
 
+def compute_vocab_counter(attr_val_gen, tokenizer):
+    vocab_counter = Counter()
+    for attr_val in attr_val_gen:
+        tokens = tokenizer(attr_val)
+        vocab_counter.update(tokens)
+    return vocab_counter
+
+
 def id_pairs_to_cluster_mapping_and_dict(id_pairs):
     uf = UnionFind()
     uf.union_pairs(id_pairs)
@@ -157,3 +169,9 @@ def id_pairs_to_cluster_mapping_and_dict(id_pairs):
     # must be called after component_dict, because of find calls
     cluster_mapping = uf.parents
     return cluster_mapping, cluster_dict
+
+
+def import_function(function_dotted_path):
+    module_dotted_path, function_name = function_dotted_path.rsplit(".", 1)
+    module = import_module(module_dotted_path)
+    return getattr(module, function_name)
