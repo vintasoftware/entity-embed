@@ -619,63 +619,6 @@ class LinkageEmbed(EntityEmbed):
         return left_vector_dict, right_vector_dict
 
 
-class PairwiseLinkageEmbed(LinkageEmbed):
-    def __init__(
-        self,
-        datamodule,
-        n_channels=8,
-        embedding_size=128,
-        embed_dropout_p=0.2,
-        use_attention=True,
-        use_mask=False,
-        loss_cls=torch.nn.CosineEmbeddingLoss,
-        loss_kwargs={"margin": 0.5},
-        optimizer_cls=torch.optim.Adam,
-        learning_rate=0.001,
-        optimizer_kwargs=None,
-        ann_k=10,
-        sim_threshold_list=[0.3, 0.5, 0.7, 0.9],
-        index_build_kwargs=None,
-        index_search_kwargs=None,
-    ):
-        miner_cls = None
-        miner_kwargs = None
-        super().__init__(
-            datamodule=datamodule,
-            n_channels=n_channels,
-            embedding_size=embedding_size,
-            embed_dropout_p=embed_dropout_p,
-            use_attention=use_attention,
-            use_mask=use_mask,
-            loss_cls=loss_cls,
-            loss_kwargs=loss_kwargs,
-            miner_cls=miner_cls,
-            miner_kwargs=miner_kwargs,
-            optimizer_cls=optimizer_cls,
-            learning_rate=learning_rate,
-            optimizer_kwargs=optimizer_kwargs,
-            ann_k=ann_k,
-            sim_threshold_list=sim_threshold_list,
-            index_build_kwargs=index_build_kwargs,
-            index_search_kwargs=index_search_kwargs,
-        )
-
-    def training_step(self, batch, batch_idx):
-        (
-            left_tensor_dict,
-            left_sequence_length_dict,
-            right_tensor_dict,
-            right_sequence_length_dict,
-            target,
-        ) = batch
-        left_embeddings = self.blocker_net(left_tensor_dict, left_sequence_length_dict)
-        right_embeddings = self.blocker_net(right_tensor_dict, right_sequence_length_dict)
-        loss = self.losser(left_embeddings, right_embeddings, target)
-
-        self.log("train_loss", loss)
-        return loss
-
-
 class ANNEntityIndex:
     def __init__(self, embedding_size):
         self.approx_knn_index = HnswIndex(dimension=embedding_size, metric="angular")
