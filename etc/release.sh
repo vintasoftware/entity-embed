@@ -16,13 +16,8 @@ mkdir release
 # Make sure you're running this inside a virtual environment
 pip install -r ./requirements.txt
 
-# Build wheel
-python setup.py sdist bdist_wheel
+# Build the artifacts
+python setup.py sdist bdist_wheel --universal
 
-# Build tarball
-python setup.py sdist --formats=xztar
-
-# Build zip (for windows)
-python setup.py sdist --formats=zip
-
-mv dist release/pypi
+# This will upload the artifacts to PyPi (add your credentials to .pypirc for convenience)
+twine upload dist/*
