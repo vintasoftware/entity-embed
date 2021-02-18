@@ -10,7 +10,7 @@ from pytorch_metric_learning.losses import NTXentLoss
 from pytorch_metric_learning.miners import BatchHardMiner
 from tqdm.auto import tqdm
 
-from .data_utils.datasets import PairDataset, PairwiseDataset, RowDataset
+from .data_utils.datasets import ClusterDataset, RowDataset
 from .data_utils.numericalizer import NumericalizeInfo, RowNumericalizer
 from .data_utils.utils import (
     Enumerator,
@@ -125,7 +125,7 @@ class DeduplicationDataModule(pl.LightningDataModule):
             self.valid_row_dict = None
 
     def train_dataloader(self):
-        train_pair_dataset = PairDataset(
+        train_cluster_dataset = ClusterDataset.from_cluster_dict(
             row_dict=self.train_row_dict,
             cluster_attr=self.cluster_attr,
             row_numericalizer=self.row_numericalizer,
@@ -133,13 +133,13 @@ class DeduplicationDataModule(pl.LightningDataModule):
             neg_pair_batch_size=self.neg_pair_batch_size,
             random_seed=self.random_seed,
         )
-        train_pair_loader = torch.utils.data.DataLoader(
-            train_pair_dataset,
-            batch_size=None,  # batch size is in PairDataset
+        train_cluster_loader = torch.utils.data.DataLoader(
+            train_cluster_dataset,
+            batch_size=None,  # batch size is in ClusterDataset
             shuffle=True,
             **self.pair_loader_kwargs,
         )
-        return train_pair_loader
+        return train_cluster_loader
 
     def val_dataloader(self):
         valid_row_dataset = RowDataset(
@@ -236,14 +236,12 @@ class PairwiseDataModule(pl.LightningDataModule):
         self,
         row_dict,
         row_numericalizer,
-        pair_batch_size,
+        pos_pair_batch_size,
+        neg_pair_batch_size,
         row_batch_size,
-        train_true_pos_pair_set,
-        train_true_neg_pair_set,
-        valid_true_pos_pair_set,
-        valid_true_neg_pair_set,
-        test_true_pos_pair_set,
-        test_true_neg_pair_set,
+        train_true_pair_set,
+        valid_true_pair_set,
+        test_true_pair_set,
         pair_loader_kwargs=None,
         row_loader_kwargs=None,
         random_seed=42,
@@ -252,7 +250,8 @@ class PairwiseDataModule(pl.LightningDataModule):
 
         self.row_dict = row_dict
         self.row_numericalizer = row_numericalizer
-        self.pair_batch_size = pair_batch_size
+        self.pos_pair_batch_size = pos_pair_batch_size
+        self.neg_pair_batch_size = neg_pair_batch_size
         self.row_batch_size = row_batch_size
         self.pair_loader_kwargs = pair_loader_kwargs or {
             "num_workers": os.cpu_count(),
@@ -264,66 +263,58 @@ class PairwiseDataModule(pl.LightningDataModule):
         }
         self.random_seed = random_seed
 
-        self.train_true_pos_pair_set = train_true_pos_pair_set
-        self.train_true_neg_pair_set = train_true_neg_pair_set
-        self.valid_true_pos_pair_set = valid_true_pos_pair_set
-        self.valid_true_neg_pair_set = valid_true_neg_pair_set
-        self.test_true_pos_pair_set = test_true_pos_pair_set
-        self.test_true_neg_pair_set = test_true_neg_pair_set
+        self.train_true_pair_set = train_true_pair_set
+        self.valid_true_pair_set = valid_true_pair_set
+        self.test_true_pair_set = test_true_pair_set
 
-        all_pair_sets = [
-            train_true_pos_pair_set,
-            train_true_neg_pair_set,
-            valid_true_pos_pair_set,
-            valid_true_neg_pair_set,
-            test_true_pos_pair_set,
-            test_true_neg_pair_set,
-        ]
-        self.left_id_set = {pair[0] for pair_set in all_pair_sets for pair in pair_set}
-        self.right_id_set = {pair[1] for pair_set in all_pair_sets for pair in pair_set}
-        self.valid_true_pair_set = None
-        self.test_true_pair_set = None
+        self.train_row_dict = None
+        self.valid_row_dict = None
+        self.test_row_dict = None
 
     def setup(self, stage=None):
         if stage == "fit":
+            all_pair_sets = [
+                self.train_true_pair_set,
+                self.valid_true_pair_set,
+                self.test_true_pair_set,
+            ]
+        elif stage == "test":
+            all_pair_sets = [
+                self.test_true_pair_set,
+            ]
+        else:
+            all_pair_sets = []
+        self.left_id_set = {pair[0] for pair_set in all_pair_sets for pair in pair_set}
+        self.right_id_set = {pair[1] for pair_set in all_pair_sets for pair in pair_set}
+
+        if stage == "fit":
             self.train_row_dict = {
-                id_: self.row_dict[id_]
-                for id_ in itertools.chain.from_iterable(
-                    self.train_true_pos_pair_set | self.train_true_neg_pair_set
-                )
+                id_: self.row_dict[id_] for pair in self.train_true_pair_set for id_ in pair
             }
             self.valid_row_dict = {
-                id_: self.row_dict[id_]
-                for id_ in itertools.chain.from_iterable(
-                    self.valid_true_pos_pair_set | self.valid_true_neg_pair_set
-                )
+                id_: self.row_dict[id_] for pair in self.valid_true_pair_set for id_ in pair
             }
-            self.valid_true_pair_set = self.valid_true_pos_pair_set
         elif stage == "test":
             self.test_row_dict = {
-                id_: self.row_dict[id_]
-                for id_ in itertools.chain.from_iterable(
-                    self.test_true_pos_pair_set | self.test_true_neg_pair_set
-                )
+                id_: self.row_dict[id_] for pair in self.test_true_pair_set for id_ in pair
             }
-            self.test_true_pair_set = self.test_true_pos_pair_set
 
     def train_dataloader(self):
-        train_pairwise_dataset = PairwiseDataset(
+        train_cluster_dataset = ClusterDataset.from_pairs(
             row_dict=self.train_row_dict,
-            true_pos_pair_set=self.train_true_pos_pair_set,
-            true_neg_pair_set=self.train_true_neg_pair_set,
+            true_pair_set=self.train_true_pair_set,
             row_numericalizer=self.row_numericalizer,
-            pair_batch_size=self.pair_batch_size,
+            pos_pair_batch_size=self.pos_pair_batch_size,
+            neg_pair_batch_size=self.neg_pair_batch_size,
             random_seed=self.random_seed,
         )
-        train_pairwise_loader = torch.utils.data.DataLoader(
-            train_pairwise_dataset,
-            batch_size=None,  # batch size is set on PairwiseDataset
+        train_cluster_loader = torch.utils.data.DataLoader(
+            train_cluster_dataset,
+            batch_size=None,  # batch size is set on ClusterDataset
             shuffle=True,
             **self.pair_loader_kwargs,
         )
-        return train_pairwise_loader
+        return train_cluster_loader
 
     def val_dataloader(self):
         valid_row_dataset = RowDataset(
