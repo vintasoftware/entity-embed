@@ -3,26 +3,36 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 
+from .data_utils.numericalizer import FieldType
+
 
 class StringEmbedCNN(nn.Module):
     """
     PyTorch nn.Module for embedding strings for fast edit distance computation,
     based on "Convolutional Embedding for Edit Distance (SIGIR 20)"
     (code: https://github.com/xinyandai/string-embed)
+
+    The tensor shape expected here is produced by StringNumericalizer.
     """
 
-    def __init__(self, alphabet_len, max_str_len, n_channels, embedding_size, embed_dropout_p):
+    def __init__(self, numericalize_info, n_channels, embedding_size, embed_dropout_p):
         super().__init__()
 
-        self.max_str_len = max_str_len
+        self.alphabet_len = len(numericalize_info.alphabet)
+        self.max_str_len = numericalize_info.max_str_len
         self.n_channels = n_channels
         self.embedding_size = embedding_size
 
         self.conv1 = nn.Conv1d(
-            in_channels=1, out_channels=n_channels, kernel_size=3, stride=1, padding=1, bias=False
+            in_channels=1,
+            out_channels=self.n_channels,
+            kernel_size=3,
+            stride=1,
+            padding=1,
+            bias=False,
         )
 
-        self.flat_size = (max_str_len // 2) * alphabet_len * n_channels
+        self.flat_size = (self.max_str_len // 2) * self.alphabet_len * self.n_channels
         if self.flat_size == 0:
             raise ValueError("Too small alphabet, self.flat_size == 0")
 
@@ -42,6 +52,20 @@ class StringEmbedCNN(nn.Module):
         x = self.dense_net(x)
 
         return x
+
+
+class SemanticEmbedNet(nn.Module):
+    def __init__(self, numericalize_info, embedding_size, embed_dropout_p):
+        super().__init__()
+
+        self.embedding_size = embedding_size
+        self.dense_net = nn.Sequential(
+            nn.Embedding.from_pretrained(numericalize_info.vocab.vectors),
+            nn.Dropout(p=embed_dropout_p),
+        )
+
+    def forward(self, x, **kwargs):
+        return self.dense_net(x)
 
 
 class Attention(nn.Module):
@@ -89,7 +113,7 @@ class MaskedAttention(nn.Module):
 
         self.attention_weights = nn.Parameter(torch.FloatTensor(embedding_size).uniform_(-0.1, 0.1))
 
-    def forward(self, h, x, tensor_lengths, **kwargs):
+    def forward(self, h, x, sequence_lengths, **kwargs):
         logits = h.matmul(self.attention_weights)
         scores = (logits - logits.max()).exp()
 
@@ -97,7 +121,7 @@ class MaskedAttention(nn.Module):
         # See e.g. https://discuss.pytorch.org/t/self-attention-on-words-and-masking/5671/5
         max_len = h.size(1)
         idxes = torch.arange(0, max_len, out=torch.LongTensor(max_len)).unsqueeze(0)
-        mask = Variable((idxes < torch.LongTensor(tensor_lengths).unsqueeze(1)).float())
+        mask = Variable((idxes < torch.LongTensor(sequence_lengths).unsqueeze(1)).float())
         if scores.data.is_cuda:
             mask = mask.cuda()
 
@@ -130,23 +154,23 @@ class MultitokenAttentionEmbed(nn.Module):
         else:
             self.attention_net = Attention(embedding_size=embedding_net.embedding_size)
 
-    def forward(self, x, tensor_lengths, **kwargs):
+    def forward(self, x, sequence_lengths, **kwargs):
         x_tokens = x.unbind(dim=1)
         x_tokens = [self.embedding_net(x) for x in x_tokens]
         x = torch.stack(x_tokens, dim=1)
 
         # Pytorch can't handle zero length sequences,
-        # but attention_net will use the actual tensor_lengths with zeros
+        # but attention_net will use the actual sequence_lengths with zeros
         # https://github.com/pytorch/pytorch/issues/4582
         # https://github.com/pytorch/pytorch/issues/50192
-        tensor_lengths_no_zero = [max(l, 1) for l in tensor_lengths]
+        sequence_lengths_no_zero = [max(l, 1) for l in sequence_lengths]
 
         packed_x = nn.utils.rnn.pack_padded_sequence(
-            x, tensor_lengths_no_zero, batch_first=True, enforce_sorted=False
+            x, sequence_lengths_no_zero, batch_first=True, enforce_sorted=False
         )
         packed_h, __ = self.gru(packed_x)
         h, __ = nn.utils.rnn.pad_packed_sequence(packed_h, batch_first=True)
-        return self.attention_net(h, x, tensor_lengths=tensor_lengths)
+        return self.attention_net(h, x, sequence_lengths=sequence_lengths)
 
 
 class MultitokenAverageEmbed(nn.Module):
@@ -156,7 +180,7 @@ class MultitokenAverageEmbed(nn.Module):
         self.embedding_net = embedding_net
         self.use_mask = use_mask
 
-    def forward(self, x, tensor_lengths, **kwargs):
+    def forward(self, x, sequence_lengths, **kwargs):
         max_len = x.size(1)
         scores = torch.full((max_len,), 1 / max_len)
         if x.data.is_cuda:
@@ -170,7 +194,7 @@ class MultitokenAverageEmbed(nn.Module):
             # Compute a mask for the attention on the padded sequences
             # See e.g. https://discuss.pytorch.org/t/self-attention-on-words-and-masking/5671/5
             idxes = torch.arange(0, max_len, out=torch.LongTensor(max_len)).unsqueeze(0)
-            mask = Variable((idxes < torch.LongTensor(tensor_lengths).unsqueeze(1)).float())
+            mask = Variable((idxes < torch.LongTensor(sequence_lengths).unsqueeze(1)).float())
             if x.data.is_cuda:
                 mask = mask.cuda()
 
@@ -219,28 +243,55 @@ class BlockerNet(nn.Module):
         self.embedding_size = embedding_size
         self.embedding_net_dict = nn.ModuleDict()
 
-        for attr, one_hot_encoding_info in attr_info_dict.items():
-            embedding_net = StringEmbedCNN(
-                alphabet_len=len(one_hot_encoding_info.alphabet),
-                max_str_len=one_hot_encoding_info.max_str_len,
-                n_channels=n_channels,
-                embedding_size=embedding_size,
-                embed_dropout_p=embed_dropout_p,
-            )
-            if not one_hot_encoding_info.is_multitoken:
-                self.embedding_net_dict[attr] = embedding_net
+        for attr, numericalize_info in attr_info_dict.items():
+            if numericalize_info.field_type in (
+                FieldType.STRING,
+                FieldType.MULTITOKEN,
+            ):
+                embedding_net = StringEmbedCNN(
+                    numericalize_info=numericalize_info,
+                    n_channels=n_channels,
+                    embedding_size=embedding_size,
+                    embed_dropout_p=embed_dropout_p,
+                )
+            elif numericalize_info.field_type in (
+                FieldType.SEMANTIC_STRING,
+                FieldType.SEMANTIC_MULTITOKEN,
+            ):
+                embedding_net = SemanticEmbedNet(
+                    numericalize_info=numericalize_info,
+                    embedding_size=embedding_size,
+                    embed_dropout_p=embed_dropout_p,
+                )
             else:
-                embed_cls = MultitokenAttentionEmbed if use_attention else MultitokenAverageEmbed
-                self.embedding_net_dict[attr] = embed_cls(embedding_net, use_mask)
+                raise ValueError(f"Unexpected {numericalize_info.field_type=}")
+
+            if numericalize_info.field_type in (
+                FieldType.MULTITOKEN,
+                FieldType.SEMANTIC_MULTITOKEN,
+            ):
+                if use_attention:
+                    self.embedding_net_dict[attr] = MultitokenAttentionEmbed(
+                        embedding_net, use_mask=use_mask
+                    )
+                else:
+                    self.embedding_net_dict[attr] = MultitokenAverageEmbed(
+                        embedding_net, use_mask=use_mask
+                    )
+            elif numericalize_info.field_type in (
+                FieldType.STRING,
+                FieldType.SEMANTIC_STRING,
+            ):
+                self.embedding_net_dict[attr] = embedding_net
 
         self.tuple_signature = TupleSignature(attr_info_dict)
 
-    def forward(self, tensor_dict, tensor_lengths_dict):
+    def forward(self, tensor_dict, sequence_length_dict):
         attr_embedding_dict = {}
 
         for attr, embedding_net in self.embedding_net_dict.items():
             attr_embedding = embedding_net(
-                tensor_dict[attr], tensor_lengths=tensor_lengths_dict[attr]
+                tensor_dict[attr], sequence_lengths=sequence_length_dict[attr]
             )
             attr_embedding_dict[attr] = attr_embedding
 
