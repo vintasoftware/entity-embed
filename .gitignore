@@ -151,5 +151,5 @@ notebooks/tb_logs/
 # Personal files
 _personal/
 
-# Releases directory
-release/
+# Previous releases' directories
+release-backup-*/
