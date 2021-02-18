@@ -738,12 +738,18 @@ class ANNLinkageIndex:
             )
 
             for i, neighbor_distance_list in enumerate(neighbor_and_distance_list_of_list):
-                left_id = other_index.vector_idx_to_id[i]
+                other_id = other_index.vector_idx_to_id[i]
                 for j, distance in neighbor_distance_list:
                     if distance <= distance_threshold:  # do NOT check for i != j here
-                        right_id = index.vector_idx_to_id[j]
-                        # must use sorted to always have smaller id on left of pair tuple
-                        pair = tuple(sorted([left_id, right_id]))
+                        id_ = index.vector_idx_to_id[j]
+                        if dataset_name == left_dataset_name:
+                            left_id, right_id = (id_, other_id)
+                        else:
+                            left_id, right_id = (other_id, id_)
+                        pair = (
+                            left_id,
+                            right_id,
+                        )  # do NOT use sorted here, figure out from datasets
                         all_pair_set.add(pair)
 
             logger.debug(f"Filling all_pair_set with {dataset_name=} done.")
