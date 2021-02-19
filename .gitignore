@@ -154,3 +154,6 @@ notebooks/.vector_cache
 
 # Personal files
 _personal/
+
+# Previous releases' directories
+release-backup-*/
