@@ -19,7 +19,7 @@ Transform entities like companies, products, etc. into vectors to support scalab
 
 ## Release
 
-* Update `HISTORY.rst` with the version changes
+* Update `CHANGELOG.md` with the version changes
 * Commit changes
 * Run `bumpversion <minor|major|patch>` to update the version number (pick one of the options)
     * Version number on `entity_embed/__init__.py` and `setup.py` will be updated automatically
