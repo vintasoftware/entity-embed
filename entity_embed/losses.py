@@ -5,7 +5,7 @@ import torch.nn as nn
 class SupConLoss(nn.Module):
     # Based on: https://github.com/HobbitLong/SupContrast/blob/master/losses.py
 
-    def __init__(self, temperature=0.1, base_temperature=0.1):
+    def __init__(self, temperature, base_temperature):
         super().__init__()
         self.temperature = temperature
         self.base_temperature = base_temperature

@@ -372,7 +372,7 @@ class EntityEmbed(pl.LightningModule):
             use_mask=use_mask,
         )
         self.losser = loss_cls(
-            **loss_kwargs if loss_kwargs else {"temperature": 0.1, "base_temperature": 0.1}
+            **loss_kwargs if loss_kwargs else {"temperature": 0.1, "base_temperature": 1}
         )
         self.optimizer_cls = optimizer_cls
         self.learning_rate = learning_rate
