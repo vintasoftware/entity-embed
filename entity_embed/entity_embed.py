@@ -439,7 +439,8 @@ class EntityEmbed(pl.LightningModule):
             self._warn_if_empty_indices_tuple(indices_tuple, batch_idx)
         else:
             indices_tuple = None
-        loss = self.losser(embeddings, labels, indices_tuple=indices_tuple)
+        # loss = self.losser(embeddings, labels, indices_tuple=indices_tuple)
+        loss = self.losser(embeddings, labels)
 
         self.log("train_loss", loss)
         return loss
