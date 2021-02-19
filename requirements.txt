@@ -61,6 +61,7 @@ numpy==1.19.4
     #   scipy
     #   tensorboard
     #   torch
+    #   torchtext
     #   torchvision
 oauthlib==3.1.0
     # via requests-oauthlib
@@ -94,6 +95,7 @@ requests==2.25.1
     #   fsspec
     #   requests-oauthlib
     #   tensorboard
+    #   torchtext
 rsa==4.7
     # via google-auth
 scikit-learn==0.23.2
@@ -120,7 +122,10 @@ torch==1.7.1
     #   -r requirements.in
     #   pytorch-lightning
     #   pytorch-metric-learning
+    #   torchtext
     #   torchvision
+torchtext==0.8.1
+    # via -r requirements.in
 torchvision==0.8.2
     # via pytorch-metric-learning
 tqdm==4.53.0
@@ -128,6 +133,7 @@ tqdm==4.53.0
     #   -r requirements.in
     #   pytorch-lightning
     #   pytorch-metric-learning
+    #   torchtext
 typing-extensions==3.7.4.3
     # via
     #   aiohttp
