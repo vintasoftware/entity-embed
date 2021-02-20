@@ -154,3 +154,6 @@ tb_logs/
 
 # Personal files
 _personal/
+
+# Previous releases' directories
+release-backup-*/
