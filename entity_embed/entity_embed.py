@@ -3,10 +3,11 @@ import os
 
 import pytorch_lightning as pl
 import torch
-from n2 import HnswIndex
-from tqdm.auto import tqdm
-
 from entity_embed.losses import SupConLoss
+from n2 import HnswIndex
+from pytorch_metric_learning.distances import DotProductSimilarity
+from pytorch_metric_learning.miners import BatchHardMiner
+from tqdm.auto import tqdm
 
 from .data_utils.datasets import ClusterDataset, RowDataset, collate_cluster_tensor_dict
 from .data_utils.numericalizer import NumericalizeInfo, RowNumericalizer
@@ -54,6 +55,7 @@ class DeduplicationDataModule(pl.LightningDataModule):
         train_cluster_len,
         valid_cluster_len,
         test_cluster_len,
+        only_plural_clusters,
         pair_loader_kwargs=None,
         row_loader_kwargs=None,
         random_seed=42,
@@ -67,6 +69,7 @@ class DeduplicationDataModule(pl.LightningDataModule):
         self.train_cluster_len = train_cluster_len
         self.valid_cluster_len = valid_cluster_len
         self.test_cluster_len = test_cluster_len
+        self.only_plural_clusters = only_plural_clusters
         self.pair_loader_kwargs = pair_loader_kwargs or {
             "num_workers": os.cpu_count(),
             "multiprocessing_context": "fork",
@@ -92,7 +95,7 @@ class DeduplicationDataModule(pl.LightningDataModule):
             valid_len=self.valid_cluster_len,
             test_len=self.test_cluster_len,
             random_seed=self.random_seed,
-            only_plural_clusters=True,
+            only_plural_clusters=self.only_plural_clusters,
         )
         self.valid_true_pair_set = cluster_dict_to_id_pairs(valid_cluster_dict)
         self.test_true_pair_set = cluster_dict_to_id_pairs(test_cluster_dict)
@@ -173,6 +176,7 @@ class LinkageDataModule(DeduplicationDataModule):
         train_cluster_len,
         valid_cluster_len,
         test_cluster_len,
+        only_plural_clusters,
         left_id_set,
         right_id_set,
         pair_loader_kwargs=None,
@@ -188,6 +192,7 @@ class LinkageDataModule(DeduplicationDataModule):
             train_cluster_len=train_cluster_len,
             valid_cluster_len=valid_cluster_len,
             test_cluster_len=test_cluster_len,
+            only_plural_clusters=only_plural_clusters,
             pair_loader_kwargs=pair_loader_kwargs,
             row_loader_kwargs=row_loader_kwargs,
             random_seed=random_seed,
@@ -347,6 +352,8 @@ class EntityEmbed(pl.LightningModule):
         use_mask=False,
         loss_cls=SupConLoss,
         loss_kwargs=None,
+        miner_cls=None,
+        miner_kwargs=None,
         optimizer_cls=torch.optim.Adam,
         learning_rate=0.001,
         optimizer_kwargs=None,
@@ -371,9 +378,13 @@ class EntityEmbed(pl.LightningModule):
             use_attention=use_attention,
             use_mask=use_mask,
         )
-        self.losser = loss_cls(
-            **loss_kwargs if loss_kwargs else {"temperature": 0.1, "base_temperature": 1}
-        )
+        self.losser = loss_cls(**loss_kwargs if loss_kwargs else {"temperature": 0.1})
+        if miner_cls:
+            self.miner = miner_cls(
+                **miner_kwargs if miner_kwargs else {"distance": DotProductSimilarity()}
+            )
+        else:
+            self.miner = None
         self.optimizer_cls = optimizer_cls
         self.learning_rate = learning_rate
         self.optimizer_kwargs = optimizer_kwargs if optimizer_kwargs else {}
@@ -389,6 +400,7 @@ class EntityEmbed(pl.LightningModule):
             "use_attention",
             "use_mask",
             "loss_cls",
+            "miner_cls",
             "optimizer_cls",
             "learning_rate",
             "optimizer_kwargs",
@@ -405,10 +417,20 @@ class EntityEmbed(pl.LightningModule):
     def forward(self, tensor_dict, sequence_length_dict):
         return self.blocker_net(tensor_dict, sequence_length_dict)
 
+    def _warn_if_empty_indices_tuple(self, indices_tuple, batch_idx):
+        with torch.no_grad():
+            if all(t.nelement() == 0 for t in indices_tuple):
+                logger.warning(f"Found empty indices_tuple at {self.current_epoch=}, {batch_idx=}")
+
     def training_step(self, batch, batch_idx):
         tensor_dict, sequence_length_dict, labels = batch
         embeddings = self.blocker_net(tensor_dict, sequence_length_dict)
-        loss = self.losser(embeddings, labels)
+        if self.miner:
+            indices_tuple = self.miner(embeddings, labels)
+            self._warn_if_empty_indices_tuple(indices_tuple, batch_idx)
+        else:
+            indices_tuple = None
+        loss = self.losser(embeddings, labels, indices_tuple=indices_tuple)
 
         self.log("train_loss", loss)
         return loss
