@@ -3,6 +3,7 @@ from pytorch_metric_learning.distances import DotProductSimilarity
 from pytorch_metric_learning.losses import GenericPairLoss
 from pytorch_metric_learning.reducers import AvgNonZeroReducer
 from pytorch_metric_learning.utils import common_functions as c_f
+from pytorch_metric_learning.utils import loss_and_miner_utils as lmu
 
 
 class SupConLoss(GenericPairLoss):
@@ -12,18 +13,19 @@ class SupConLoss(GenericPairLoss):
         self.add_to_recordable_attributes(list_of_names=["temperature"], is_stat=False)
 
     def _compute_loss(self, mat, pos_mask, neg_mask):
-        mat = mat / self.temperature
-        mat_max, _ = torch.max(mat, dim=1, keepdim=True)
-        mat = mat - mat_max.detach()
+        sim_mat = mat / self.temperature
+        sim_mat_max, _ = torch.max(sim_mat, dim=1, keepdim=True)
+        sim_mat = sim_mat - sim_mat_max.detach()  # for numerical stability
 
-        denominator = torch.logsumexp(mat * neg_mask, dim=1, keepdim=True)
-        mean_log_prob_pos = (pos_mask * (mat - denominator)).sum(dim=1) / pos_mask.sum(dim=1)
+        denominator = lmu.logsumexp(sim_mat, keep_mask=neg_mask.bool(), add_one=True, dim=1)
+        log_prob = sim_mat - denominator
+        mean_log_prob_pos = (pos_mask * log_prob).sum(dim=1) / pos_mask.sum(dim=1)
         losses = self.temperature * mean_log_prob_pos
 
         return {
             "loss": {
                 "losses": -losses,
-                "indices": c_f.torch_arange_from_size(mat),
+                "indices": c_f.torch_arange_from_size(sim_mat),
                 "reduction_type": "element",
             }
         }
