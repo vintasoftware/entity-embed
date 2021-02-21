@@ -1,4 +1,3 @@
-import torch
 from pytorch_metric_learning.distances import DotProductSimilarity
 from pytorch_metric_learning.losses import GenericPairLoss
 from pytorch_metric_learning.reducers import AvgNonZeroReducer
@@ -14,12 +13,14 @@ class SupConLoss(GenericPairLoss):
 
     def _compute_loss(self, mat, pos_mask, neg_mask):
         sim_mat = mat / self.temperature
-        sim_mat_max, _ = torch.max(sim_mat, dim=1, keepdim=True)
+        sim_mat_max, _ = sim_mat.max(dim=1, keepdim=True)
         sim_mat = sim_mat - sim_mat_max.detach()  # for numerical stability
 
-        denominator = lmu.logsumexp(sim_mat, keep_mask=neg_mask.bool(), add_one=True, dim=1)
+        denominator = lmu.logsumexp(sim_mat, keep_mask=neg_mask.bool(), add_one=False, dim=1)
         log_prob = sim_mat - denominator
-        mean_log_prob_pos = (pos_mask * log_prob).sum(dim=1) / pos_mask.sum(dim=1)
+        mean_log_prob_pos = (pos_mask * log_prob).sum(dim=1) / (
+            pos_mask.sum(dim=1) + c_f.small_val(sim_mat.dtype)
+        )
         losses = self.temperature * mean_log_prob_pos
 
         return {
