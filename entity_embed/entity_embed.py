@@ -10,7 +10,6 @@ from pytorch_metric_learning.miners import BatchHardMiner
 from tqdm.auto import tqdm
 
 from .data_utils.datasets import PairDataset, RowDataset
-from .data_utils.numericalizer import NumericalizeInfo, RowNumericalizer
 from .data_utils.utils import (
     cluster_dict_to_id_pairs,
     count_cluster_dict_pairs,
@@ -23,25 +22,6 @@ from .evaluation import f1_score, pair_entity_ratio, precision_and_recall
 from .models import BlockerNet
 
 logger = logging.getLogger(__name__)
-
-
-def build_row_numericalizer(attr_info_dict, row_dict=None):
-    # Fix NumericalizeInfo from dicts and initialize RowNumericalizer.
-    for attr, numericalize_info in list(attr_info_dict.items()):
-        if not numericalize_info:
-            raise ValueError(
-                f'Please set the value of "{attr}" in attr_info_dict, {numericalize_info}'
-            )
-        if not isinstance(numericalize_info, NumericalizeInfo):
-            numericalize_info["tokenizer"] = numericalize_info.get("tokenizer")
-            numericalize_info["alphabet"] = numericalize_info.get("alphabet")
-            numericalize_info["max_str_len"] = numericalize_info.get("max_str_len")
-            numericalize_info["vocab"] = numericalize_info.get("vocab")
-            attr_info_dict[attr] = NumericalizeInfo(**numericalize_info)
-
-    # For now on, one must use row_numericalizer instead of attr_info_dict,
-    # because RowNumericalizer fills None values of alphabet and max_str_len.
-    return RowNumericalizer(attr_info_dict=attr_info_dict, row_dict=row_dict)
 
 
 class DeduplicationDataModule(pl.LightningDataModule):

@@ -1,5 +1,5 @@
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Callable, List, Optional, Union
 
@@ -28,6 +28,9 @@ AVAILABLE_VOCABS = [
 ]
 
 
+DEFAULT_ALPHABET = list("0123456789abcdefghijklmnopqrstuvwxyz!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~ ")
+
+
 class FieldType(Enum):
     STRING = "string"
     MULTITOKEN = "multitoken"
@@ -38,10 +41,10 @@ class FieldType(Enum):
 @dataclass
 class NumericalizeInfo:
     field_type: FieldType
-    tokenizer: Optional[Union[str, Callable[[str], List[str]]]]
-    alphabet: Optional[List[str]]
-    max_str_len: Optional[int]
-    vocab: Optional[Union[str, Vocab]]
+    tokenizer: Optional[Union[str, Callable[[str], List[str]]]] = "entity_embed.default_tokenizer"
+    alphabet: Optional[List[str]] = field(default_factory=DEFAULT_ALPHABET)
+    max_str_len: Optional[int] = None
+    vocab: Optional[Union[str, Vocab]] = None
 
     @property
     def is_multitoken(self):
