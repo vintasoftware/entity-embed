@@ -1,9 +1,7 @@
 import logging
-import random
 
 import more_itertools
 import torch.nn as nn
-from ordered_set import OrderedSet
 from torch.utils.data import Dataset
 from torch.utils.data._utils.collate import default_collate
 
@@ -13,22 +11,11 @@ logger = logging.getLogger(__name__)
 
 
 def collate_cluster_tensor_dict(cluster_batch, row_numericalizer):
-    tensor_dict = {attr: [] for attr in row_numericalizer.attr_info_dict.keys()}
-    sequence_length_dict = {attr: [] for attr in row_numericalizer.attr_info_dict.keys()}
-    label_list = []
-    for cluster, label in cluster_batch:
-        for row in cluster:
-            row_tensor_dict, row_sequence_length_dict = row_numericalizer.build_tensor_dict(row)
-            for attr in row_numericalizer.attr_info_dict.keys():
-                tensor_dict[attr].append(row_tensor_dict[attr])
-                sequence_length_dict[attr].append(row_sequence_length_dict[attr])
-            label_list.append(label)
-
-    for attr, numericalize_info in row_numericalizer.attr_info_dict.items():
-        if numericalize_info.is_multitoken:
-            tensor_dict[attr] = nn.utils.rnn.pad_sequence(tensor_dict[attr], batch_first=True)
-        else:
-            tensor_dict[attr] = default_collate(tensor_dict[attr])
+    tensor_dict, sequence_length_dict = _collate_tensor_dict(
+        row_batch=[row for cluster, label in cluster_batch for row in cluster],
+        row_numericalizer=row_numericalizer,
+    )
+    label_list = [label for cluster, label in cluster_batch for row in cluster]
     return tensor_dict, sequence_length_dict, default_collate(label_list)
 
 
