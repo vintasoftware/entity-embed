@@ -3,10 +3,8 @@ import os
 
 import pytorch_lightning as pl
 import torch
-from entity_embed.losses import SupConLoss
 from n2 import HnswIndex
 from pytorch_metric_learning.distances import DotProductSimilarity
-from pytorch_metric_learning.miners import BatchHardMiner
 from tqdm.auto import tqdm
 
 from .data_utils.datasets import ClusterDataset, RowDataset, collate_cluster_tensor_dict
@@ -20,6 +18,7 @@ from .data_utils.utils import (
     split_clusters_to_row_dicts,
 )
 from .evaluation import f1_score, pair_entity_ratio, precision_and_recall
+from .losses import SupConLoss
 from .models import BlockerNet
 
 logger = logging.getLogger(__name__)
@@ -725,7 +724,8 @@ class ANNLinkageIndex:
             )
 
             logger.debug(
-                f"Search on approx_knn_index of {dataset_name=}... done, filling all_pair_set now..."
+                f"Search on approx_knn_index of {dataset_name=}... done, "
+                "filling all_pair_set now..."
             )
 
             for i, neighbor_distance_list in enumerate(neighbor_and_distance_list_of_list):
