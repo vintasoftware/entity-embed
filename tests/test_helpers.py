@@ -15,23 +15,39 @@ def test_row_numericalizer_parse_from_dict():
             "max_str_len": None,
         }
     }
-    row_numericalizer = RowNumericalizerParser.from_dict(attr_info_dict)
+
+    row_dict = {
+        "1": {
+            "id": "1",
+            "name": "foo product",
+            "price": 1.00,
+            "source": "bar",
+        },
+        "2": {
+            "id": "2",
+            "name": "the foo product from world",
+            "price": 1.20,
+            "source": "baz",
+        },
+    }
+
+    row_numericalizer = RowNumericalizerParser.from_dict(attr_info_dict, row_dict=row_dict)
     assert isinstance(row_numericalizer, RowNumericalizer)
 
     parsed_attr_info_dict = row_numericalizer.attr_info_dict
-    assert parsed_attr_info_dict.keys() == ["name"]
+    assert list(parsed_attr_info_dict.keys()) == ["name"]
     assert isinstance(parsed_attr_info_dict["name"], NumericalizeInfo)
 
     # Assert values were converted from str into proper types
-    assert parsed_attr_info_dict["name"]["field_type"] == FieldType.MULTITOKEN
-    assert isinstance(parsed_attr_info_dict["name"]["tokenizer"], collections.Callable)
+    assert parsed_attr_info_dict["name"].field_type == FieldType.MULTITOKEN
+    assert isinstance(parsed_attr_info_dict["name"].tokenizer, collections.Callable)
 
     # Assert max_str_len was computed
-    assert parsed_attr_info_dict["name"]["max_str_len"] is not None
+    assert isinstance(parsed_attr_info_dict["name"].max_str_len, int)
 
     # Assert non-provided keys were added with the correct default values
-    assert parsed_attr_info_dict["name"]["alphabet"] == DEFAULT_ALPHABET
-    assert parsed_attr_info_dict["name"]["vocab"] is None
+    assert parsed_attr_info_dict["name"].alphabet == DEFAULT_ALPHABET
+    assert parsed_attr_info_dict["name"].vocab is None
 
 
 def test_row_numericalizer_parse_from_dict_raises():
