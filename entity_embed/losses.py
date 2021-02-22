@@ -12,6 +12,7 @@ class SupConLoss(GenericPairLoss):
         self.add_to_recordable_attributes(list_of_names=["temperature"], is_stat=False)
 
     def _compute_loss(self, mat, pos_mask, neg_mask):
+        # Based on: https://github.com/HobbitLong/SupContrast/blob/6d5a3de39070249a19c62a345eea4acb5f26c0bc/losses.py  # noqa: E501
         sim_mat = mat / self.temperature
         sim_mat_max, _ = sim_mat.max(dim=1, keepdim=True)
         sim_mat = sim_mat - sim_mat_max.detach()  # for numerical stability
