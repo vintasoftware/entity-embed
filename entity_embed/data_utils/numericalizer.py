@@ -42,7 +42,7 @@ class FieldType(Enum):
 class NumericalizeInfo:
     field_type: FieldType
     tokenizer: Optional[Union[str, Callable[[str], List[str]]]] = "entity_embed.default_tokenizer"
-    alphabet: Optional[List[str]] = field(default_factory=DEFAULT_ALPHABET)
+    alphabet: Optional[List[str]] = field(default_factory=lambda: DEFAULT_ALPHABET)
     max_str_len: Optional[int] = None
     vocab: Optional[Union[str, Vocab]] = None
 
