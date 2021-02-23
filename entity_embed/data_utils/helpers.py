@@ -5,9 +5,8 @@ from .numericalizer import NumericalizeInfo, RowNumericalizer
 
 class RowNumericalizerParser:
     @classmethod
-    def from_json(cls, attr_info_json_filepath, row_dict=None):
-        with open(attr_info_json_filepath) as f:
-            attr_info_dict = json.load(f)
+    def from_json(cls, attr_info_json_file_obj, row_dict=None):
+        attr_info_dict = json.load(attr_info_json_file_obj)
         return cls.from_dict(attr_info_dict, row_dict=row_dict)
 
     @classmethod
