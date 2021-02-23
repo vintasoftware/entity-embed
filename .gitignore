@@ -146,11 +146,14 @@ cython_debug/
 Thumbs.db
 
 # Tensorboard logs
-notebooks/tb_logs/
+tb_logs/
 
 # torchtext cache
 .vector_cache/
-notebooks/.vector_cache
+.vector_cache
 
 # Personal files
 _personal/
+
+# Previous releases' directories
+release-backup-*/
