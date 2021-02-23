@@ -3,7 +3,7 @@ import json
 import tempfile
 
 import pytest
-from entity_embed.data_utils.helpers import RowNumericalizerParser
+from entity_embed.data_utils.helpers import AttrInfoDictParser
 from entity_embed.data_utils.numericalizer import FieldType, NumericalizeInfo, RowNumericalizer
 
 DEFAULT_ALPHABET = list("0123456789abcdefghijklmnopqrstuvwxyz!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~ ")
@@ -52,7 +52,7 @@ def test_row_numericalizer_parse_from_dict():
         },
     }
 
-    row_numericalizer = RowNumericalizerParser.from_dict(attr_info_dict, row_dict=row_dict)
+    row_numericalizer = AttrInfoDictParser.from_dict(attr_info_dict, row_dict=row_dict)
     _validate_row_numericalizer(row_numericalizer)
 
 
@@ -66,7 +66,7 @@ def test_row_numericalizer_parse_from_dict_raises():
         "foo": {},
     }
     with pytest.raises(ValueError):
-        RowNumericalizerParser.from_dict(attr_info_dict)
+        AttrInfoDictParser.from_dict(attr_info_dict)
 
 
 def test_row_numericalizer_parse_from_json_file():
@@ -96,5 +96,5 @@ def test_row_numericalizer_parse_from_json_file():
     with tempfile.NamedTemporaryFile("w+") as f:
         json.dump(attr_info_dict, f)
         f.seek(0)  # Must move the pointer back to beginning since we aren't re-opening the file
-        row_numericalizer = RowNumericalizerParser.from_json(f, row_dict=row_dict)
+        row_numericalizer = AttrInfoDictParser.from_json(f, row_dict=row_dict)
         _validate_row_numericalizer(row_numericalizer)

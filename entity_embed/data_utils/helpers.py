@@ -3,7 +3,7 @@ import json
 from .numericalizer import NumericalizeInfo, RowNumericalizer
 
 
-class RowNumericalizerParser:
+class AttrInfoDictParser:
     @classmethod
     def from_json(cls, attr_info_json_file_obj, row_dict=None):
         attr_info_dict = json.load(attr_info_json_file_obj)
@@ -17,6 +17,4 @@ class RowNumericalizerParser:
                     f'Please set the value of "{attr}" in attr_info_dict, {numericalize_info}'
                 )
             attr_info_dict[attr] = NumericalizeInfo(**numericalize_info)
-        # For now on, one must use row_numericalizer instead of attr_info_dict,
-        # because RowNumericalizer fills None values of alphabet and max_str_len.
         return RowNumericalizer(attr_info_dict, row_dict=row_dict)
