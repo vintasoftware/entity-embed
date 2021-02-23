@@ -249,11 +249,7 @@ class EntityEmbed(pl.LightningModule):
         self.index_search_kwargs = index_search_kwargs
 
         self.save_hyperparameters(
-            "n_channels",
             "embedding_size",
-            "embed_dropout_p",
-            "use_attention",
-            "use_mask",
             "loss_cls",
             "miner_cls",
             "optimizer_cls",
