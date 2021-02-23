@@ -105,16 +105,21 @@ class AttrInfoDictParser:
                     logger.info(f"For {attr=}, using {actual_max_str_len=}")
                     max_str_len = actual_max_str_len
 
+        n_channels = numericalize_info_dict.get("n_channels", 8)
+        embed_dropout_p = numericalize_info_dict.get("embed_dropout_p", 0.2)
+        use_attention = numericalize_info_dict.get("use_attention", True)
+        use_mask = numericalize_info_dict.get("use_mask", False)
+
         return NumericalizeInfo(
             field_type=field_type,
             tokenizer=tokenizer,
             alphabet=alphabet,
             max_str_len=max_str_len,
             vocab=vocab,
-            n_channels=8,
-            embed_dropout_p=0.2,
-            use_attention=True,
-            use_mask=False,
+            n_channels=n_channels,
+            embed_dropout_p=embed_dropout_p,
+            use_attention=use_attention,
+            use_mask=use_mask,
         )
 
     @classmethod
