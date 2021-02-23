@@ -185,9 +185,11 @@ class RowNumericalizer:
                     raise ValueError(
                         f"Cannot compute alphabet and max_str_len for {attr=}. "
                         "row_dict cannot be None if alphabet or max_str_len is None. "
-                        "Please set row_dict, a dictionary of id -> row with ALL your data (train, test, valid). "
+                        "Please set row_dict, a dictionary of id -> row with ALL your data "
+                        "(train, test, valid). "
                         "Or call entity_embed.data_utils.compute_alphabet_and_max_str_len "
-                        "over ALL your data (train, test, valid) to compute alphabet and max_str_len. "
+                        "over ALL your data (train, test, valid) to compute alphabet and "
+                        "max_str_len."
                     )
                 else:
                     logger.info(f"For {attr=}, computing actual alphabet and max_str_len")

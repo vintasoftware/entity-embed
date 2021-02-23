@@ -592,7 +592,8 @@ class ANNLinkageIndex:
             )
 
             logger.debug(
-                f"Search on approx_knn_index of {dataset_name=}... done, filling all_pair_set now..."
+                f"Search on approx_knn_index of {dataset_name=}... done, "
+                "filling all_pair_set now..."
             )
 
             for i, neighbor_distance_list in enumerate(neighbor_and_distance_list_of_list):

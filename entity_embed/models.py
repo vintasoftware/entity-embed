@@ -73,7 +73,8 @@ class Attention(nn.Module):
     PyTorch nn.Module of an Attention mechanism for weighted averging of
     hidden states produced by a RNN. Based on mechanisms discussed in
     "Using millions of emoji occurrences to learn any-domain representations
-    for detecting sentiment, emotion and sarcasm (EMNLP 17)" (code https://github.com/huggingface/torchMoji)
+    for detecting sentiment, emotion and sarcasm (EMNLP 17)"
+    (code https://github.com/huggingface/torchMoji)
     and
     "AutoBlock: A Hands-off Blocking Framework for Entity Matching (WSDM 20)"
     """
@@ -100,7 +101,8 @@ class MaskedAttention(nn.Module):
     PyTorch nn.Module of an Attention mechanism for weighted averging of
     hidden states produced by a RNN. Based on mechanisms discussed in
     "Using millions of emoji occurrences to learn any-domain representations
-    for detecting sentiment, emotion and sarcasm (EMNLP 17)" (code https://github.com/huggingface/torchMoji)
+    for detecting sentiment, emotion and sarcasm (EMNLP 17)"
+    (code https://github.com/huggingface/torchMoji)
     and
     "AutoBlock: A Hands-off Blocking Framework for Entity Matching (WSDM 20)".
 
@@ -163,7 +165,7 @@ class MultitokenAttentionEmbed(nn.Module):
         # but attention_net will use the actual sequence_lengths with zeros
         # https://github.com/pytorch/pytorch/issues/4582
         # https://github.com/pytorch/pytorch/issues/50192
-        sequence_lengths_no_zero = [max(l, 1) for l in sequence_lengths]
+        sequence_lengths_no_zero = [max(ls, 1) for ls in sequence_lengths]
 
         packed_x = nn.utils.rnn.pack_padded_sequence(
             x, sequence_lengths_no_zero, batch_first=True, enforce_sorted=False
