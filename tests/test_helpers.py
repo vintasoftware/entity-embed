@@ -14,18 +14,24 @@ def _validate_row_numericalizer(row_numericalizer):
 
     parsed_attr_info_dict = row_numericalizer.attr_info_dict
     assert list(parsed_attr_info_dict.keys()) == ["name"]
-    assert isinstance(parsed_attr_info_dict["name"], NumericalizeInfo)
+
+    name_attr_info = parsed_attr_info_dict["name"]
+    assert isinstance(name_attr_info, NumericalizeInfo)
 
     # Assert values were converted from str into proper types
-    assert parsed_attr_info_dict["name"].field_type == FieldType.MULTITOKEN
-    assert isinstance(parsed_attr_info_dict["name"].tokenizer, collections.Callable)
+    assert name_attr_info.field_type == FieldType.MULTITOKEN
+    assert isinstance(name_attr_info.tokenizer, collections.Callable)
 
     # Assert max_str_len was computed
-    assert isinstance(parsed_attr_info_dict["name"].max_str_len, int)
+    assert isinstance(name_attr_info.max_str_len, int)
 
     # Assert non-provided keys were added with the correct default values
-    assert parsed_attr_info_dict["name"].alphabet == DEFAULT_ALPHABET
-    assert parsed_attr_info_dict["name"].vocab is None
+    assert name_attr_info.alphabet == DEFAULT_ALPHABET
+    assert name_attr_info.vocab is None
+    assert name_attr_info.n_channels == 8
+    assert name_attr_info.embed_dropout_p == 0.2
+    assert name_attr_info.use_attention
+    assert not name_attr_info.use_mask
 
 
 def test_row_numericalizer_parse_from_dict():

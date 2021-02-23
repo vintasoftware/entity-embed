@@ -212,11 +212,7 @@ class EntityEmbed(pl.LightningModule):
     def __init__(
         self,
         datamodule,
-        n_channels=8,
         embedding_size=128,
-        embed_dropout_p=0.2,
-        use_attention=True,
-        use_mask=False,
         loss_cls=NTXentLoss,
         loss_kwargs=None,
         miner_cls=BatchHardMiner,
@@ -232,18 +228,10 @@ class EntityEmbed(pl.LightningModule):
         super().__init__()
         self.row_numericalizer = datamodule.row_numericalizer
         self.attr_info_dict = self.row_numericalizer.attr_info_dict
-        self.n_channels = n_channels
         self.embedding_size = embedding_size
-        self.embed_dropout_p = embed_dropout_p
-        self.use_attention = use_attention
-        self.use_mask = use_mask
         self.blocker_net = BlockerNet(
             self.attr_info_dict,
-            n_channels=n_channels,
             embedding_size=embedding_size,
-            embed_dropout_p=embed_dropout_p,
-            use_attention=use_attention,
-            use_mask=use_mask,
         )
         self.losser = loss_cls(**loss_kwargs if loss_kwargs else {"temperature": 0.1})
         if miner_cls:
