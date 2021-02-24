@@ -392,7 +392,7 @@ class EntityEmbed(pl.LightningModule):
             if all(t.nelement() == 0 for t in indices_tuple):
                 logger.warning(
                     f"Found empty indices_tuple at self.current_epoch={self.current_epoch}, "
-                    "batch_idx={batch_idx}"
+                    f"batch_idx={batch_idx}"
                 )
 
     def training_step(self, batch, batch_idx):
