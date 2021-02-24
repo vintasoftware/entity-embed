@@ -2,9 +2,12 @@ import collections
 import json
 import tempfile
 
+import mock
+import n2  # noqa: F401
 import pytest
 from entity_embed.data_utils.helpers import AttrInfoDictParser
 from entity_embed.data_utils.numericalizer import FieldType, NumericalizeInfo, RowNumericalizer
+from torchtext.vocab import Vocab
 
 EXPECTED_DEFAULT_ALPHABET = list(
     "0123456789abcdefghijklmnopqrstuvwxyz!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~ "
@@ -64,19 +67,6 @@ def test_row_numericalizer_parse_from_dict():
     _validate_row_numericalizer(row_numericalizer)
 
 
-def test_row_numericalizer_parse_from_dict_raises():
-    attr_info_dict = {
-        "name": {
-            "field_type": "MULTITOKEN",
-            "tokenizer": "entity_embed.default_tokenizer",
-            "max_str_len": None,
-        },
-        "foo": {},
-    }
-    with pytest.raises(ValueError):
-        AttrInfoDictParser.from_dict(attr_info_dict)
-
-
 def test_row_numericalizer_parse_from_json_file():
     attr_info_dict = {
         "name": {
@@ -106,3 +96,77 @@ def test_row_numericalizer_parse_from_json_file():
         f.seek(0)  # Must move the pointer back to beginning since we aren't re-opening the file
         row_numericalizer = AttrInfoDictParser.from_json(f, row_dict=row_dict)
         _validate_row_numericalizer(row_numericalizer)
+
+
+def test_row_numericalizer_parse_from_dict_raises():
+    attr_info_dict = {
+        "name": {
+            "field_type": "MULTITOKEN",
+            "tokenizer": "entity_embed.default_tokenizer",
+            "max_str_len": None,
+        },
+        "foo": {},
+    }
+    with pytest.raises(ValueError):
+        AttrInfoDictParser.from_dict(attr_info_dict)
+
+
+@mock.patch("entity_embed.data_utils.helpers.Vocab.load_vectors")
+def test_row_numericalizer_parse_with_attr_with_semantic_field_type(mock_load_vectors):
+    attr_info_dict = {
+        "name": {
+            "field_type": "SEMANTIC_MULTITOKEN",
+            "tokenizer": "entity_embed.default_tokenizer",
+            "vocab": "fasttext.en.300d",
+        }
+    }
+
+    row_dict = {
+        "1": {
+            "id": "1",
+            "name": "foo product",
+            "price": 1.00,
+            "source": "bar",
+        },
+        "2": {
+            "id": "2",
+            "name": "the foo product from world",
+            "price": 1.20,
+            "source": "baz",
+        },
+    }
+
+    row_numericalizer = AttrInfoDictParser.from_dict(attr_info_dict, row_dict=row_dict)
+
+    mock_load_vectors.assert_called_once_with("fasttext.en.300d")
+    name_attr_info = row_numericalizer.attr_info_dict["name"]
+    assert name_attr_info.max_str_len is None
+    assert isinstance(name_attr_info.vocab, Vocab)
+
+
+def test_attr_with_semantic_field_type_without_vocab_raises():
+    attr_info_dict = {
+        "name": {
+            "field_type": "SEMANTIC_MULTITOKEN",
+            "tokenizer": "entity_embed.default_tokenizer",
+            "vocab": None,
+        }
+    }
+
+    row_dict = {
+        "1": {
+            "id": "1",
+            "name": "foo product",
+            "price": 1.00,
+            "source": "bar",
+        },
+        "2": {
+            "id": "2",
+            "name": "the foo product from world",
+            "price": 1.20,
+            "source": "baz",
+        },
+    }
+
+    with pytest.raises(ValueError):
+        AttrInfoDictParser.from_dict(attr_info_dict, row_dict=row_dict)
