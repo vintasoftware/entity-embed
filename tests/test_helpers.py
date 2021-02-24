@@ -98,7 +98,7 @@ def test_row_numericalizer_parse_from_json_file():
         _validate_row_numericalizer(row_numericalizer)
 
 
-def test_row_numericalizer_parse_from_dict_raises():
+def test_row_numericalizer_parse_raises_when_attr_info_is_empty():
     attr_info_dict = {
         "name": {
             "field_type": "MULTITOKEN",
@@ -107,7 +107,49 @@ def test_row_numericalizer_parse_from_dict_raises():
         },
         "foo": {},
     }
+
+    row_dict = {
+        "1": {
+            "id": "1",
+            "name": "foo product",
+            "price": 1.00,
+            "source": "bar",
+        },
+        "2": {
+            "id": "2",
+            "name": "the foo product from world",
+            "price": 1.20,
+            "source": "baz",
+        },
+    }
+
     with pytest.raises(ValueError):
+        AttrInfoDictParser.from_dict(attr_info_dict, row_dict=row_dict)
+
+
+def test_row_numericalizer_parse_raises_when_row_dict_and_max_str_len_are_none():
+    attr_info_dict = {
+        "name": {
+            "field_type": "MULTITOKEN",
+            "tokenizer": "entity_embed.default_tokenizer",
+            "max_str_len": None,
+        },
+    }
+
+    with pytest.raises(ValueError):
+        AttrInfoDictParser.from_dict(attr_info_dict)
+
+
+def test_attr_with_wrong_field_type_raises():
+    attr_info_dict = {
+        "name": {
+            "field_type": "FOO_TYPE",
+            "tokenizer": "entity_embed.default_tokenizer",
+            "max_str_len": None,
+        },
+    }
+
+    with pytest.raises(KeyError):
         AttrInfoDictParser.from_dict(attr_info_dict)
 
 
