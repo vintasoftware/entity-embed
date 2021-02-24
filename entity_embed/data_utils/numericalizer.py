@@ -1,3 +1,4 @@
+import inspect
 import logging
 from dataclasses import dataclass
 from enum import Enum
@@ -51,6 +52,18 @@ class NumericalizeInfo:
         if isinstance(field_type, str):
             field_type = FieldType[field_type]
         return field_type in (FieldType.MULTITOKEN, FieldType.SEMANTIC_MULTITOKEN)
+
+    def __repr__(self):
+        repr_dict = {}
+        for k, v in self.__dict__.items():
+            if isinstance(v, Callable):
+                repr_dict[k] = f"{inspect.getmodule(v).__name__}.{v.__name__}"
+            else:
+                repr_dict[k] = v
+        return "{klass}({attrs})".format(
+            klass=self.__class__.__name__,
+            attrs=", ".join("{}={!r}".format(k, v) for k, v in repr_dict.items()),
+        )
 
 
 # Unicode \w without _ is [\w--_]

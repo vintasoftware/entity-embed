@@ -134,6 +134,6 @@ class AttrInfoDictParser:
         }
         numericalizer_cls = field_type_to_numericalizer_cls.get(field_type)
         if numericalizer_cls is None:
-            raise ValueError(f"Unexpected field_type={field_type}")
+            raise ValueError(f"Unexpected field_type={field_type}")  # pragma: no cover
 
         return numericalizer_cls(attr=attr, numericalize_info=numericalize_info)
