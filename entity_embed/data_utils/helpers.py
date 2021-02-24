@@ -86,7 +86,7 @@ class AttrInfoDictParser:
         if field_type in (FieldType.STRING, FieldType.MULTITOKEN) and (max_str_len is None):
             if row_dict is None:
                 raise ValueError(
-                    f"Cannot compute max_str_len for {attr=}. "
+                    f"Cannot compute max_str_len for attr={attr}. "
                     "row_dict cannot be None if max_str_len is None. "
                     "Please set row_dict, a dictionary of id -> row with ALL your data "
                     "(train, test, valid). "
@@ -94,7 +94,7 @@ class AttrInfoDictParser:
                     "over ALL your data (train, test, valid) to compute max_str_len."
                 )
             else:
-                logger.info(f"For {attr=}, computing actual max_str_len")
+                logger.info(f"For attr={attr}, computing actual max_str_len")
                 is_multitoken = field_type in (FieldType.MULTITOKEN, FieldType.SEMANTIC_MULTITOKEN)
                 actual_max_str_len = compute_max_str_len(
                     attr_val_gen=(row[attr] for row in row_dict.values()),
@@ -102,7 +102,7 @@ class AttrInfoDictParser:
                     tokenizer=tokenizer,
                 )
                 if max_str_len is None:
-                    logger.info(f"For {attr=}, using {actual_max_str_len=}")
+                    logger.info(f"For attr={attr}, using actual_max_str_len={actual_max_str_len}")
                     max_str_len = actual_max_str_len
 
         n_channels = numericalize_info_dict.get("n_channels", 8)
@@ -134,6 +134,6 @@ class AttrInfoDictParser:
         }
         numericalizer_cls = field_type_to_numericalizer_cls.get(field_type)
         if numericalizer_cls is None:
-            raise ValueError(f"Unexpected {field_type=}")
+            raise ValueError(f"Unexpected field_type={field_type}")
 
         return numericalizer_cls(attr=attr, numericalize_info=numericalize_info)

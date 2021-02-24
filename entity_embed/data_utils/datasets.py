@@ -55,12 +55,12 @@ class ClusterDataset(Dataset):
                 "Since ClusterDataset samples negative pairs by rows, "
                 "neg_pair_batch_size must fit the equation y = (n * (n - 1)) / 2, "
                 "where y is neg_pair_batch_size and n is number of rows. "
-                f"Therefore, requested {neg_pair_batch_size=} is impossible. "
+                f"Therefore, requested neg_pair_batch_size={neg_pair_batch_size} is impossible. "
                 f"Closest lower pair number is {actual_neg_pair_batch_size}. Using it."
             )
         if self.neg_batch_id_size >= len(self.cluster_dict):
             raise ValueError(
-                f"{neg_pair_batch_size=} too large. "
+                f"neg_pair_batch_size={neg_pair_batch_size} too large. "
                 "The largest value possible is (total of clusters * (total of clusters - 1) / 2), "
                 f"which is {len(self.cluster_dict) * (len(self.cluster_dict) - 1) / 2}"
             )

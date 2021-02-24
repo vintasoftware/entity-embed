@@ -66,7 +66,8 @@ def split_clusters(
 
     if train_len + valid_len + test_len < len(all_cluster_id_set):
         logger.warning(
-            f"{train_len + valid_len + test_len=} is less than {len(all_cluster_id_set)=}"
+            f"(train_len + valid_len + test_len)={train_len + valid_len + test_len} "
+            f"is less than len(all_cluster_id_set)={len(all_cluster_id_set)}"
         )
 
     train_cluster_id_set = OrderedSet(rnd.sample(all_cluster_id_set, train_len))
@@ -145,7 +146,7 @@ def compute_max_str_len(attr_val_gen, is_multitoken, tokenizer):
     # Ensure max_str_len is pair to enable pooling later
     if actual_max_str_len % 2 != 0:
         logger.info(
-            f"{actual_max_str_len=} must be pair to enable NN pooling. "
+            f"actual_max_str_len={actual_max_str_len} must be pair to enable NN pooling. "
             f"Updating to {actual_max_str_len + 1}"
         )
         actual_max_str_len += 1

@@ -6,7 +6,9 @@ import pytest
 from entity_embed.data_utils.helpers import AttrInfoDictParser
 from entity_embed.data_utils.numericalizer import FieldType, NumericalizeInfo, RowNumericalizer
 
-DEFAULT_ALPHABET = list("0123456789abcdefghijklmnopqrstuvwxyz!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~ ")
+EXPECTED_DEFAULT_ALPHABET = list(
+    "0123456789abcdefghijklmnopqrstuvwxyz!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~ "
+)
 
 
 def _validate_row_numericalizer(row_numericalizer):
@@ -26,7 +28,7 @@ def _validate_row_numericalizer(row_numericalizer):
     assert isinstance(name_attr_info.max_str_len, int)
 
     # Assert non-provided keys were added with the correct default values
-    assert name_attr_info.alphabet == DEFAULT_ALPHABET
+    assert name_attr_info.alphabet == EXPECTED_DEFAULT_ALPHABET
     assert name_attr_info.vocab is None
     assert name_attr_info.n_channels == 8
     assert name_attr_info.embed_dropout_p == 0.2

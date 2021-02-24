@@ -259,7 +259,9 @@ class BlockerNet(nn.Module):
                     embedding_size=embedding_size,
                 )
             else:
-                raise ValueError(f"Unexpected {numericalize_info.field_type=}")
+                raise ValueError(
+                    f"Unexpected numericalize_info.field_type={numericalize_info.field_type}"
+                )
 
             if numericalize_info.field_type in (
                 FieldType.MULTITOKEN,

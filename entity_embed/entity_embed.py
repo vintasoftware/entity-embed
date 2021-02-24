@@ -390,7 +390,10 @@ class EntityEmbed(pl.LightningModule):
     def _warn_if_empty_indices_tuple(self, indices_tuple, batch_idx):
         with torch.no_grad():
             if all(t.nelement() == 0 for t in indices_tuple):
-                logger.warning(f"Found empty indices_tuple at {self.current_epoch=}, {batch_idx=}")
+                logger.warning(
+                    f"Found empty indices_tuple at self.current_epoch={self.current_epoch}, "
+                    "batch_idx={batch_idx}"
+                )
 
     def training_step(self, batch, batch_idx):
         tensor_dict, sequence_length_dict, labels = batch
@@ -614,7 +617,7 @@ class ANNEntityIndex:
         if not self.is_built:
             raise ValueError("Please call build first")
         if sim_threshold > 1 or sim_threshold < 0:
-            raise ValueError(f"{sim_threshold=} must be <= 1 and >= 0")
+            raise ValueError(f"sim_threshold={sim_threshold} must be <= 1 and >= 0")
 
         logger.debug("Searching on approx_knn_index...")
 
@@ -640,7 +643,9 @@ class ANNEntityIndex:
                     pair = tuple(sorted([left_id, right_id]))
                     found_pair_set.add(pair)
 
-        logger.debug(f"Building found_pair_set done. Found {len(found_pair_set)=} pairs.")
+        logger.debug(
+            f"Building found_pair_set done. Found len(found_pair_set)={len(found_pair_set)} pairs."
+        )
 
         return found_pair_set
 
@@ -674,7 +679,7 @@ class ANNLinkageIndex:
         if not self.left_index.is_built or not self.right_index.is_built:
             raise ValueError("Please call build first")
         if sim_threshold > 1 or sim_threshold < 0:
-            raise ValueError(f"{sim_threshold=} must be <= 1 and >= 0")
+            raise ValueError(f"sim_threshold={sim_threshold} must be <= 1 and >= 0")
 
         distance_threshold = 1 - sim_threshold
         all_pair_set = set()
@@ -683,7 +688,7 @@ class ANNLinkageIndex:
             (left_dataset_name, self.left_index, right_vector_dict, self.right_index),
             (right_dataset_name, self.right_index, left_vector_dict, self.left_index),
         ]:
-            logger.debug(f"Searching on approx_knn_index of {dataset_name=}...")
+            logger.debug(f"Searching on approx_knn_index of dataset_name={dataset_name}...")
 
             neighbor_and_distance_list_of_list = index.approx_knn_index.batch_search_by_vectors(
                 vs=vector_dict.values(),
@@ -695,7 +700,7 @@ class ANNLinkageIndex:
             )
 
             logger.debug(
-                f"Search on approx_knn_index of {dataset_name=}... done, "
+                f"Search on approx_knn_index of dataset_name={dataset_name}... done, "
                 "filling all_pair_set now..."
             )
 
@@ -714,8 +719,11 @@ class ANNLinkageIndex:
                         )  # do NOT use sorted here, figure out from datasets
                         all_pair_set.add(pair)
 
-            logger.debug(f"Filling all_pair_set with {dataset_name=} done.")
+            logger.debug(f"Filling all_pair_set with dataset_name={dataset_name} done.")
 
-        logger.debug(f"All searches done, all_pair_set filled. Found {len(all_pair_set)=} pairs.")
+        logger.debug(
+            "All searches done, all_pair_set filled. "
+            f"Found len(all_pair_set)={len(all_pair_set)} pairs."
+        )
 
         return all_pair_set
