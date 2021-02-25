@@ -74,7 +74,7 @@ class Attention(nn.Module):
     hidden states produced by a RNN. Based on mechanisms discussed in
     "Using millions of emoji occurrences to learn any-domain representations
     for detecting sentiment, emotion and sarcasm (EMNLP 17)"
-    (code https://github.com/huggingface/torchMoji)
+    (code at https://github.com/huggingface/torchMoji)
     and
     "AutoBlock: A Hands-off Blocking Framework for Entity Matching (WSDM 20)"
     """
@@ -102,7 +102,7 @@ class MaskedAttention(nn.Module):
     hidden states produced by a RNN. Based on mechanisms discussed in
     "Using millions of emoji occurrences to learn any-domain representations
     for detecting sentiment, emotion and sarcasm (EMNLP 17)"
-    (code https://github.com/huggingface/torchMoji)
+    (code at https://github.com/huggingface/torchMoji)
     and
     "AutoBlock: A Hands-off Blocking Framework for Entity Matching (WSDM 20)".
 
@@ -165,7 +165,7 @@ class MultitokenAttentionEmbed(nn.Module):
         # but attention_net will use the actual sequence_lengths with zeros
         # https://github.com/pytorch/pytorch/issues/4582
         # https://github.com/pytorch/pytorch/issues/50192
-        sequence_lengths_no_zero = [max(ls, 1) for ls in sequence_lengths]
+        sequence_lengths_no_zero = [max(sl, 1) for sl in sequence_lengths]
 
         packed_x = nn.utils.rnn.pack_padded_sequence(
             x, sequence_lengths_no_zero, batch_first=True, enforce_sorted=False
@@ -225,9 +225,10 @@ class TupleSignature(nn.Module):
         if self.weights is not None:
             attr_embedding_list = list(attr_embedding_dict.values())
             x = torch.stack(attr_embedding_list, dim=1)
-            return (x * self.weights.unsqueeze(-1).expand_as(x)).sum(axis=1)
+            x = F.normalize(x, dim=2)
+            return F.normalize((x * self.weights.unsqueeze(-1).expand_as(x)).sum(axis=1), dim=1)
         else:
-            return list(attr_embedding_dict.values())[0]
+            return F.normalize(list(attr_embedding_dict.values())[0], dim=1)
 
 
 class BlockerNet(nn.Module):
@@ -292,7 +293,7 @@ class BlockerNet(nn.Module):
             )
             attr_embedding_dict[attr] = attr_embedding
 
-        return F.normalize(self.tuple_signature(attr_embedding_dict))
+        return self.tuple_signature(attr_embedding_dict)
 
     def fix_signature_weights(self):
         """

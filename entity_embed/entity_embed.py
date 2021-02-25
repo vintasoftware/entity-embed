@@ -4,12 +4,11 @@ import os
 import pytorch_lightning as pl
 import torch
 from n2 import HnswIndex
-from pytorch_metric_learning.distances import CosineSimilarity
-from pytorch_metric_learning.losses import NTXentLoss
-from pytorch_metric_learning.miners import BatchHardMiner
+from pytorch_lightning.utilities.cloud_io import load as pl_load
+from pytorch_metric_learning.distances import DotProductSimilarity
 from tqdm.auto import tqdm
 
-from .data_utils.datasets import ClusterDataset, RowDataset
+from .data_utils.datasets import ClusterDataset, RowDataset, collate_cluster_tensor_dict
 from .data_utils.utils import (
     cluster_dict_to_id_pairs,
     count_cluster_dict_pairs,
@@ -19,6 +18,7 @@ from .data_utils.utils import (
     split_clusters_to_row_dicts,
 )
 from .evaluation import f1_score, pair_entity_ratio, precision_and_recall
+from .losses import SupConLoss
 from .models import BlockerNet
 
 logger = logging.getLogger(__name__)
@@ -30,8 +30,7 @@ class DeduplicationDataModule(pl.LightningDataModule):
         row_dict,
         cluster_attr,
         row_numericalizer,
-        pos_pair_batch_size,
-        neg_pair_batch_size,
+        batch_size,
         row_batch_size,
         train_cluster_len,
         valid_cluster_len,
@@ -45,8 +44,7 @@ class DeduplicationDataModule(pl.LightningDataModule):
         self.row_dict = row_dict
         self.cluster_attr = cluster_attr
         self.row_numericalizer = row_numericalizer
-        self.pos_pair_batch_size = pos_pair_batch_size
-        self.neg_pair_batch_size = neg_pair_batch_size
+        self.batch_size = batch_size
         self.row_batch_size = row_batch_size
         self.train_cluster_len = train_cluster_len
         self.valid_cluster_len = valid_cluster_len
@@ -106,13 +104,13 @@ class DeduplicationDataModule(pl.LightningDataModule):
             row_dict=self.train_row_dict,
             cluster_attr=self.cluster_attr,
             row_numericalizer=self.row_numericalizer,
-            pos_pair_batch_size=self.pos_pair_batch_size,
-            neg_pair_batch_size=self.neg_pair_batch_size,
-            random_seed=self.random_seed,
         )
         train_cluster_loader = torch.utils.data.DataLoader(
             train_cluster_dataset,
-            batch_size=None,  # batch size is in ClusterDataset
+            batch_size=self.batch_size,
+            collate_fn=lambda cluster_batch: collate_cluster_tensor_dict(
+                cluster_batch, self.row_numericalizer
+            ),
             shuffle=True,
             **self.pair_loader_kwargs,
         )
@@ -153,8 +151,7 @@ class LinkageDataModule(DeduplicationDataModule):
         row_dict,
         cluster_attr,
         row_numericalizer,
-        pos_pair_batch_size,
-        neg_pair_batch_size,
+        batch_size,
         row_batch_size,
         train_cluster_len,
         valid_cluster_len,
@@ -170,8 +167,7 @@ class LinkageDataModule(DeduplicationDataModule):
             row_dict=row_dict,
             cluster_attr=cluster_attr,
             row_numericalizer=row_numericalizer,
-            pos_pair_batch_size=pos_pair_batch_size,
-            neg_pair_batch_size=neg_pair_batch_size,
+            batch_size=batch_size,
             row_batch_size=row_batch_size,
             train_cluster_len=train_cluster_len,
             valid_cluster_len=valid_cluster_len,
@@ -213,8 +209,7 @@ class PairwiseDataModule(pl.LightningDataModule):
         self,
         row_dict,
         row_numericalizer,
-        pos_pair_batch_size,
-        neg_pair_batch_size,
+        batch_size,
         row_batch_size,
         train_true_pair_set,
         valid_true_pair_set,
@@ -227,8 +222,7 @@ class PairwiseDataModule(pl.LightningDataModule):
 
         self.row_dict = row_dict
         self.row_numericalizer = row_numericalizer
-        self.pos_pair_batch_size = pos_pair_batch_size
-        self.neg_pair_batch_size = neg_pair_batch_size
+        self.batch_size = batch_size
         self.row_batch_size = row_batch_size
         self.pair_loader_kwargs = pair_loader_kwargs or {
             "num_workers": os.cpu_count(),
@@ -281,13 +275,13 @@ class PairwiseDataModule(pl.LightningDataModule):
             row_dict=self.train_row_dict,
             true_pair_set=self.train_true_pair_set,
             row_numericalizer=self.row_numericalizer,
-            pos_pair_batch_size=self.pos_pair_batch_size,
-            neg_pair_batch_size=self.neg_pair_batch_size,
-            random_seed=self.random_seed,
         )
         train_cluster_loader = torch.utils.data.DataLoader(
             train_cluster_dataset,
-            batch_size=None,  # batch size is set on ClusterDataset
+            batch_size=self.batch_size,
+            collate_fn=lambda cluster_batch: collate_cluster_tensor_dict(
+                cluster_batch, self.row_numericalizer
+            ),
             shuffle=True,
             **self.pair_loader_kwargs,
         )
@@ -332,9 +326,9 @@ class EntityEmbed(pl.LightningModule):
         self,
         datamodule,
         embedding_size=128,
-        loss_cls=NTXentLoss,
+        loss_cls=SupConLoss,
         loss_kwargs=None,
-        miner_cls=BatchHardMiner,
+        miner_cls=None,
         miner_kwargs=None,
         optimizer_cls=torch.optim.Adam,
         learning_rate=0.001,
@@ -355,7 +349,7 @@ class EntityEmbed(pl.LightningModule):
         self.losser = loss_cls(**loss_kwargs if loss_kwargs else {"temperature": 0.1})
         if miner_cls:
             self.miner = miner_cls(
-                **miner_kwargs if miner_kwargs else {"distance": CosineSimilarity()}
+                **miner_kwargs if miner_kwargs else {"distance": DotProductSimilarity()}
             )
         else:
             self.miner = None
@@ -432,6 +426,7 @@ class EntityEmbed(pl.LightningModule):
         ann_index.insert_vector_dict(vector_dict)
         ann_index.build(index_build_kwargs=self.index_build_kwargs)
 
+        metric_dict = {}
         for sim_threshold in self.sim_threshold_list:
             found_pair_set = ann_index.search_pairs(
                 k=self.ann_k,
@@ -440,7 +435,7 @@ class EntityEmbed(pl.LightningModule):
             )
 
             precision, recall = precision_and_recall(found_pair_set, true_pair_set)
-            self.log_dict(
+            metric_dict.update(
                 {
                     f"{set_name}_precision_at_{sim_threshold}": precision,
                     f"{set_name}_recall_at_{sim_threshold}": recall,
@@ -450,26 +445,30 @@ class EntityEmbed(pl.LightningModule):
                     ),
                 }
             )
+        metric_dict = dict(sorted(metric_dict.items(), key=lambda kv: kv[0]))
+        return metric_dict
 
     def validation_epoch_end(self, outputs):
-        self._evaluate_with_ann(
+        metric_dict = self._evaluate_with_ann(
             set_name="valid",
             row_dict=self._datamodule.valid_row_dict,
             embedding_batch_list=outputs,
             true_pair_set=self._datamodule.valid_true_pair_set,
         )
+        self.log_dict(metric_dict)
 
     def test_step(self, batch, batch_idx):
         tensor_dict, sequence_length_dict = batch
         return self.blocker_net(tensor_dict, sequence_length_dict)
 
     def test_epoch_end(self, outputs):
-        self._evaluate_with_ann(
+        metric_dict = self._evaluate_with_ann(
             set_name="test",
             row_dict=self._datamodule.test_row_dict,
             embedding_batch_list=outputs,
             true_pair_set=self._datamodule.test_true_pair_set,
         )
+        self.log_dict(metric_dict)
 
     def configure_optimizers(self):
         optimizer = self.optimizer_cls(
@@ -523,6 +522,32 @@ class EntityEmbed(pl.LightningModule):
         return vector_dict
 
 
+def validate_best(trainer):
+    model = trainer.get_model()
+    ckpt_path = trainer.checkpoint_callback.best_model_path
+    if trainer.accelerator_backend is not None and not trainer.use_tpu:
+        trainer.accelerator_backend.barrier()
+    ckpt = pl_load(ckpt_path, map_location=lambda storage, loc: storage)
+    model.load_state_dict(ckpt["state_dict"])
+
+    model.blocker_net.eval()
+    model.blocker_net.zero_grad()
+    with torch.no_grad():
+        embedding_batch_list = []
+        for tensor_dict, sequence_length_dict in model._datamodule.val_dataloader():
+            tensor_dict = {attr: t.to(model.device) for attr, t in tensor_dict.items()}
+            embeddings = model.blocker_net(tensor_dict, sequence_length_dict)
+            embedding_batch_list.append(embeddings)
+        metric_dict = model._evaluate_with_ann(
+            set_name="valid",
+            row_dict=model._datamodule.valid_row_dict,
+            embedding_batch_list=embedding_batch_list,
+            true_pair_set=model._datamodule.valid_true_pair_set,
+        )
+
+    return metric_dict
+
+
 class LinkageEmbed(EntityEmbed):
     def _evaluate_with_ann(self, set_name, row_dict, embedding_batch_list, true_pair_set):
         vector_list = []
@@ -539,6 +564,7 @@ class LinkageEmbed(EntityEmbed):
             index_build_kwargs=self.index_build_kwargs,
         )
 
+        metric_dict = {}
         for sim_threshold in self.sim_threshold_list:
             found_pair_set = ann_index.search_pairs(
                 k=self.ann_k,
@@ -549,7 +575,7 @@ class LinkageEmbed(EntityEmbed):
             )
 
             precision, recall = precision_and_recall(found_pair_set, true_pair_set)
-            self.log_dict(
+            metric_dict.update(
                 {
                     f"{set_name}_precision_at_{sim_threshold}": precision,
                     f"{set_name}_recall_at_{sim_threshold}": recall,
@@ -559,6 +585,8 @@ class LinkageEmbed(EntityEmbed):
                     ),
                 }
             )
+        metric_dict = dict(sorted(metric_dict.items(), key=lambda kv: kv[0]))
+        return metric_dict
 
     def predict(
         self,
