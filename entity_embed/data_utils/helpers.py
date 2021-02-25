@@ -96,11 +96,23 @@ class AttrInfoDictParser:
             else:
                 logger.info(f"For attr={attr}, computing actual max_str_len")
                 is_multitoken = field_type in (FieldType.MULTITOKEN, FieldType.SEMANTIC_MULTITOKEN)
-                actual_max_str_len = compute_max_str_len(
-                    attr_val_gen=(row[attr] for row in row_dict.values()),
-                    is_multitoken=is_multitoken,
-                    tokenizer=tokenizer,
-                )
+                # Check if there's a source_attr defined on the numericalize_info_dict,
+                # useful when we want to have multiple NumericalizeInfo for the same attr
+                actual_attr = numericalize_info_dict.get("source_attr", attr)
+                try:
+                    actual_max_str_len = compute_max_str_len(
+                        attr_val_gen=(row[actual_attr] for row in row_dict.values()),
+                        is_multitoken=is_multitoken,
+                        tokenizer=tokenizer,
+                    )
+                except KeyError:
+                    raise ValueError(
+                        f"Cannot compute max_str_len for attr={actual_attr}. "
+                        f"Please make sure that attr={attr} is a key in every "
+                        "row of row_dict.values() or define source_attr in "
+                        "numericalize_info_dict if you wish to use a override "
+                        "an attr name."
+                    )
                 if max_str_len is None:
                     logger.info(f"For attr={attr}, using actual_max_str_len={actual_max_str_len}")
                     max_str_len = actual_max_str_len
