@@ -14,7 +14,7 @@ class TestSupConLoss(unittest.TestCase):
         loss_funcA = SupConLoss(temperature=temperature)
 
         for dtype in TEST_DTYPES:
-            embedding_angles = [0, 20, 40, 60, 80]
+            embedding_angles = [0, 10, 20, 50, 60, 80]
             embeddings = torch.tensor(
                 [c_f.angle_to_coord(a) for a in embedding_angles],
                 requires_grad=True,
@@ -23,38 +23,50 @@ class TestSupConLoss(unittest.TestCase):
                 TEST_DEVICE
             )  # 2D embeddings
 
-            labels = torch.LongTensor([0, 0, 1, 1, 2])
+            labels = torch.LongTensor([0, 0, 0, 1, 1, 2])
 
             lossA = loss_funcA(embeddings, labels)
 
-            item_pos_pairs = {0: [(0, 1)], 1: [(1, 0)], 2: [(2, 3)], 3: [(3, 2)]}
+            item_pos_pairs = {
+                0: [(0, 1), (0, 2)],
+                1: [(1, 0), (1, 2)],
+                2: [(2, 0), (2, 1)],
+                3: [(3, 4)],
+                4: [(4, 3)],
+            }
             neg_pairs = [
-                (0, 2),
                 (0, 3),
                 (0, 4),
-                (1, 2),
+                (0, 5),
                 (1, 3),
                 (1, 4),
-                (2, 0),
-                (2, 1),
+                (1, 5),
+                (2, 3),
                 (2, 4),
+                (2, 5),
                 (3, 0),
                 (3, 1),
-                (3, 4),
+                (3, 2),
+                (3, 5),
                 (4, 0),
                 (4, 1),
                 (4, 2),
-                (4, 3),
+                (4, 5),
+                (5, 0),
+                (5, 1),
+                (5, 2),
+                (5, 3),
+                (5, 4),
             ]
 
             total_lossA = 0
-            for pos_pairs in item_pos_pairs.values():
+            for a1, pos_pairs in item_pos_pairs.items():
                 item_lossA = 0
-                for a1, p in pos_pairs:
+                for __, p in pos_pairs:
                     anchor, positive = embeddings[a1], embeddings[p]
                     numeratorA = torch.exp(torch.matmul(anchor, positive) / temperature)
-                    denominatorA = numeratorA.clone()
-                    for a2, n in neg_pairs:
+                    denominatorA = 0
+                    for a2, n in pos_pairs + neg_pairs:
                         if a2 == a1:
                             negative = embeddings[n]
                         else:
