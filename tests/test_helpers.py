@@ -22,6 +22,7 @@ def _validate_base_row_numericalizer(row_numericalizer):
 
     name_attr_info = parsed_attr_info_dict["name"]
     assert isinstance(name_attr_info, NumericalizeInfo)
+    assert name_attr_info.attr == "name"
 
     # Assert values were converted from str into proper types
     assert name_attr_info.field_type == FieldType.MULTITOKEN
@@ -182,6 +183,7 @@ def test_row_numericalizer_parse_with_attr_with_semantic_field_type(mock_load_ve
 
     mock_load_vectors.assert_called_once_with("fasttext.en.300d")
     name_attr_info = row_numericalizer.attr_info_dict["name"]
+    assert name_attr_info.attr == "name"
     assert name_attr_info.max_str_len is None
     assert isinstance(name_attr_info.vocab, Vocab)
 
@@ -252,10 +254,12 @@ def test_row_numericalizer_parse_multiple_attr_for_same_source_attr():
 
     name_multitoken_attr_info = parsed_attr_info_dict["name_multitoken"]
     assert isinstance(name_multitoken_attr_info, NumericalizeInfo)
+    assert name_multitoken_attr_info.attr == "name"
     assert name_multitoken_attr_info.field_type == FieldType.MULTITOKEN
 
     name_string_attr_info = parsed_attr_info_dict["name_string"]
     assert isinstance(name_string_attr_info, NumericalizeInfo)
+    assert name_string_attr_info.attr == "name"
     assert name_string_attr_info.field_type == FieldType.STRING
 
 

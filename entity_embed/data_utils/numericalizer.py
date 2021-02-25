@@ -36,6 +36,7 @@ class FieldType(Enum):
 
 @dataclass
 class NumericalizeInfo:
+    attr: str
     field_type: FieldType
     tokenizer: Callable[[str], List[str]]
     alphabet: List[str]
@@ -160,10 +161,13 @@ class RowNumericalizer:
         sequence_length_dict = {}
 
         for attr, numericalizer in self.attr_to_numericalizer.items():
+            # Get the source_attr from the NumericalizeInfo object for the
+            # cases where the attr is different from the row's key
+            source_attr = self.attr_info_dict[attr].attr
             if numericalizer.is_multitoken:
-                t, sequence_length = numericalizer.build_tensor(row[attr])
+                t, sequence_length = numericalizer.build_tensor(row[source_attr])
             else:
-                t = numericalizer.build_tensor(row[attr])
+                t = numericalizer.build_tensor(row[source_attr])
                 sequence_length = None
             tensor_dict[attr] = t
             sequence_length_dict[attr] = sequence_length

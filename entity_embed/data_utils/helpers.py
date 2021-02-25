@@ -68,6 +68,10 @@ class AttrInfoDictParser:
         max_str_len = numericalize_info_dict.get("max_str_len")
         vocab = None
 
+        # Check if there's a source_attr defined on the numericalize_info_dict,
+        # useful when we want to have multiple NumericalizeInfo for the same attr
+        source_attr = numericalize_info_dict.get("source_attr", attr)
+
         # Compute vocab if necessary
         if field_type in (FieldType.SEMANTIC_STRING, FieldType.SEMANTIC_MULTITOKEN):
             if numericalize_info_dict.get("vocab") is None:
@@ -75,10 +79,19 @@ class AttrInfoDictParser:
                     "Please set a torchtext pretrained vocab to use. "
                     f"Available ones are: {AVAILABLE_VOCABS}"
                 )
-            vocab_counter = compute_vocab_counter(
-                attr_val_gen=(row[attr] for row in row_dict.values()),
-                tokenizer=tokenizer,
-            )
+            try:
+                vocab_counter = compute_vocab_counter(
+                    attr_val_gen=(row[source_attr] for row in row_dict.values()),
+                    tokenizer=tokenizer,
+                )
+            except ValueError:
+                raise ValueError(
+                    f"Cannot compute vocab_counter for attr={source_attr}. "
+                    f"Please make sure that attr={attr} is a key in every "
+                    "row of row_dict.values() or define source_attr in "
+                    "numericalize_info_dict if you wish to use a override "
+                    "an attr name."
+                )
             vocab = Vocab(vocab_counter)
             vocab.load_vectors(numericalize_info_dict.get("vocab"))
 
@@ -96,18 +109,15 @@ class AttrInfoDictParser:
             else:
                 logger.info(f"For attr={attr}, computing actual max_str_len")
                 is_multitoken = field_type in (FieldType.MULTITOKEN, FieldType.SEMANTIC_MULTITOKEN)
-                # Check if there's a source_attr defined on the numericalize_info_dict,
-                # useful when we want to have multiple NumericalizeInfo for the same attr
-                actual_attr = numericalize_info_dict.get("source_attr", attr)
                 try:
                     actual_max_str_len = compute_max_str_len(
-                        attr_val_gen=(row[actual_attr] for row in row_dict.values()),
+                        attr_val_gen=(row[source_attr] for row in row_dict.values()),
                         is_multitoken=is_multitoken,
                         tokenizer=tokenizer,
                     )
                 except KeyError:
                     raise ValueError(
-                        f"Cannot compute max_str_len for attr={actual_attr}. "
+                        f"Cannot compute max_str_len for attr={source_attr}. "
                         f"Please make sure that attr={attr} is a key in every "
                         "row of row_dict.values() or define source_attr in "
                         "numericalize_info_dict if you wish to use a override "
@@ -123,6 +133,7 @@ class AttrInfoDictParser:
         use_mask = numericalize_info_dict.get("use_mask", False)
 
         return NumericalizeInfo(
+            attr=source_attr,
             field_type=field_type,
             tokenizer=tokenizer,
             alphabet=alphabet,
