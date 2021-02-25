@@ -1,0 +1,3 @@
+[run]
+source = entity_embed
+omit = */__init__.py

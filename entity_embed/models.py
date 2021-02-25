@@ -15,12 +15,12 @@ class StringEmbedCNN(nn.Module):
     The tensor shape expected here is produced by StringNumericalizer.
     """
 
-    def __init__(self, numericalize_info, n_channels, embedding_size, embed_dropout_p):
+    def __init__(self, numericalize_info, embedding_size):
         super().__init__()
 
         self.alphabet_len = len(numericalize_info.alphabet)
         self.max_str_len = numericalize_info.max_str_len
-        self.n_channels = n_channels
+        self.n_channels = numericalize_info.n_channels
         self.embedding_size = embedding_size
 
         self.conv1 = nn.Conv1d(
@@ -37,8 +37,8 @@ class StringEmbedCNN(nn.Module):
             raise ValueError("Too small alphabet, self.flat_size == 0")
 
         dense_layers = [nn.Linear(self.flat_size, self.embedding_size)]
-        if embed_dropout_p:
-            dense_layers.append(nn.Dropout(p=embed_dropout_p))
+        if numericalize_info.embed_dropout_p:
+            dense_layers.append(nn.Dropout(p=numericalize_info.embed_dropout_p))
         self.dense_net = nn.Sequential(*dense_layers)
 
     def forward(self, x, **kwargs):
@@ -55,13 +55,13 @@ class StringEmbedCNN(nn.Module):
 
 
 class SemanticEmbedNet(nn.Module):
-    def __init__(self, numericalize_info, embedding_size, embed_dropout_p):
+    def __init__(self, numericalize_info, embedding_size):
         super().__init__()
 
         self.embedding_size = embedding_size
         self.dense_net = nn.Sequential(
             nn.Embedding.from_pretrained(numericalize_info.vocab.vectors),
-            nn.Dropout(p=embed_dropout_p),
+            nn.Dropout(p=numericalize_info.embed_dropout_p),
         )
 
     def forward(self, x, **kwargs):
@@ -73,7 +73,8 @@ class Attention(nn.Module):
     PyTorch nn.Module of an Attention mechanism for weighted averging of
     hidden states produced by a RNN. Based on mechanisms discussed in
     "Using millions of emoji occurrences to learn any-domain representations
-    for detecting sentiment, emotion and sarcasm (EMNLP 17)" (code https://github.com/huggingface/torchMoji)
+    for detecting sentiment, emotion and sarcasm (EMNLP 17)"
+    (code https://github.com/huggingface/torchMoji)
     and
     "AutoBlock: A Hands-off Blocking Framework for Entity Matching (WSDM 20)"
     """
@@ -100,7 +101,8 @@ class MaskedAttention(nn.Module):
     PyTorch nn.Module of an Attention mechanism for weighted averging of
     hidden states produced by a RNN. Based on mechanisms discussed in
     "Using millions of emoji occurrences to learn any-domain representations
-    for detecting sentiment, emotion and sarcasm (EMNLP 17)" (code https://github.com/huggingface/torchMoji)
+    for detecting sentiment, emotion and sarcasm (EMNLP 17)"
+    (code https://github.com/huggingface/torchMoji)
     and
     "AutoBlock: A Hands-off Blocking Framework for Entity Matching (WSDM 20)".
 
@@ -163,7 +165,7 @@ class MultitokenAttentionEmbed(nn.Module):
         # but attention_net will use the actual sequence_lengths with zeros
         # https://github.com/pytorch/pytorch/issues/4582
         # https://github.com/pytorch/pytorch/issues/50192
-        sequence_lengths_no_zero = [max(l, 1) for l in sequence_lengths]
+        sequence_lengths_no_zero = [max(ls, 1) for ls in sequence_lengths]
 
         packed_x = nn.utils.rnn.pack_padded_sequence(
             x, sequence_lengths_no_zero, batch_first=True, enforce_sorted=False
@@ -232,11 +234,7 @@ class BlockerNet(nn.Module):
     def __init__(
         self,
         attr_info_dict,
-        n_channels=8,
         embedding_size=128,
-        embed_dropout_p=0.2,
-        use_attention=True,
-        use_mask=False,
     ):
         super().__init__()
         self.attr_info_dict = attr_info_dict
@@ -250,9 +248,7 @@ class BlockerNet(nn.Module):
             ):
                 embedding_net = StringEmbedCNN(
                     numericalize_info=numericalize_info,
-                    n_channels=n_channels,
                     embedding_size=embedding_size,
-                    embed_dropout_p=embed_dropout_p,
                 )
             elif numericalize_info.field_type in (
                 FieldType.SEMANTIC_STRING,
@@ -261,22 +257,23 @@ class BlockerNet(nn.Module):
                 embedding_net = SemanticEmbedNet(
                     numericalize_info=numericalize_info,
                     embedding_size=embedding_size,
-                    embed_dropout_p=embed_dropout_p,
                 )
             else:
-                raise ValueError(f"Unexpected {numericalize_info.field_type=}")
+                raise ValueError(
+                    f"Unexpected numericalize_info.field_type={numericalize_info.field_type}"
+                )
 
             if numericalize_info.field_type in (
                 FieldType.MULTITOKEN,
                 FieldType.SEMANTIC_MULTITOKEN,
             ):
-                if use_attention:
+                if numericalize_info.use_attention:
                     self.embedding_net_dict[attr] = MultitokenAttentionEmbed(
-                        embedding_net, use_mask=use_mask
+                        embedding_net, use_mask=numericalize_info.use_mask
                     )
                 else:
                     self.embedding_net_dict[attr] = MultitokenAverageEmbed(
-                        embedding_net, use_mask=use_mask
+                        embedding_net, use_mask=numericalize_info.use_mask
                     )
             elif numericalize_info.field_type in (
                 FieldType.STRING,

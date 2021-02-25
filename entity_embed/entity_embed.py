@@ -1,4 +1,3 @@
-import itertools
 import logging
 import os
 
@@ -11,12 +10,9 @@ from pytorch_metric_learning.miners import BatchHardMiner
 from tqdm.auto import tqdm
 
 from .data_utils.datasets import ClusterDataset, RowDataset
-from .data_utils.numericalizer import NumericalizeInfo, RowNumericalizer
 from .data_utils.utils import (
-    Enumerator,
     cluster_dict_to_id_pairs,
     count_cluster_dict_pairs,
-    id_pairs_to_cluster_mapping_and_dict,
     row_dict_to_cluster_dict,
     separate_dict_left_right,
     split_clusters,
@@ -26,25 +22,6 @@ from .evaluation import f1_score, pair_entity_ratio, precision_and_recall
 from .models import BlockerNet
 
 logger = logging.getLogger(__name__)
-
-
-def build_row_numericalizer(attr_info_dict, row_dict=None):
-    # Fix NumericalizeInfo from dicts and initialize RowNumericalizer.
-    for attr, numericalize_info in list(attr_info_dict.items()):
-        if not numericalize_info:
-            raise ValueError(
-                f'Please set the value of "{attr}" in attr_info_dict, {numericalize_info}'
-            )
-        if not isinstance(numericalize_info, NumericalizeInfo):
-            numericalize_info["tokenizer"] = numericalize_info.get("tokenizer")
-            numericalize_info["alphabet"] = numericalize_info.get("alphabet")
-            numericalize_info["max_str_len"] = numericalize_info.get("max_str_len")
-            numericalize_info["vocab"] = numericalize_info.get("vocab")
-            attr_info_dict[attr] = NumericalizeInfo(**numericalize_info)
-
-    # For now on, one must use row_numericalizer instead of attr_info_dict,
-    # because RowNumericalizer fills None values of alphabet and max_str_len.
-    return RowNumericalizer(attr_info_dict=attr_info_dict, row_dict=row_dict)
 
 
 class DeduplicationDataModule(pl.LightningDataModule):
@@ -354,11 +331,7 @@ class EntityEmbed(pl.LightningModule):
     def __init__(
         self,
         datamodule,
-        n_channels=8,
         embedding_size=128,
-        embed_dropout_p=0.2,
-        use_attention=True,
-        use_mask=False,
         loss_cls=NTXentLoss,
         loss_kwargs=None,
         miner_cls=BatchHardMiner,
@@ -374,18 +347,10 @@ class EntityEmbed(pl.LightningModule):
         super().__init__()
         self.row_numericalizer = datamodule.row_numericalizer
         self.attr_info_dict = self.row_numericalizer.attr_info_dict
-        self.n_channels = n_channels
         self.embedding_size = embedding_size
-        self.embed_dropout_p = embed_dropout_p
-        self.use_attention = use_attention
-        self.use_mask = use_mask
         self.blocker_net = BlockerNet(
             self.attr_info_dict,
-            n_channels=n_channels,
             embedding_size=embedding_size,
-            embed_dropout_p=embed_dropout_p,
-            use_attention=use_attention,
-            use_mask=use_mask,
         )
         self.losser = loss_cls(**loss_kwargs if loss_kwargs else {"temperature": 0.1})
         if miner_cls:
@@ -403,11 +368,7 @@ class EntityEmbed(pl.LightningModule):
         self.index_search_kwargs = index_search_kwargs
 
         self.save_hyperparameters(
-            "n_channels",
             "embedding_size",
-            "embed_dropout_p",
-            "use_attention",
-            "use_mask",
             "loss_cls",
             "miner_cls",
             "optimizer_cls",
@@ -429,7 +390,10 @@ class EntityEmbed(pl.LightningModule):
     def _warn_if_empty_indices_tuple(self, indices_tuple, batch_idx):
         with torch.no_grad():
             if all(t.nelement() == 0 for t in indices_tuple):
-                logger.warning(f"Found empty indices_tuple at {self.current_epoch=}, {batch_idx=}")
+                logger.warning(
+                    f"Found empty indices_tuple at self.current_epoch={self.current_epoch}, "
+                    f"batch_idx={batch_idx}"
+                )
 
     def training_step(self, batch, batch_idx):
         tensor_dict, sequence_length_dict, labels = batch
@@ -653,7 +617,7 @@ class ANNEntityIndex:
         if not self.is_built:
             raise ValueError("Please call build first")
         if sim_threshold > 1 or sim_threshold < 0:
-            raise ValueError(f"{sim_threshold=} must be <= 1 and >= 0")
+            raise ValueError(f"sim_threshold={sim_threshold} must be <= 1 and >= 0")
 
         logger.debug("Searching on approx_knn_index...")
 
@@ -679,7 +643,9 @@ class ANNEntityIndex:
                     pair = tuple(sorted([left_id, right_id]))
                     found_pair_set.add(pair)
 
-        logger.debug(f"Building found_pair_set done. Found {len(found_pair_set)=} pairs.")
+        logger.debug(
+            f"Building found_pair_set done. Found len(found_pair_set)={len(found_pair_set)} pairs."
+        )
 
         return found_pair_set
 
@@ -713,7 +679,7 @@ class ANNLinkageIndex:
         if not self.left_index.is_built or not self.right_index.is_built:
             raise ValueError("Please call build first")
         if sim_threshold > 1 or sim_threshold < 0:
-            raise ValueError(f"{sim_threshold=} must be <= 1 and >= 0")
+            raise ValueError(f"sim_threshold={sim_threshold} must be <= 1 and >= 0")
 
         distance_threshold = 1 - sim_threshold
         all_pair_set = set()
@@ -722,7 +688,7 @@ class ANNLinkageIndex:
             (left_dataset_name, self.left_index, right_vector_dict, self.right_index),
             (right_dataset_name, self.right_index, left_vector_dict, self.left_index),
         ]:
-            logger.debug(f"Searching on approx_knn_index of {dataset_name=}...")
+            logger.debug(f"Searching on approx_knn_index of dataset_name={dataset_name}...")
 
             neighbor_and_distance_list_of_list = index.approx_knn_index.batch_search_by_vectors(
                 vs=vector_dict.values(),
@@ -734,7 +700,8 @@ class ANNLinkageIndex:
             )
 
             logger.debug(
-                f"Search on approx_knn_index of {dataset_name=}... done, filling all_pair_set now..."
+                f"Search on approx_knn_index of dataset_name={dataset_name}... done, "
+                "filling all_pair_set now..."
             )
 
             for i, neighbor_distance_list in enumerate(neighbor_and_distance_list_of_list):
@@ -752,8 +719,11 @@ class ANNLinkageIndex:
                         )  # do NOT use sorted here, figure out from datasets
                         all_pair_set.add(pair)
 
-            logger.debug(f"Filling all_pair_set with {dataset_name=} done.")
+            logger.debug(f"Filling all_pair_set with dataset_name={dataset_name} done.")
 
-        logger.debug(f"All searches done, all_pair_set filled. Found {len(all_pair_set)=} pairs.")
+        logger.debug(
+            "All searches done, all_pair_set filled. "
+            f"Found len(all_pair_set)={len(all_pair_set)} pairs."
+        )
 
         return all_pair_set

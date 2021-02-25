@@ -66,7 +66,8 @@ def split_clusters(
 
     if train_len + valid_len + test_len < len(all_cluster_id_set):
         logger.warning(
-            f"{train_len + valid_len + test_len=} is less than {len(all_cluster_id_set)=}"
+            f"(train_len + valid_len + test_len)={train_len + valid_len + test_len} "
+            f"is less than len(all_cluster_id_set)={len(all_cluster_id_set)}"
         )
 
     train_cluster_id_set = OrderedSet(rnd.sample(all_cluster_id_set, train_len))
@@ -129,11 +130,9 @@ def pair_count_to_row_count(pair_count):
     return int((1 + math.sqrt(1 + 8 * pair_count)) / 2)
 
 
-def compute_alphabet_and_max_str_len(attr_val_gen, is_multitoken, tokenizer):
-    actual_alphabet = set()
+def compute_max_str_len(attr_val_gen, is_multitoken, tokenizer):
     actual_max_str_len = 0
     for attr_val in attr_val_gen:
-        actual_alphabet.update(list(attr_val))
         if not is_multitoken:
             str_len = len(attr_val)
         else:
@@ -144,18 +143,15 @@ def compute_alphabet_and_max_str_len(attr_val_gen, is_multitoken, tokenizer):
                 str_len = -1
         actual_max_str_len = max(str_len, actual_max_str_len)
 
-    # Sort alphabet for reproducibility
-    actual_alphabet = sorted(actual_alphabet)
-
     # Ensure max_str_len is pair to enable pooling later
     if actual_max_str_len % 2 != 0:
         logger.info(
-            f"{actual_max_str_len=} must be pair to enable NN pooling. "
+            f"actual_max_str_len={actual_max_str_len} must be pair to enable NN pooling. "
             f"Updating to {actual_max_str_len + 1}"
         )
         actual_max_str_len += 1
 
-    return actual_alphabet, actual_max_str_len
+    return actual_max_str_len
 
 
 def compute_vocab_counter(attr_val_gen, tokenizer):

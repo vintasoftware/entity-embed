@@ -1,14 +1,13 @@
+import inspect
 import logging
 from dataclasses import dataclass
 from enum import Enum
-from typing import Callable, List, Optional, Union
+from typing import Callable, List
 
 import numpy as np
 import regex
 import torch
 from torchtext.vocab import Vocab
-
-from .utils import compute_alphabet_and_max_str_len, compute_vocab_counter, import_function
 
 logger = logging.getLogger(__name__)
 AVAILABLE_VOCABS = [
@@ -38,10 +37,14 @@ class FieldType(Enum):
 @dataclass
 class NumericalizeInfo:
     field_type: FieldType
-    tokenizer: Optional[Union[str, Callable[[str], List[str]]]]
-    alphabet: Optional[List[str]]
-    max_str_len: Optional[int]
-    vocab: Optional[Union[str, Vocab]]
+    tokenizer: Callable[[str], List[str]]
+    alphabet: List[str]
+    max_str_len: int
+    vocab: Vocab
+    n_channels: int
+    embed_dropout_p: float
+    use_attention: bool
+    use_mask: bool
 
     @property
     def is_multitoken(self):
@@ -49,6 +52,18 @@ class NumericalizeInfo:
         if isinstance(field_type, str):
             field_type = FieldType[field_type]
         return field_type in (FieldType.MULTITOKEN, FieldType.SEMANTIC_MULTITOKEN)
+
+    def __repr__(self):
+        repr_dict = {}
+        for k, v in self.__dict__.items():
+            if isinstance(v, Callable):
+                repr_dict[k] = f"{inspect.getmodule(v).__name__}.{v.__name__}"
+            else:
+                repr_dict[k] = v
+        return "{klass}({attrs})".format(
+            klass=self.__class__.__name__,
+            attrs=", ".join("{}={!r}".format(k, v) for k, v in repr_dict.items()),
+        )
 
 
 # Unicode \w without _ is [\w--_]
@@ -135,91 +150,10 @@ class RowNumericalizer:
     def __init__(
         self,
         attr_info_dict,
-        row_dict=None,
+        attr_to_numericalizer,
     ):
-        self.attr_info_dict = {}
-        self.attr_to_numericalizer = {}
-
-        for attr, numericalize_info in attr_info_dict.items():
-            field_type = FieldType[numericalize_info.field_type]
-            tokenizer = (
-                import_function(numericalize_info.tokenizer)
-                if numericalize_info.tokenizer
-                else None
-            )
-            alphabet = numericalize_info.alphabet
-            max_str_len = numericalize_info.max_str_len
-            vocab = None
-
-            # Check if tokenizer function is set
-            if (
-                field_type in (FieldType.MULTITOKEN, FieldType.SEMANTIC_MULTITOKEN)
-                and tokenizer is None
-            ):
-                raise ValueError(
-                    f"{attr=} has {field_type=} but {self.tokenizer=}. Please set a tokenizer."
-                )
-
-            # Compute vocab if necessary
-            if field_type in (FieldType.SEMANTIC_STRING, FieldType.SEMANTIC_MULTITOKEN):
-                if numericalize_info.vocab is None:
-                    raise ValueError(
-                        "Please set a torchtext pretrained vocab to use. "
-                        f"Available ones are: {AVAILABLE_VOCABS}"
-                    )
-                vocab_counter = compute_vocab_counter(
-                    attr_val_gen=(row[attr] for row in row_dict.values()),
-                    tokenizer=tokenizer,
-                )
-                vocab = Vocab(vocab_counter)
-                vocab.load_vectors(numericalize_info.vocab)
-
-            # Compute alphabet and max_str_len if necessary
-            if field_type in (FieldType.STRING, FieldType.MULTITOKEN) and (
-                alphabet is None or max_str_len is None
-            ):
-                if row_dict is None:
-                    raise ValueError(
-                        f"Cannot compute alphabet and max_str_len for {attr=}. "
-                        "row_dict cannot be None if alphabet or max_str_len is None. "
-                        "Please set row_dict, a dictionary of id -> row with ALL your data (train, test, valid). "
-                        "Or call entity_embed.data_utils.compute_alphabet_and_max_str_len "
-                        "over ALL your data (train, test, valid) to compute alphabet and max_str_len. "
-                    )
-                else:
-                    logger.info(f"For {attr=}, computing actual alphabet and max_str_len")
-                    (actual_alphabet, actual_max_str_len,) = compute_alphabet_and_max_str_len(
-                        attr_val_gen=(row[attr] for row in row_dict.values()),
-                        is_multitoken=numericalize_info.is_multitoken,
-                        tokenizer=tokenizer,
-                    )
-                    if alphabet is None:
-                        logger.info(f"For {attr=}, using {actual_alphabet=}")
-                        alphabet = actual_alphabet
-                    if max_str_len is None:
-                        logger.info(f"For {attr=}, using {actual_max_str_len=}")
-                        max_str_len = actual_max_str_len
-
-            field_type_to_numericalizer_cls = {
-                FieldType.STRING: StringNumericalizer,
-                FieldType.MULTITOKEN: MultitokenNumericalizer,
-                FieldType.SEMANTIC_STRING: SemanticStringNumericalizer,
-                FieldType.SEMANTIC_MULTITOKEN: SemanticMultitokenNumericalizer,
-            }
-            numericalizer_cls = field_type_to_numericalizer_cls.get(field_type)
-            if numericalizer_cls is None:
-                raise ValueError(f"Unexpected {field_type=}")
-
-            self.attr_info_dict[attr] = NumericalizeInfo(
-                field_type=field_type,
-                tokenizer=tokenizer,
-                alphabet=alphabet,
-                max_str_len=max_str_len,
-                vocab=vocab,
-            )
-            self.attr_to_numericalizer[attr] = numericalizer_cls(
-                attr=attr, numericalize_info=self.attr_info_dict[attr]
-            )
+        self.attr_info_dict = attr_info_dict
+        self.attr_to_numericalizer = attr_to_numericalizer
 
     def build_tensor_dict(self, row):
         tensor_dict = {}
