@@ -1,0 +1,108 @@
+import unittest
+
+import torch
+from entity_embed.losses import SupConLoss
+from pytorch_metric_learning.distances import LpDistance
+from pytorch_metric_learning.utils import common_functions as c_f
+
+from . import TEST_DEVICE, TEST_DTYPES
+
+
+class TestSupConLoss(unittest.TestCase):
+    def test_sup_con_loss(self):
+        temperature = 0.1
+        loss_funcA = SupConLoss(temperature=temperature)
+
+        for dtype in TEST_DTYPES:
+            embedding_angles = [0, 20, 40, 60, 80]
+            embeddings = torch.tensor(
+                [c_f.angle_to_coord(a) for a in embedding_angles],
+                requires_grad=True,
+                dtype=dtype,
+            ).to(
+                TEST_DEVICE
+            )  # 2D embeddings
+
+            labels = torch.LongTensor([0, 0, 1, 1, 2])
+
+            lossA = loss_funcA(embeddings, labels)
+
+            item_pos_pairs = {0: [(0, 1)], 1: [(1, 0)], 2: [(2, 3)], 3: [(3, 2)]}
+            neg_pairs = [
+                (0, 2),
+                (0, 3),
+                (0, 4),
+                (1, 2),
+                (1, 3),
+                (1, 4),
+                (2, 0),
+                (2, 1),
+                (2, 4),
+                (3, 0),
+                (3, 1),
+                (3, 4),
+                (4, 0),
+                (4, 1),
+                (4, 2),
+                (4, 3),
+            ]
+
+            total_lossA = 0
+            for pos_pairs in item_pos_pairs.values():
+                item_lossA = 0
+                for a1, p in pos_pairs:
+                    anchor, positive = embeddings[a1], embeddings[p]
+                    numeratorA = torch.exp(torch.matmul(anchor, positive) / temperature)
+                    denominatorA = numeratorA.clone()
+                    for a2, n in neg_pairs:
+                        if a2 == a1:
+                            negative = embeddings[n]
+                        else:
+                            continue
+                        denominatorA += torch.exp(torch.matmul(anchor, negative) / temperature)
+                    curr_lossA = torch.log(numeratorA / denominatorA)
+                    item_lossA += curr_lossA
+                total_lossA += -item_lossA / len(pos_pairs)
+            total_lossA *= temperature
+            total_lossA /= len(item_pos_pairs)
+            rtol = 1e-2 if dtype == torch.float16 else 1e-5
+            self.assertTrue(torch.isclose(lossA, total_lossA, rtol=rtol))
+
+    def test_with_no_valid_pairs(self):
+        loss_func = SupConLoss(temperature=0.1)
+        all_embedding_angles = [[0], [0, 10, 20], [0, 40, 60]]
+        all_labels = [
+            torch.LongTensor([0]),
+            torch.LongTensor([0, 0, 0]),
+            torch.LongTensor([1, 2, 3]),
+        ]
+        for dtype in TEST_DTYPES:
+            for embedding_angles, labels in zip(all_embedding_angles, all_labels):
+                embeddings = torch.tensor(
+                    [c_f.angle_to_coord(a) for a in embedding_angles],
+                    requires_grad=True,
+                    dtype=dtype,
+                ).to(
+                    TEST_DEVICE
+                )  # 2D embeddings
+                loss = loss_func(embeddings, labels)
+                loss.backward()
+                self.assertEqual(loss, 0)
+
+    def test_backward(self):
+        temperature = 0.1
+        loss_funcA = SupConLoss(temperature=temperature)
+        loss_funcB = SupConLoss(temperature=temperature, distance=LpDistance())
+        for dtype in TEST_DTYPES:
+            for loss_func in [loss_funcA, loss_funcB]:
+                embedding_angles = [0, 20, 40, 60, 80]
+                embeddings = torch.tensor(
+                    [c_f.angle_to_coord(a) for a in embedding_angles],
+                    requires_grad=True,
+                    dtype=dtype,
+                ).to(
+                    TEST_DEVICE
+                )  # 2D embeddings
+                labels = torch.LongTensor([0, 0, 1, 1, 2])
+                loss = loss_func(embeddings, labels)
+                loss.backward()

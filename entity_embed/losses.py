@@ -13,26 +13,28 @@ class SupConLoss(GenericPairLoss):
 
     def _compute_loss(self, mat, pos_mask, neg_mask):
         # Based on: https://github.com/HobbitLong/SupContrast/blob/6d5a3de39070249a19c62a345eea4acb5f26c0bc/losses.py  # noqa: E501
-        sim_mat = mat / self.temperature
-        sim_mat_max, _ = sim_mat.max(dim=1, keepdim=True)
-        sim_mat = sim_mat - sim_mat_max.detach()  # for numerical stability
+        if pos_mask.bool().any() and neg_mask.bool().any():
+            mat = mat / self.temperature
+            mat_max, _ = mat.max(dim=1, keepdim=True)
+            mat = mat - mat_max.detach()  # for numerical stability
 
-        denominator = lmu.logsumexp(
-            sim_mat, keep_mask=(pos_mask + neg_mask).bool(), add_one=False, dim=1
-        )
-        log_prob = sim_mat - denominator
-        mean_log_prob_pos = (pos_mask * log_prob).sum(dim=1) / (
-            pos_mask.sum(dim=1) + c_f.small_val(sim_mat.dtype)
-        )
-        losses = self.temperature * mean_log_prob_pos
+            denominator = lmu.logsumexp(
+                mat, keep_mask=(pos_mask + neg_mask).bool(), add_one=False, dim=1
+            )
+            log_prob = mat - denominator
+            mean_log_prob_pos = (pos_mask * log_prob).sum(dim=1) / (
+                pos_mask.sum(dim=1) + c_f.small_val(mat.dtype)
+            )
+            losses = self.temperature * mean_log_prob_pos
 
-        return {
-            "loss": {
-                "losses": -losses,
-                "indices": c_f.torch_arange_from_size(sim_mat),
-                "reduction_type": "element",
+            return {
+                "loss": {
+                    "losses": -losses,
+                    "indices": c_f.torch_arange_from_size(mat),
+                    "reduction_type": "element",
+                }
             }
-        }
+        return self.zero_losses()
 
     def get_default_reducer(self):
         return AvgNonZeroReducer()
