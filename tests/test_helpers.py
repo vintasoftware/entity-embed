@@ -293,3 +293,99 @@ def test_row_numericalizer_parse_multiple_attr_without_source_attr_raises():
 
     with pytest.raises(ValueError):
         AttrInfoDictParser.from_dict(attr_info_dict, row_dict=row_dict)
+
+
+@mock.patch("entity_embed.data_utils.helpers.Vocab.load_vectors")
+def test_row_numericalizer_parse_multiple_attr_for_same_source_attr_semantic_field_type(
+    mock_load_vectors,
+):
+    attr_info_dict = {
+        "name_multitoken": {
+            "source_attr": "name",
+            "field_type": "SEMANTIC_MULTITOKEN",
+            "tokenizer": "entity_embed.default_tokenizer",
+            "vocab": "fasttext.en.300d",
+        },
+        "name_string": {
+            "source_attr": "name",
+            "field_type": "SEMANTIC_STRING",
+            "tokenizer": "entity_embed.default_tokenizer",
+            "vocab": "fasttext.en.300d",
+        },
+    }
+
+    row_dict = {
+        "1": {
+            "id": "1",
+            "name": "foo product",
+            "price": 1.00,
+            "source": "bar",
+        },
+        "2": {
+            "id": "2",
+            "name": "the foo product from world",
+            "price": 1.20,
+            "source": "baz",
+        },
+    }
+
+    row_numericalizer = AttrInfoDictParser.from_dict(attr_info_dict, row_dict=row_dict)
+    assert isinstance(row_numericalizer, RowNumericalizer)
+
+    mock_load_vectors.assert_has_calls(
+        [
+            mock.call("fasttext.en.300d"),
+            mock.call("fasttext.en.300d"),
+        ]
+    )
+
+    parsed_attr_info_dict = row_numericalizer.attr_info_dict
+    assert list(parsed_attr_info_dict.keys()) == ["name_multitoken", "name_string"]
+
+    name_multitoken_attr_info = parsed_attr_info_dict["name_multitoken"]
+    assert isinstance(name_multitoken_attr_info, NumericalizeInfo)
+    assert name_multitoken_attr_info.attr == "name"
+    assert name_multitoken_attr_info.field_type == FieldType.SEMANTIC_MULTITOKEN
+    assert name_multitoken_attr_info.max_str_len is None
+    assert isinstance(name_multitoken_attr_info.vocab, Vocab)
+
+    name_string_attr_info = parsed_attr_info_dict["name_string"]
+    assert isinstance(name_string_attr_info, NumericalizeInfo)
+    assert name_string_attr_info.attr == "name"
+    assert name_string_attr_info.field_type == FieldType.SEMANTIC_STRING
+    assert name_string_attr_info.max_str_len is None
+    assert isinstance(name_string_attr_info.vocab, Vocab)
+
+
+def test_row_numericalizer_parse_multiple_attr_for_same_source_attr_semantic_field_type_raises():
+    attr_info_dict = {
+        "name_multitoken": {
+            "field_type": "SEMANTIC_MULTITOKEN",
+            "tokenizer": "entity_embed.default_tokenizer",
+            "vocab": "fasttext.en.300d",
+        },
+        "name_string": {
+            "source_attr": "name",
+            "field_type": "SEMANTIC_STRING",
+            "tokenizer": "entity_embed.default_tokenizer",
+            "vocab": "fasttext.en.300d",
+        },
+    }
+
+    row_dict = {
+        "1": {
+            "id": "1",
+            "name": "foo product",
+            "price": 1.00,
+            "source": "bar",
+        },
+        "2": {
+            "id": "2",
+            "name": "the foo product from world",
+            "price": 1.20,
+            "source": "baz",
+        },
+    }
+
+    with pytest.raises(ValueError):
+        AttrInfoDictParser.from_dict(attr_info_dict, row_dict=row_dict)

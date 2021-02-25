@@ -84,7 +84,7 @@ class AttrInfoDictParser:
                     attr_val_gen=(row[source_attr] for row in row_dict.values()),
                     tokenizer=tokenizer,
                 )
-            except ValueError:
+            except KeyError:
                 raise ValueError(
                     f"Cannot compute vocab_counter for attr={source_attr}. "
                     f"Please make sure that attr={attr} is a key in every "
