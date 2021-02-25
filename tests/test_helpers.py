@@ -263,6 +263,52 @@ def test_row_numericalizer_parse_multiple_attr_for_same_source_attr():
     assert name_string_attr_info.field_type == FieldType.STRING
 
 
+def test_row_numericalizer_parse_multiple_attr_with_source_attr_as_key():
+    attr_info_dict = {
+        "name": {
+            "field_type": "MULTITOKEN",
+            "tokenizer": "entity_embed.default_tokenizer",
+        },
+        "name_string": {
+            "source_attr": "name",
+            "field_type": "STRING",
+            "tokenizer": "entity_embed.default_tokenizer",
+        },
+    }
+
+    row_dict = {
+        "1": {
+            "id": "1",
+            "name": "foo product",
+            "price": 1.00,
+            "source": "bar",
+        },
+        "2": {
+            "id": "2",
+            "name": "the foo product from world",
+            "price": 1.20,
+            "source": "baz",
+        },
+    }
+
+    row_numericalizer = AttrInfoDictParser.from_dict(attr_info_dict, row_dict=row_dict)
+
+    assert isinstance(row_numericalizer, RowNumericalizer)
+
+    parsed_attr_info_dict = row_numericalizer.attr_info_dict
+    assert list(parsed_attr_info_dict.keys()) == ["name", "name_string"]
+
+    name_attr_info = parsed_attr_info_dict["name"]
+    assert isinstance(name_attr_info, NumericalizeInfo)
+    assert name_attr_info.source_attr == "name"
+    assert name_attr_info.field_type == FieldType.MULTITOKEN
+
+    name_string_attr_info = parsed_attr_info_dict["name_string"]
+    assert isinstance(name_string_attr_info, NumericalizeInfo)
+    assert name_string_attr_info.source_attr == "name"
+    assert name_string_attr_info.field_type == FieldType.STRING
+
+
 def test_row_numericalizer_parse_multiple_attr_without_source_attr_raises():
     attr_info_dict = {
         "name_multitoken": {
