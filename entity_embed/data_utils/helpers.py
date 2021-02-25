@@ -133,7 +133,7 @@ class AttrInfoDictParser:
         use_mask = numericalize_info_dict.get("use_mask", False)
 
         return NumericalizeInfo(
-            attr=source_attr,
+            source_attr=source_attr,
             field_type=field_type,
             tokenizer=tokenizer,
             alphabet=alphabet,
