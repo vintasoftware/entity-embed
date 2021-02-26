@@ -97,8 +97,8 @@ class DeepmatcherBenchmark(ABC):
         csv_path = os.path.join(self.local_dir_path, self.base_csv_path, pair_csv_path)
         with open(csv_path, "r", encoding=self.csv_encoding) as f:
             for row in csv.DictReader(f):
-                id_left = self.id_enumerator[f'left-{int(row["ltable_id"])}']
-                id_right = self.id_enumerator[f'right-{int(row["rtable_id"])}']
+                id_left = self.id_enumerator[f'left-{(row["ltable_id"]).strip()}']
+                id_right = self.id_enumerator[f'right-{(row["rtable_id"]).strip()}']
 
                 if int(row["label"]) == 1:
                     true_pair_set.add((id_left, id_right))
