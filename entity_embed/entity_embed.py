@@ -19,6 +19,7 @@ from .data_utils.utils import (
 )
 from .evaluation import f1_score, pair_entity_ratio, precision_and_recall
 from .losses import SupConLoss
+from .miners import SameBlockMiner
 from .models import BlockerNet
 
 logger = logging.getLogger(__name__)
@@ -390,10 +391,13 @@ class EntityEmbed(pl.LightningModule):
                 )
 
     def training_step(self, batch, batch_idx):
-        tensor_dict, sequence_length_dict, labels = batch
+        ids, tensor_dict, sequence_length_dict, labels = batch
         embeddings = self.blocker_net(tensor_dict, sequence_length_dict)
         if self.miner:
-            indices_tuple = self.miner(embeddings, labels)
+            if isinstance(self.miner, SameBlockMiner):
+                indices_tuple = self.miner(labels=labels, ids=ids)
+            else:
+                indices_tuple = self.miner(embeddings=embeddings, labels=labels)
             self._warn_if_empty_indices_tuple(indices_tuple, batch_idx)
         else:
             indices_tuple = None

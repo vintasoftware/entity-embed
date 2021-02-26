@@ -12,11 +12,16 @@ logger = logging.getLogger(__name__)
 
 def collate_cluster_tensor_dict(cluster_batch, row_numericalizer):
     tensor_dict, sequence_length_dict = _collate_tensor_dict(
-        row_batch=[row for cluster, label in cluster_batch for row in cluster],
+        row_batch=[
+            row for cluster_row_dict, label in cluster_batch for row in cluster_row_dict.values()
+        ],
         row_numericalizer=row_numericalizer,
     )
-    label_list = [label for cluster, label in cluster_batch for row in cluster]
-    return tensor_dict, sequence_length_dict, default_collate(label_list)
+    ids = [id_ for cluster_row_dict, label in cluster_batch for id_ in cluster_row_dict.keys()]
+    labels = [
+        label for cluster_row_dict, label in cluster_batch for row in cluster_row_dict.values()
+    ]
+    return default_collate(ids), tensor_dict, sequence_length_dict, default_collate(labels)
 
 
 def _collate_tensor_dict(row_batch, row_numericalizer):
@@ -85,7 +90,8 @@ class ClusterDataset(Dataset):
 
     def __getitem__(self, idx):
         label, cluster = self.cluster_list[idx]
-        return [self.row_dict[id_] for id_ in cluster], label
+        cluster_row_dict = {id_: self.row_dict[id_] for id_ in cluster}
+        return cluster_row_dict, label
 
     def __len__(self):
         return len(self.cluster_list)
