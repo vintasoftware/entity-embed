@@ -325,7 +325,7 @@ class EntityEmbed(pl.LightningModule):
     def __init__(
         self,
         datamodule,
-        embedding_size=128,
+        embedding_size=300,
         loss_cls=SupConLoss,
         loss_kwargs=None,
         miner_cls=None,

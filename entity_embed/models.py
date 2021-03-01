@@ -235,7 +235,7 @@ class BlockerNet(nn.Module):
     def __init__(
         self,
         attr_info_dict,
-        embedding_size=128,
+        embedding_size=300,
     ):
         super().__init__()
         self.attr_info_dict = attr_info_dict

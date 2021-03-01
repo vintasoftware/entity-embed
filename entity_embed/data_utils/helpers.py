@@ -45,6 +45,7 @@ class AttrInfoDictParser:
 
     @classmethod
     def from_dict(cls, attr_info_dict, row_dict=None):
+        attr_info_dict = dict(attr_info_dict)  # make a copy
         attr_to_numericalizer = {}
         for attr, numericalize_info_dict in list(attr_info_dict.items()):
             if not numericalize_info_dict:
