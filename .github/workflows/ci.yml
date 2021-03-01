@@ -1,0 +1,33 @@
+name: tests
+
+on: [push]
+
+jobs:
+  test:
+    timeout-minutes: 10
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+        python-version: [3.6, 3.7, 3.8, 3.9]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v2
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install flake8
+      run: pip install flake8
+    - name: Lint using flake8
+      run: flake8 entity_embed tests
+
+    - name: Install tox
+      run: pip install tox
+    - name: Run tests with tox
+      env:
+        TEST_DEVICE: "cpu"
+      run: |
+        tox -e py
