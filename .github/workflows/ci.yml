@@ -8,7 +8,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [macos-latest, ubuntu-latest]
+        os: [windows-latest, macos-latest, ubuntu-latest]
         python-version: [3.6, 3.7, 3.8, 3.9]
 
     steps:
@@ -29,4 +29,8 @@ jobs:
     - name: Run tests with tox
       env:
         TEST_DEVICE: "cpu"
-      run: tox -e py
+      run: |
+        if [ "$RUNNER_OS" == "Windows" ]; then
+          pip install torch===1.7.1 torchvision===0.8.2 -f https://download.pytorch.org/whl/torch_stable.html
+        fi
+        tox -e py
