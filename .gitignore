@@ -157,3 +157,6 @@ _personal/
 
 # Previous releases' directories
 release-backup-*/
+
+# Notebooks Benchmark Data
+/notebooks/data/
