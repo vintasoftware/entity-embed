@@ -143,10 +143,10 @@ def compute_max_str_len(attr_val_gen, is_multitoken, tokenizer):
                 str_len = -1
         actual_max_str_len = max(str_len, actual_max_str_len)
 
-    # Ensure max_str_len is pair to enable pooling later
+    # Ensure max_str_len is even to enable pooling later
     if actual_max_str_len % 2 != 0:
         logger.info(
-            f"actual_max_str_len={actual_max_str_len} must be pair to enable NN pooling. "
+            f"actual_max_str_len={actual_max_str_len} must be even to enable NN pooling. "
             f"Updating to {actual_max_str_len + 1}"
         )
         actual_max_str_len += 1
