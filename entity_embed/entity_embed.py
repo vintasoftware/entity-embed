@@ -146,7 +146,7 @@ class DeduplicationDataModule(pl.LightningDataModule):
         return test_row_loader
 
 
-class PairwiseDataModule(pl.LightningDataModule):
+class LinkageDataModule(pl.LightningDataModule):
     def __init__(
         self,
         row_dict,
