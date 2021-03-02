@@ -3,6 +3,7 @@ from entity_embed.data_utils.utils import (
     compute_max_str_len,
     compute_vocab_counter,
     id_pairs_to_cluster_mapping_and_dict,
+    split_clusters,
 )
 
 
@@ -98,3 +99,82 @@ def test_id_pairs_to_cluster_mapping_and_dict():
 
     clusters_set = set(tuple(sorted(c)) for c in cluster_dict.values())
     assert clusters_set == {(1, 2, 3), (4, 5), (6, 7, 8, 9, 10)}
+
+
+def test_split_clusters():
+    cluster_dict = {
+        1: [1, 2, 3],
+        4: [4, 5],
+        6: [6, 7, 8, 9, 10],
+        11: [11, 18],
+        12: [12, 13, 15],
+        14: [14, 16],
+    }
+
+    train_cluster_dict, valid_cluster_dict, test_cluster_dict = split_clusters(
+        cluster_dict,
+        2,
+        2,
+        2,
+        40,
+    )
+
+    assert len(train_cluster_dict.keys()) == 2
+    assert len(valid_cluster_dict.keys()) == 2
+    assert len(test_cluster_dict.keys()) == 2
+
+    assert {**train_cluster_dict, **valid_cluster_dict, **test_cluster_dict} == cluster_dict
+
+
+def test_split_clusters_only_plural_clusters_false():
+    cluster_dict = {
+        1: [1, 2, 3],
+        4: [4, 5],
+        6: [6, 7, 8, 9, 10],
+        11: [11],
+        12: [12, 13, 15],
+        14: [14, 16],
+    }
+
+    train_cluster_dict, valid_cluster_dict, test_cluster_dict = split_clusters(
+        cluster_dict,
+        2,
+        2,
+        2,
+        40,
+        only_plural_clusters=False,
+    )
+
+    assert len(train_cluster_dict.keys()) == 2
+    assert len(valid_cluster_dict.keys()) == 2
+    assert len(test_cluster_dict.keys()) == 2
+
+    assert {**train_cluster_dict, **valid_cluster_dict, **test_cluster_dict} == cluster_dict
+
+
+def test_split_clusters_only_plural_clusters():
+    cluster_dict = {
+        1: [1, 2, 3],
+        4: [4, 5],
+        6: [6, 7, 8, 9, 10],
+        11: [11],
+        12: [12, 13, 15],
+        14: [14, 16],
+    }
+
+    train_cluster_dict, valid_cluster_dict, test_cluster_dict = split_clusters(
+        cluster_dict,
+        2,
+        2,
+        2,
+        40,
+    )
+
+    # [11] should be removed since it's a cluster with only one id
+    assert {**train_cluster_dict, **valid_cluster_dict, **test_cluster_dict} == {
+        1: [1, 2, 3],
+        4: [4, 5],
+        6: [6, 7, 8, 9, 10],
+        12: [12, 13, 15],
+        14: [14, 16],
+    }
