@@ -85,7 +85,14 @@ class StringNumericalizer:
         self.char_to_ord = {c: i for i, c in enumerate(self.alphabet)}
 
     def _ord_encode(self, val):
-        return [self.char_to_ord[c] for c in val]
+        ord_encoded = []
+        for c in val:
+            try:
+                ord_ = self.char_to_ord[c]
+                ord_encoded.append(ord_)
+            except KeyError:
+                logger.warning(f"Found out of alphabet char at val={val}, char={c}")
+        return ord_encoded
 
     def build_tensor(self, val):
         # encoded_arr is a one hot encoded bidimensional tensor
@@ -173,3 +180,6 @@ class RowNumericalizer:
             sequence_length_dict[attr] = sequence_length
 
         return tensor_dict, sequence_length_dict
+
+    def __repr__(self):
+        return f"<RowNumericalizer with attr_info_dict={self.attr_info_dict}>"

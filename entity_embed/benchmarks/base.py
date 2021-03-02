@@ -8,7 +8,7 @@ from typing import List
 from urllib.error import HTTPError
 
 from ..data_utils import utils
-from ..entity_embed import PairwiseDataModule
+from ..entity_embed import LinkageDataModule
 
 logger = logging.getLogger(__name__)
 
@@ -107,8 +107,8 @@ class DeepmatcherBenchmark(ABC):
 
         return true_pair_set, false_pair_set
 
-    def build_pairwise_datamodule(self, row_numericalizer, batch_size, row_batch_size, random_seed):
-        return PairwiseDataModule(
+    def build_datamodule(self, row_numericalizer, batch_size, row_batch_size, random_seed):
+        return LinkageDataModule(
             row_dict=self.row_dict,
             row_numericalizer=row_numericalizer,
             batch_size=batch_size,
