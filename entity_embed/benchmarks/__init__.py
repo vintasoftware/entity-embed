@@ -1,0 +1,9 @@
+from .abt_buy import AbtBuyBenchmark  # noqa: F401
+from .amazon_google import AmazonGoogleBenchmark  # noqa: F401
+from .beer import BeerBenchmark  # noqa: F401
+from .company import CompanyBenchmark  # noqa: F401
+from .dblp_acm_structured import DBLP_ACM_StructuredBenchmark  # noqa: F401
+from .dblp_scholar_structured import DBLPScholarStructuredBenchmark  # noqa: F401
+from .fodors_zagats import FodorsZagatsBenchmark  # noqa: F401
+from .itunes_amazon_structured import ITunesAmazonStructuredBenchmark  # noqa: F401
+from .walmart_amazon_structured import WalmartAmazonStructuredBenchmark  # noqa: F401
