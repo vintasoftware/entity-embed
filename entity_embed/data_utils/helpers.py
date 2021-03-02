@@ -131,7 +131,7 @@ class AttrInfoDictParser:
         n_channels = numericalize_info_dict.get("n_channels", 8)
         embed_dropout_p = numericalize_info_dict.get("embed_dropout_p", 0.2)
         use_attention = numericalize_info_dict.get("use_attention", True)
-        use_mask = numericalize_info_dict.get("use_mask", False)
+        use_mask = numericalize_info_dict.get("use_mask", True)
 
         return NumericalizeInfo(
             source_attr=source_attr,

@@ -11,11 +11,12 @@ from tqdm.auto import tqdm
 from .data_utils.datasets import ClusterDataset, RowDataset, collate_cluster_tensor_dict
 from .data_utils.utils import (
     cluster_dict_to_id_pairs,
+    cluster_dicts_to_row_dicts,
     count_cluster_dict_pairs,
+    id_pairs_to_cluster_mapping_and_dict,
     row_dict_to_cluster_dict,
     separate_dict_left_right,
     split_clusters,
-    split_clusters_to_row_dicts,
 )
 from .evaluation import f1_score, pair_entity_ratio, precision_and_recall
 from .losses import SupConLoss
@@ -35,7 +36,7 @@ class DeduplicationDataModule(pl.LightningDataModule):
         train_cluster_len,
         valid_cluster_len,
         test_cluster_len,
-        only_plural_clusters,
+        only_plural_clusters=True,
         pair_loader_kwargs=None,
         row_loader_kwargs=None,
         random_seed=42,
@@ -83,7 +84,7 @@ class DeduplicationDataModule(pl.LightningDataModule):
         logger.info("Valid pair count: %s", len(self.valid_true_pair_set))
         logger.info("Test pair count: %s", len(self.test_true_pair_set))
 
-        self.train_row_dict, self.valid_row_dict, self.test_row_dict = split_clusters_to_row_dicts(
+        self.train_row_dict, self.valid_row_dict, self.test_row_dict = cluster_dicts_to_row_dicts(
             row_dict=self.row_dict,
             train_cluster_dict=train_cluster_dict,
             valid_cluster_dict=valid_cluster_dict,
@@ -145,75 +146,23 @@ class DeduplicationDataModule(pl.LightningDataModule):
         return test_row_loader
 
 
-class LinkageDataModule(DeduplicationDataModule):
-    def __init__(
-        self,
-        row_dict,
-        cluster_attr,
-        row_numericalizer,
-        batch_size,
-        row_batch_size,
-        train_cluster_len,
-        valid_cluster_len,
-        test_cluster_len,
-        only_plural_clusters,
-        left_id_set,
-        right_id_set,
-        pair_loader_kwargs=None,
-        row_loader_kwargs=None,
-        random_seed=42,
-    ):
-        super().__init__(
-            row_dict=row_dict,
-            cluster_attr=cluster_attr,
-            row_numericalizer=row_numericalizer,
-            batch_size=batch_size,
-            row_batch_size=row_batch_size,
-            train_cluster_len=train_cluster_len,
-            valid_cluster_len=valid_cluster_len,
-            test_cluster_len=test_cluster_len,
-            only_plural_clusters=only_plural_clusters,
-            pair_loader_kwargs=pair_loader_kwargs,
-            row_loader_kwargs=row_loader_kwargs,
-            random_seed=random_seed,
-        )
-        self.left_id_set = left_id_set
-        self.right_id_set = right_id_set
-
-    def _set_filtered_from_id_sets(self, s):
-        return {
-            (id_1, id_2)
-            for (id_1, id_2) in s
-            if (id_1 in self.left_id_set and id_2 in self.right_id_set)
-            or (id_1 in self.right_id_set and id_2 in self.left_id_set)
-        }
-
-    def setup(self, stage=None):
-        super().setup(stage=stage)
-
-        # Ensure pair sets only have ids with datset sources like (left, right) or (right, left),
-        # i.e., no ids from the same dataset (left, left) or (right, right)
-        if self.valid_true_pair_set is not None:
-            self.valid_true_pair_set = self._set_filtered_from_id_sets(self.valid_true_pair_set)
-        if self.test_true_pair_set is not None:
-            self.test_true_pair_set = self._set_filtered_from_id_sets(self.test_true_pair_set)
-
-    def separate_dict_left_right(self, d):
-        return separate_dict_left_right(
-            d, left_id_set=self.left_id_set, right_id_set=self.right_id_set
-        )
-
-
 class PairwiseDataModule(pl.LightningDataModule):
     def __init__(
         self,
         row_dict,
+        left_id_set,
+        right_id_set,
         row_numericalizer,
         batch_size,
         row_batch_size,
-        train_true_pair_set,
-        valid_true_pair_set,
-        test_true_pair_set,
+        true_pair_set=None,
+        train_cluster_len=None,
+        valid_cluster_len=None,
+        test_cluster_len=None,
+        only_plural_clusters=True,
+        train_true_pair_set=None,
+        valid_true_pair_set=None,
+        test_true_pair_set=None,
         pair_loader_kwargs=None,
         row_loader_kwargs=None,
         random_seed=42,
@@ -221,9 +170,12 @@ class PairwiseDataModule(pl.LightningDataModule):
         super().__init__()
 
         self.row_dict = row_dict
+        self.left_id_set = left_id_set
+        self.right_id_set = right_id_set
         self.row_numericalizer = row_numericalizer
         self.batch_size = batch_size
         self.row_batch_size = row_batch_size
+        self.only_plural_clusters = only_plural_clusters
         self.pair_loader_kwargs = pair_loader_kwargs or {
             "num_workers": os.cpu_count(),
             "multiprocessing_context": "fork",
@@ -234,29 +186,59 @@ class PairwiseDataModule(pl.LightningDataModule):
         }
         self.random_seed = random_seed
 
-        self.train_true_pair_set = train_true_pair_set
-        self.valid_true_pair_set = valid_true_pair_set
-        self.test_true_pair_set = test_true_pair_set
+        if true_pair_set is None:
+            if train_true_pair_set is None:
+                raise ValueError("train_true_pair_set can't be None")
+            if valid_true_pair_set is None:
+                raise ValueError("valid_true_pair_set can't be None")
+            if test_true_pair_set is None:
+                raise ValueError("test_true_pair_set can't be None")
+
+            self.train_true_pair_set = train_true_pair_set
+            self.valid_true_pair_set = valid_true_pair_set
+            self.test_true_pair_set = test_true_pair_set
+        else:
+            if train_cluster_len is None:
+                raise ValueError("train_cluster_len can't be None")
+            if valid_cluster_len is None:
+                raise ValueError("valid_cluster_len can't be None")
+            if test_cluster_len is None:
+                raise ValueError("test_cluster_len can't be None")
+
+            self._split_clusters(
+                true_pair_set=true_pair_set,
+                train_cluster_len=train_cluster_len,
+                valid_cluster_len=valid_cluster_len,
+                test_cluster_len=test_cluster_len,
+            )
 
         self.train_row_dict = None
         self.valid_row_dict = None
         self.test_row_dict = None
 
+    def _split_clusters(
+        self, true_pair_set, train_cluster_len, valid_cluster_len, test_cluster_len
+    ):
+        __, cluster_dict = id_pairs_to_cluster_mapping_and_dict(true_pair_set)
+        train_cluster_dict, valid_cluster_dict, test_cluster_dict = split_clusters(
+            cluster_dict,
+            train_len=train_cluster_len,
+            valid_len=valid_cluster_len,
+            test_len=test_cluster_len,
+            random_seed=self.random_seed,
+            only_plural_clusters=self.only_plural_clusters,
+        )
+        self.train_true_pair_set = cluster_dict_to_id_pairs(train_cluster_dict)
+        # must intersect with true_pair_set, to validate/test using only expected true pairs
+        # (respecting left_id_set and right_id_set,
+        #  and not considering left-left or right-right pairs)
+        self.valid_true_pair_set = cluster_dict_to_id_pairs(valid_cluster_dict) & true_pair_set
+        self.test_true_pair_set = cluster_dict_to_id_pairs(test_cluster_dict) & true_pair_set
+
     def setup(self, stage=None):
-        if stage == "fit":
-            all_pair_sets = [
-                self.train_true_pair_set,
-                self.valid_true_pair_set,
-                self.test_true_pair_set,
-            ]
-        elif stage == "test":
-            all_pair_sets = [
-                self.test_true_pair_set,
-            ]
-        else:
-            all_pair_sets = []
-        self.left_id_set = {pair[0] for pair_set in all_pair_sets for pair in pair_set}
-        self.right_id_set = {pair[1] for pair_set in all_pair_sets for pair in pair_set}
+        logger.info("Train pair count: %s", len(self.train_true_pair_set))
+        logger.info("Valid pair count: %s", len(self.valid_true_pair_set))
+        logger.info("Test pair count: %s", len(self.test_true_pair_set))
 
         if stage == "fit":
             self.train_row_dict = {
