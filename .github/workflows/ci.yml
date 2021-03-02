@@ -9,7 +9,7 @@ jobs:
     strategy:
       matrix:
         os: [macos-latest, ubuntu-latest]
-        python-version: [3.6, 3.7, 3.8]
+        python-version: [3.6, 3.7, 3.8, 3.9]
 
     steps:
     - name: Checkout code
@@ -19,15 +19,17 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
 
-    - name: Install flake8
-      run: pip install flake8
-    - name: Lint using flake8
-      run: flake8 entity_embed tests
+    - name: Cache installed requirements
+      uses: actions/cache@v2
+      with:
+        path: ${{ env.pythonLocation }}
+        key: ${{ env.pythonLocation }}-${{ hashFiles('requirements.txt', 'requirements-dev.txt') }}
 
     - name: Install tox
       run: pip install tox
     - name: Run tests with tox
       env:
         TEST_DEVICE: "cpu"
-      run: |
-        tox -e py
+      run: tox -e py
+    - name: Lint using flake8
+      run: tox -e flake8
