@@ -1,6 +1,5 @@
 import itertools
 import logging
-import math
 import random
 from collections import Counter, defaultdict
 from importlib import import_module
@@ -45,11 +44,6 @@ def count_cluster_dict_pairs(cluster_dict):
     )
 
 
-def row_dict_to_id_pairs(row_dict, cluster_attr):
-    cluster_dict = row_dict_to_cluster_dict(row_dict, cluster_attr)
-    return cluster_dict_to_id_pairs(cluster_dict)
-
-
 def split_clusters(
     cluster_dict, train_len, valid_len, test_len, random_seed, only_plural_clusters=True
 ):
@@ -91,13 +85,6 @@ def split_clusters(
     return train_cluster_dict, valid_cluster_dict, test_cluster_dict
 
 
-def split_cluster_to_id_pairs(train_cluster_dict, valid_cluster_dict, test_cluster_dict):
-    train_true_pair_set = cluster_dict_to_id_pairs(train_cluster_dict)
-    valid_true_pair_set = cluster_dict_to_id_pairs(valid_cluster_dict)
-    test_true_pair_set = cluster_dict_to_id_pairs(test_cluster_dict)
-    return train_true_pair_set, valid_true_pair_set, test_true_pair_set
-
-
 def cluster_dict_to_filtered_row_dict(row_dict, cluster_dict):
     return {
         id_: row_dict[id_] for cluster_id_list in cluster_dict.values() for id_ in cluster_id_list
@@ -122,12 +109,6 @@ def separate_dict_left_right(d, left_id_set, right_id_set):
         dict_filtered_from_id_set(d, left_id_set),
         dict_filtered_from_id_set(d, right_id_set),
     )
-
-
-def pair_count_to_row_count(pair_count):
-    # positive solution of n for y of y = (n * (n - 1)) / 2
-    # where y is pair_count and n is row_count
-    return int((1 + math.sqrt(1 + 8 * pair_count)) / 2)
 
 
 def compute_max_str_len(attr_val_gen, is_multitoken, tokenizer):
