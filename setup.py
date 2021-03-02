@@ -17,7 +17,7 @@ short_description = (
 )
 
 setup(
-    author="Flávio Juvenal",
+    author="Flávio Juvenal (Vinta Software)",
     author_email="flavio@vinta.com.br",
     python_requires=">=3.6",
     classifiers=[
