@@ -107,7 +107,7 @@ class DeepmatcherBenchmark(ABC):
 
         return true_pair_set, false_pair_set
 
-    def build_pairwise_datamodule(self, row_numericalizer, batch_size, row_batch_size, random_seed):
+    def build_datamodule(self, row_numericalizer, batch_size, row_batch_size, random_seed):
         return LinkageDataModule(
             row_dict=self.row_dict,
             row_numericalizer=row_numericalizer,
