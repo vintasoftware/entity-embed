@@ -154,11 +154,11 @@ def test_compute_max_str_len_is_multitoken_true_without_callable_tokenizer_raise
         compute_max_str_len(attr_val_gen=attr_val_gen, is_multitoken=True, tokenizer=None)
 
 
-def test_compute_max_str_len_is_multitoken_tokenizer_returns_none(attr_val_gen):
+def test_compute_max_str_len_is_multitoken_with_tokenizer_that_doesnt_return_tokens(attr_val_gen):
     max_str_len = compute_max_str_len(
         attr_val_gen=attr_val_gen,
         is_multitoken=True,
-        tokenizer=lambda x: None,
+        tokenizer=lambda x: [],
     )
 
     assert max_str_len == 0
