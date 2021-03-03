@@ -19,20 +19,14 @@ from entity_embed.data_utils.utils import (
 def test_enumerator():
     enumerator = Enumerator()
     for x in range(100):
-        enumerator[f"test-{x}"]
-
-    for k, v in enumerator.items():
-        assert k == f"test-{v}"
+        assert enumerator[f"test-{x}"] == x
 
 
 def test_enumerator_with_start():
     start = 5
     enumerator = Enumerator(start=start)
     for x in range(100):
-        enumerator[f"test-{x}"]
-
-    for k, v in enumerator.items():
-        assert k == f"test-{(v-start)}"
+        assert enumerator[f"test-{x}"] == x + start
 
 
 def test_row_dict_to_cluster_dict():
