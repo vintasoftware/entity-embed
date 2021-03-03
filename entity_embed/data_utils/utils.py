@@ -21,10 +21,8 @@ def row_dict_to_cluster_dict(row_dict, cluster_attr):
         cluster_dict[row[cluster_attr]].append(id_)
 
     # must use sorted to always have smaller id on left of pair tuple
-    cluster_dict = {
-        cluster_id: sorted(cluster_id_list) for cluster_id, cluster_id_list in cluster_dict.items()
-    }
-
+    for c in cluster_dict.values():
+        c.sort()
     return cluster_dict
 
 
@@ -50,11 +48,11 @@ def split_clusters(
     rnd = random.Random(random_seed)
     if only_plural_clusters:
         # consider only clusters that have more than 1 entity for train and valid
-        all_cluster_id_set = {
+        all_cluster_id_set = OrderedSet(
             cluster_id
             for cluster_id, cluster_id_list in cluster_dict.items()
             if len(cluster_id_list) > 1
-        }
+        )
     else:
         all_cluster_id_set = cluster_dict.keys()
 
@@ -147,6 +145,9 @@ def id_pairs_to_cluster_mapping_and_dict(id_pairs):
     uf = UnionFind()
     uf.union_pairs(id_pairs)
     cluster_dict = uf.component_dict()
+    # must use sorted to always have smaller id on left of pair tuple
+    for c in cluster_dict.values():
+        c.sort()
     # must be called after component_dict, because of find calls
     cluster_mapping = uf.parents
     return cluster_mapping, cluster_dict
