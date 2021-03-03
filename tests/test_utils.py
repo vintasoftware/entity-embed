@@ -40,16 +40,17 @@ def test_row_dict_to_cluster_dict():
         1: {"id": 1, "name": "foo"},
         2: {"id": 2, "name": "bar"},
         3: {"id": 3, "name": "foo"},
-        4: {"id": 4, "name": "bar"},
-        5: {"id": 5, "name": "baz"},
+        4: {"id": 4, "name": "foo"},
+        5: {"id": 5, "name": "bar"},
+        6: {"id": 6, "name": "baz"},
     }
 
     cluster_dict = row_dict_to_cluster_dict(row_dict=row_dict, cluster_attr="name")
 
     assert cluster_dict == {
-        "foo": [1, 3],
-        "bar": [2, 4],
-        "baz": [5],
+        "foo": [1, 3, 4],
+        "bar": [2, 5],
+        "baz": [6],
     }
 
 
