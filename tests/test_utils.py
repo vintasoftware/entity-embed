@@ -4,24 +4,94 @@ import mock
 import pytest
 from entity_embed.data_utils.utils import (
     cluster_dict_to_id_pairs,
+    cluster_dicts_to_row_dicts,
     compute_max_str_len,
     compute_vocab_counter,
     count_cluster_dict_pairs,
     id_pairs_to_cluster_mapping_and_dict,
+    row_dict_to_cluster_dict,
+    separate_dict_left_right,
     split_clusters,
 )
+
+
+def test_row_dict_to_cluster_dict():
+    row_dict = {
+        1: {"id": 1, "name": "foo"},
+        2: {"id": 2, "name": "bar"},
+        3: {"id": 3, "name": "foo"},
+        4: {"id": 4, "name": "bar"},
+        5: {"id": 5, "name": "baz"},
+    }
+
+    cluster_dict = row_dict_to_cluster_dict(row_dict=row_dict, cluster_attr="name")
+
+    assert cluster_dict == {
+        "foo": [1, 3],
+        "bar": [2, 4],
+        "baz": [5],
+    }
+
+
+def test_cluster_dicts_to_row_dicts():
+    test_range = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 16]
+
+    row_dict = {x: {"id": str(x)} for x in test_range}
+
+    train_cluster_dict = {
+        1: [1, 2, 3],
+        4: [4, 6],
+    }
+
+    valid_cluster_dict = {
+        5: [5, 7],
+        8: [8, 9, 10],
+    }
+
+    test_cluster_dict = {
+        11: [11, 12],
+        13: [13, 14, 16],
+    }
+
+    train_row_dict, valid_row_dict, test_row_dict = cluster_dicts_to_row_dicts(
+        row_dict=row_dict,
+        train_cluster_dict=train_cluster_dict,
+        valid_cluster_dict=valid_cluster_dict,
+        test_cluster_dict=test_cluster_dict,
+    )
+
+    assert train_row_dict == {x: {"id": str(x)} for x in [1, 2, 3, 4, 6]}
+    assert valid_row_dict == {x: {"id": str(x)} for x in [5, 7, 8, 9, 10]}
+    assert test_row_dict == {x: {"id": str(x)} for x in [11, 12, 13, 14, 16]}
+
+
+def test_separate_dict_left_right():
+    test_range = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 16]
+
+    row_dict = {x: {"id": str(x)} for x in test_range}
+
+    left_id_set = {1, 2, 5, 6, 7, 9, 10, 11}
+    right_id_set = {3, 4, 8, 12, 13, 14, 16}
+    left_dict, right_dict = separate_dict_left_right(
+        d=row_dict,
+        left_id_set=left_id_set,
+        right_id_set=right_id_set,
+    )
+
+    assert left_dict == {x: {"id": str(x)} for x in left_id_set}
+    assert right_dict == {x: {"id": str(x)} for x in right_id_set}
 
 
 @pytest.fixture
 def attr_val_gen():
     row_dict = {
-        "1": {
+        1: {
             "id": "1",
             "name": "foo product",
             "price": 1.00,
             "source": "bar",
         },
-        "2": {
+        2: {
             "id": "2",
             "name": "the foo product from world",
             "price": 1.20,
