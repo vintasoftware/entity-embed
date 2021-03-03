@@ -89,9 +89,7 @@ def cluster_dict_to_filtered_row_dict(row_dict, cluster_dict):
     }
 
 
-def split_clusters_to_row_dicts(
-    row_dict, train_cluster_dict, valid_cluster_dict, test_cluster_dict
-):
+def cluster_dicts_to_row_dicts(row_dict, train_cluster_dict, valid_cluster_dict, test_cluster_dict):
     train_row_dict = cluster_dict_to_filtered_row_dict(row_dict, train_cluster_dict)
     valid_row_dict = cluster_dict_to_filtered_row_dict(row_dict, valid_cluster_dict)
     test_row_dict = cluster_dict_to_filtered_row_dict(row_dict, test_cluster_dict)

@@ -1,23 +1,26 @@
-# entity-embed
+# Entity Embed
 
 [![PyPi version](https://img.shields.io/pypi/v/entity-embed.svg)](https://pypi.python.org/pypi/entity-embed)
 [![Documentation Status](https://readthedocs.org/projects/entity-embed/badge/?version=latest)](https://entity-embed.readthedocs.io/en/latest/?badge=latest)
 [![Updates](https://pyup.io/repos/github/vintasoftware/entity-embed/shield.svg)](https://pyup.io/repos/github/vintasoftware/entity-embed/)
-
+[![License: MIT](https://img.shields.io/github/license/vintasoftware/django-react-boilerplate.svg)](LICENSE.txt)
 
 Transform entities like companies, products, etc. into vectors to support scalable Record Linkage / Entity Resolution using Approximate Nearest Neighbors.
 
+⚠️ Warning: this project is under heavy development and version 0.0.1 has not yet been launched.
 
-* Free software: MIT license
-* Documentation: https://entity-embed.readthedocs.io.
-
-
-## Features
-
-* TODO
+* Documentation (Under Construction): https://entity-embed.readthedocs.io
 
 
-## Release
+## Examples
+
+Check the example Jupyter Notebooks:
+
+- Deduplication, when you have a single dirty dataset with duplicates: [notebooks/Deduplication-Example.ipynb](/notebooks/Deduplication-Example.ipynb)
+- Record Linkage, when you have multiple clean datasets you need to link: [notebooks/Record-Linkage-Example.ipynb](/notebooks/Record-Linkage-Example.ipynb)
+
+
+## Release Process
 
 * Update `CHANGELOG.md` with the version changes
 * Commit changes
@@ -29,4 +32,11 @@ Transform entities like companies, products, etc. into vectors to support scalab
 
 ## Credits
 
+This project is maintanted by [Vinta Software](https://www.vintasoftware.com/).
+
 This package was created with [Cookiecutter](https://github.com/audreyr/cookiecutter) and the [`audreyr/cookiecutter-pypackage`](https://github.com/audreyr/cookiecutter-pypackage) project template.
+
+
+## Commercial Support
+
+We are always looking for exciting work, so if you need any commercial support, feel free to get in touch: contact@vinta.com.br

@@ -37,7 +37,7 @@ def _validate_base_row_numericalizer(row_numericalizer):
     assert name_attr_info.n_channels == 8
     assert name_attr_info.embed_dropout_p == 0.2
     assert name_attr_info.use_attention
-    assert not name_attr_info.use_mask
+    assert name_attr_info.use_mask
 
 
 def test_row_numericalizer_parse_from_dict():
