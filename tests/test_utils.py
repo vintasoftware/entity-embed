@@ -3,6 +3,7 @@ import logging
 import mock
 import pytest
 from entity_embed.data_utils.utils import (
+    Enumerator,
     cluster_dict_to_id_pairs,
     cluster_dicts_to_row_dicts,
     compute_max_str_len,
@@ -13,6 +14,25 @@ from entity_embed.data_utils.utils import (
     separate_dict_left_right,
     split_clusters,
 )
+
+
+def test_enumerator():
+    enumerator = Enumerator()
+    for x in range(100):
+        enumerator[f"test-{x}"]
+
+    for k, v in enumerator.items():
+        assert k == f"test-{v}"
+
+
+def test_enumerator_with_start():
+    start = 5
+    enumerator = Enumerator(start=start)
+    for x in range(100):
+        enumerator[f"test-{x}"]
+
+    for k, v in enumerator.items():
+        assert k == f"test-{(v-start)}"
 
 
 def test_row_dict_to_cluster_dict():
