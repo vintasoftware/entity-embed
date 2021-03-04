@@ -53,7 +53,7 @@ class AttrInfoDictParser:
                 raise ValueError(
                     f'Please set the value of "{attr}" in attr_info_dict, {numericalize_info_dict}'
                 )
-            # Validate if there's at most one vocab being used across the whole attr_info_dict
+            # Validate if all vocabs used are the same
             numericalize_info_dict_vocab = numericalize_info_dict.get("vocab")
             if numericalize_info_dict_vocab:
                 if not attr_info_dict_vocab:
