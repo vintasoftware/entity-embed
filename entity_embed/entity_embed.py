@@ -323,10 +323,24 @@ class EntityEmbed(pl.LightningModule):
         super().__init__()
         self.row_numericalizer = datamodule.row_numericalizer
         self.attr_info_dict = self.row_numericalizer.attr_info_dict
-        self.embedding_size = embedding_size
+        actual_embedding_size = embedding_size
+        for attr, numericalize_info in self.attr_info_dict.items():
+            vocab_type = numericalize_info.vocab_type
+            if vocab_type:
+                # We can assume that there's only one vocab type across the
+                # whole attr_info_dict, so we can stop the loop once we've
+                # found a numericalize_info with a vocab type
+                actual_embedding_size = int(vocab_type.split(".")[-1].replace("d", ""))
+                logging.warn(
+                    f"Overriding embedding_size={embedding_size} with "
+                    f'embedding_size={actual_embedding_size} from "{vocab_type}" '
+                    f'on datamodule.row_numericalizer_attr_info_dict["{attr}"]'
+                )
+                break
+        self.embedding_size = actual_embedding_size
         self.blocker_net = BlockerNet(
             self.attr_info_dict,
-            embedding_size=embedding_size,
+            embedding_size=self.embedding_size,
         )
         self.losser = loss_cls(**loss_kwargs if loss_kwargs else {"temperature": 0.1})
         if miner_cls:

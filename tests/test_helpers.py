@@ -188,6 +188,40 @@ def test_row_numericalizer_parse_with_attr_with_semantic_field_type(mock_load_ve
     assert isinstance(name_attr_info.vocab, Vocab)
 
 
+@mock.patch("entity_embed.data_utils.helpers.Vocab.load_vectors")
+def test_attr_info_dict_with_different_vocab_types_raises(mock_load_vectors):
+    attr_info_dict = {
+        "title": {
+            "field_type": "SEMANTIC_MULTITOKEN",
+            "tokenizer": "entity_embed.default_tokenizer",
+            "vocab": "fasttext.en.300d",
+        },
+        "artist": {
+            "field_type": "SEMANTIC_MULTITOKEN",
+            "tokenizer": "entity_embed.default_tokenizer",
+            "vocab": "glove.6B.50d",
+        },
+    }
+
+    row_dict = {
+        "1": {
+            "id": "1",
+            "title": "foo product",
+            "artist": "foo artist",
+        },
+        "2": {
+            "id": "2",
+            "title": "the foo product from world",
+            "artist": "artist",
+        },
+    }
+
+    with pytest.raises(ValueError):
+        AttrInfoDictParser.from_dict(attr_info_dict, row_dict=row_dict)
+
+    mock_load_vectors.assert_called_once_with("fasttext.en.300d")
+
+
 def test_attr_with_semantic_field_type_without_vocab_raises():
     attr_info_dict = {
         "name": {

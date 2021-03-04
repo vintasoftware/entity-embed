@@ -42,6 +42,7 @@ class NumericalizeInfo:
     alphabet: List[str]
     max_str_len: int
     vocab: Vocab
+    vocab_type: str
     n_channels: int
     embed_dropout_p: float
     use_attention: bool
@@ -61,8 +62,8 @@ class NumericalizeInfo:
                 repr_dict[k] = f"{inspect.getmodule(v).__name__}.{v.__name__}"
             else:
                 repr_dict[k] = v
-        return "{klass}({attrs})".format(
-            klass=self.__class__.__name__,
+        return "{cls}({attrs})".format(
+            cls=self.__class__.__name__,
             attrs=", ".join("{}={!r}".format(k, v) for k, v in repr_dict.items()),
         )
 

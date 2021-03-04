@@ -47,11 +47,23 @@ class AttrInfoDictParser:
     def from_dict(cls, attr_info_dict, row_dict=None):
         attr_info_dict = dict(attr_info_dict)  # make a copy
         attr_to_numericalizer = {}
+        attr_info_dict_vocab = None
         for attr, numericalize_info_dict in list(attr_info_dict.items()):
             if not numericalize_info_dict:
                 raise ValueError(
                     f'Please set the value of "{attr}" in attr_info_dict, {numericalize_info_dict}'
                 )
+            # Validate if there's at most one vocab being used across the whole attr_info_dict
+            numericalize_info_dict_vocab = numericalize_info_dict.get("vocab")
+            if numericalize_info_dict_vocab:
+                if not attr_info_dict_vocab:
+                    attr_info_dict_vocab = numericalize_info_dict_vocab
+                elif attr_info_dict_vocab != numericalize_info_dict_vocab:
+                    raise ValueError(
+                        "Found more than one vocab on attr_info_dict, please "
+                        "use a single vocab for the whole attr_info_dict, "
+                        f'"{attr_info_dict_vocab}" != "{numericalize_info_dict_vocab}"'
+                    )
             numericalize_info = cls._parse_numericalize_info_dict(
                 attr, numericalize_info_dict, row_dict=row_dict
             )
@@ -68,6 +80,7 @@ class AttrInfoDictParser:
         alphabet = numericalize_info_dict.get("alphabet", DEFAULT_ALPHABET)
         max_str_len = numericalize_info_dict.get("max_str_len")
         vocab = None
+        vocab_type = None
 
         # Check if there's a source_attr defined on the numericalize_info_dict,
         # useful when we want to have multiple NumericalizeInfo for the same attr
@@ -75,7 +88,8 @@ class AttrInfoDictParser:
 
         # Compute vocab if necessary
         if field_type in (FieldType.SEMANTIC_STRING, FieldType.SEMANTIC_MULTITOKEN):
-            if numericalize_info_dict.get("vocab") is None:
+            vocab_type = numericalize_info_dict.get("vocab")
+            if vocab_type is None:
                 raise ValueError(
                     "Please set a torchtext pretrained vocab to use. "
                     f"Available ones are: {AVAILABLE_VOCABS}"
@@ -140,6 +154,7 @@ class AttrInfoDictParser:
             alphabet=alphabet,
             max_str_len=max_str_len,
             vocab=vocab,
+            vocab_type=vocab_type,
             n_channels=n_channels,
             embed_dropout_p=embed_dropout_p,
             use_attention=use_attention,
