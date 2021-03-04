@@ -324,18 +324,19 @@ class EntityEmbed(pl.LightningModule):
         self.row_numericalizer = datamodule.row_numericalizer
         self.attr_info_dict = self.row_numericalizer.attr_info_dict
         actual_embedding_size = embedding_size
-        for attr, numericalize_info in self.attr_info_dict.items():
-            vocab_type = numericalize_info.vocab_type
-            if vocab_type:
+        for numericalize_info in self.attr_info_dict.values():
+            vocab = numericalize_info.vocab
+            if vocab:
                 # We can assume that there's only one vocab type across the
                 # whole attr_info_dict, so we can stop the loop once we've
-                # found a numericalize_info with a vocab type
-                actual_embedding_size = int(vocab_type.split(".")[-1].replace("d", ""))
-                logging.warning(
-                    f"Overriding embedding_size={embedding_size} with "
-                    f'embedding_size={actual_embedding_size} from "{vocab_type}" '
-                    f'on datamodule.row_numericalizer_attr_info_dict["{attr}"]'
-                )
+                # found a numericalize_info with a vocab
+                actual_embedding_size = vocab.vectors.size(1)
+                if actual_embedding_size != embedding_size:
+                    logging.warning(
+                        f"Overriding embedding_size={embedding_size} "
+                        f"with embedding_size={actual_embedding_size} "
+                        "since you're using semantic fields"
+                    )
                 break
         self.embedding_size = actual_embedding_size
         self.blocker_net = BlockerNet(

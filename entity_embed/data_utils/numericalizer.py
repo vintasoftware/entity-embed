@@ -42,7 +42,6 @@ class NumericalizeInfo:
     alphabet: List[str]
     max_str_len: int
     vocab: Vocab
-    vocab_type: str
     n_channels: int
     embed_dropout_p: float
     use_attention: bool

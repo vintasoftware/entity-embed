@@ -80,7 +80,6 @@ class AttrInfoDictParser:
         alphabet = numericalize_info_dict.get("alphabet", DEFAULT_ALPHABET)
         max_str_len = numericalize_info_dict.get("max_str_len")
         vocab = None
-        vocab_type = None
 
         # Check if there's a source_attr defined on the numericalize_info_dict,
         # useful when we want to have multiple NumericalizeInfo for the same attr
@@ -108,7 +107,7 @@ class AttrInfoDictParser:
                     "an attr name."
                 )
             vocab = Vocab(vocab_counter)
-            vocab.load_vectors(numericalize_info_dict.get("vocab"))
+            vocab.load_vectors(vocab_type)
 
         # Compute max_str_len if necessary
         if field_type in (FieldType.STRING, FieldType.MULTITOKEN) and (max_str_len is None):
@@ -154,7 +153,6 @@ class AttrInfoDictParser:
             alphabet=alphabet,
             max_str_len=max_str_len,
             vocab=vocab,
-            vocab_type=vocab_type,
             n_channels=n_channels,
             embed_dropout_p=embed_dropout_p,
             use_attention=use_attention,

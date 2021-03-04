@@ -3,6 +3,7 @@ import logging
 import mock
 from entity_embed.data_utils.helpers import AttrInfoDictParser
 from entity_embed.entity_embed import DeduplicationDataModule, EntityEmbed
+from torch import tensor
 
 
 @mock.patch("entity_embed.BlockerNet.__init__", return_value=None)
@@ -27,6 +28,9 @@ def test_set_embedding_size_when_using_semantic_attrs(
 
     mock_load_vectors.assert_called_once_with("charngram.100d")
 
+    EXPECTED_EMBEDDING_SIZE = 100
+    row_numericalizer.attr_info_dict["name"].vocab.vectors = tensor([[0] * EXPECTED_EMBEDDING_SIZE])
+
     datamodule = DeduplicationDataModule(
         row_dict=row_dict,
         cluster_attr="name",
@@ -38,13 +42,11 @@ def test_set_embedding_size_when_using_semantic_attrs(
         test_cluster_len=10,
     )
 
-    EXPECTED_EMBEDDING_SIZE = 100
-
     caplog.set_level(logging.WARNING)
     model = EntityEmbed(datamodule=datamodule, embedding_size=500)
     assert (
-        'Overriding embedding_size=500 with embedding_size=100 from "charngram.100d" '
-        'on datamodule.row_numericalizer_attr_info_dict["name"]' in caplog.text
+        "Overriding embedding_size=500 with embedding_size=100 "
+        "since you're using semantic fields" in caplog.text
     )
 
     mock_blocker_net_init.assert_called_once_with(
