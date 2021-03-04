@@ -331,7 +331,7 @@ class EntityEmbed(pl.LightningModule):
                 # whole attr_info_dict, so we can stop the loop once we've
                 # found a numericalize_info with a vocab type
                 actual_embedding_size = int(vocab_type.split(".")[-1].replace("d", ""))
-                logging.warn(
+                logging.warning(
                     f"Overriding embedding_size={embedding_size} with "
                     f'embedding_size={actual_embedding_size} from "{vocab_type}" '
                     f'on datamodule.row_numericalizer_attr_info_dict["{attr}"]'
