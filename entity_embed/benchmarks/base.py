@@ -31,7 +31,7 @@ class DeepmatcherBenchmark(ABC):
         self._download()
         self._extract_zip()
         self.id_enumerator = utils.Enumerator()
-        self.row_dict = self._read_row_dict()
+        self.row_dict, self.left_id_set, self.right_id_set = self._read_row_dict_and_id_sets()
         self.train_true_pair_set, self.train_false_pair_set = self._read_pair_sets(
             pair_csv_path=self.train_csv_path
         )
@@ -72,22 +72,27 @@ class DeepmatcherBenchmark(ABC):
         with zipfile.ZipFile(self.local_file_path, "r") as zf:
             zf.extractall(self.local_dir_path)
 
-    def _read_row_dict(self):
+    def _read_row_dict_and_id_sets(self):
         logging.info(f"Reading {self.dataset_name} row_dict...")
         if len(self.table_csv_paths) > 2:
             raise ValueError("table_csv_paths with more than two paths not supported.")
 
         row_dict = {}
+        left_id_set = set()
+        right_id_set = set()
 
-        for table_name, csv_path in zip(["left", "right"], self.table_csv_paths):
+        for table_name, id_set, csv_path in zip(
+            ["left", "right"], [left_id_set, right_id_set], self.table_csv_paths
+        ):
             csv_path = os.path.join(self.local_dir_path, self.base_csv_path, csv_path)
             with open(csv_path, "r", encoding=self.csv_encoding) as f:
                 for row in csv.DictReader(f):
                     row["__source"] = table_name
                     row["id"] = self.id_enumerator[f"{table_name}-{row['id']}"]
                     row_dict[row["id"]] = row
+                    id_set.add(row["id"])
 
-        return row_dict
+        return row_dict, left_id_set, right_id_set
 
     def _read_pair_sets(self, pair_csv_path):
         logging.info(f"Reading {self.dataset_name} {pair_csv_path}...")
@@ -110,6 +115,8 @@ class DeepmatcherBenchmark(ABC):
     def build_datamodule(self, row_numericalizer, batch_size, row_batch_size, random_seed):
         return LinkageDataModule(
             row_dict=self.row_dict,
+            left_id_set=self.left_id_set,
+            right_id_set=self.right_id_set,
             row_numericalizer=row_numericalizer,
             batch_size=batch_size,
             row_batch_size=row_batch_size,
