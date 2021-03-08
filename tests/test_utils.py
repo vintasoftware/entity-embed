@@ -4,6 +4,7 @@ import mock
 import pytest
 from entity_embed.data_utils.utils import (
     Enumerator,
+    build_loader_kwargs,
     cluster_dict_to_id_pairs,
     cluster_dicts_to_row_dicts,
     compute_max_str_len,
@@ -403,3 +404,21 @@ def test_count_cluster_dict_pairs():
     count = count_cluster_dict_pairs(cluster_dict)
     # sum((n*(n - 1))//2) => 3 + 1 + 10 + 1 + 3 + 1
     assert count == 19
+
+
+@mock.patch("entity_embed.data_utils.utils.os.cpu_count", return_value=8)
+def test_build_loader_kwargs(mock_cpu_count):
+    loader_kwargs = build_loader_kwargs()
+    assert loader_kwargs == {"num_workers": 8, "multiprocessing_context": "fork"}
+
+    loader_kwargs = build_loader_kwargs(num_workers=4)
+    assert loader_kwargs == {"num_workers": 4, "multiprocessing_context": "fork"}
+
+    loader_kwargs = build_loader_kwargs(multiprocessing_context="foo")
+    assert loader_kwargs == {"num_workers": 8, "multiprocessing_context": "foo"}
+
+    loader_kwargs = build_loader_kwargs(num_workers=16, multiprocessing_context="bar")
+    assert loader_kwargs == {"num_workers": 16, "multiprocessing_context": "bar"}
+
+    loader_kwargs = build_loader_kwargs(num_workers=32, multiprocessing_context=None)
+    assert loader_kwargs == {"num_workers": 32, "multiprocessing_context": "fork"}

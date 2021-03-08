@@ -10,6 +10,7 @@ from tqdm.auto import tqdm
 
 from .data_utils.datasets import ClusterDataset, RowDataset, collate_cluster_tensor_dict
 from .data_utils.utils import (
+    build_loader_kwargs,
     cluster_dict_to_id_pairs,
     cluster_dicts_to_row_dicts,
     count_cluster_dict_pairs,
@@ -51,14 +52,8 @@ class DeduplicationDataModule(pl.LightningDataModule):
         self.valid_cluster_len = valid_cluster_len
         self.test_cluster_len = test_cluster_len
         self.only_plural_clusters = only_plural_clusters
-        self.pair_loader_kwargs = pair_loader_kwargs or {
-            "num_workers": os.cpu_count(),
-            "multiprocessing_context": "fork",
-        }
-        self.row_loader_kwargs = row_loader_kwargs or {
-            "num_workers": os.cpu_count(),
-            "multiprocessing_context": "fork",
-        }
+        self.pair_loader_kwargs = build_loader_kwargs(**pair_loader_kwargs)
+        self.row_loader_kwargs = build_loader_kwargs(**row_loader_kwargs)
         self.random_seed = random_seed
 
         self.valid_true_pair_set = None
