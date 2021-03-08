@@ -6,7 +6,7 @@ from entity_embed.helpers import (
 )
 
 
-@mock.patch("entity_embed.data_utils.utils.os.cpu_count", return_value=8)
+@mock.patch("entity_embed.helpers.os.cpu_count", return_value=8)
 def test_build_loader_kwargs(mock_cpu_count):
     loader_kwargs = build_loader_kwargs()
     assert loader_kwargs == {"num_workers": 8, "multiprocessing_context": "fork"}
@@ -24,7 +24,7 @@ def test_build_loader_kwargs(mock_cpu_count):
     assert loader_kwargs == {"num_workers": 32, "multiprocessing_context": "fork"}
 
 
-@mock.patch("entity_embed.data_utils.utils.os.cpu_count", return_value=8)
+@mock.patch("entity_embed.helpers.os.cpu_count", return_value=8)
 def test_build_index_build_kwargs(mock_cpu_count):
     index_build_kwargs = build_index_build_kwargs()
     assert index_build_kwargs == {"m": 64, "max_m0": 64, "ef_construction": 150, "n_threads": 8}
@@ -38,7 +38,7 @@ def test_build_index_build_kwargs(mock_cpu_count):
     assert index_build_kwargs == {"m": 64, "max_m0": 32, "ef_construction": 200, "n_threads": 16}
 
 
-@mock.patch("entity_embed.data_utils.utils.os.cpu_count", return_value=8)
+@mock.patch("entity_embed.helpers.os.cpu_count", return_value=8)
 def test_build_index_search_kwargs(mock_cpu_count):
     index_search_kwargs = build_index_search_kwargs()
     assert index_search_kwargs == {"ef_search": -1, "num_threads": 8}
