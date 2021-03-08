@@ -10,7 +10,6 @@ from tqdm.auto import tqdm
 
 from .data_utils.datasets import ClusterDataset, RowDataset, collate_cluster_tensor_dict
 from .data_utils.utils import (
-    build_loader_kwargs,
     cluster_dict_to_id_pairs,
     cluster_dicts_to_row_dicts,
     count_cluster_dict_pairs,
@@ -20,6 +19,7 @@ from .data_utils.utils import (
     split_clusters,
 )
 from .evaluation import f1_score, pair_entity_ratio, precision_and_recall
+from .helpers import build_index_build_kwargs, build_index_search_kwargs, build_loader_kwargs
 from .losses import SupConLoss
 from .models import BlockerNet
 
@@ -52,8 +52,8 @@ class DeduplicationDataModule(pl.LightningDataModule):
         self.valid_cluster_len = valid_cluster_len
         self.test_cluster_len = test_cluster_len
         self.only_plural_clusters = only_plural_clusters
-        self.pair_loader_kwargs = build_loader_kwargs(**pair_loader_kwargs)
-        self.row_loader_kwargs = build_loader_kwargs(**row_loader_kwargs)
+        self.pair_loader_kwargs = build_loader_kwargs(pair_loader_kwargs)
+        self.row_loader_kwargs = build_loader_kwargs(row_loader_kwargs)
         self.random_seed = random_seed
 
         self.valid_true_pair_set = None
@@ -171,14 +171,8 @@ class LinkageDataModule(pl.LightningDataModule):
         self.batch_size = batch_size
         self.row_batch_size = row_batch_size
         self.only_plural_clusters = only_plural_clusters
-        self.pair_loader_kwargs = pair_loader_kwargs or {
-            "num_workers": os.cpu_count(),
-            "multiprocessing_context": "fork",
-        }
-        self.row_loader_kwargs = row_loader_kwargs or {
-            "num_workers": os.cpu_count(),
-            "multiprocessing_context": "fork",
-        }
+        self.pair_loader_kwargs = build_loader_kwargs(pair_loader_kwargs)
+        self.row_loader_kwargs = build_loader_kwargs(row_loader_kwargs)
         self.random_seed = random_seed
 
         if true_pair_set is None:
@@ -621,16 +615,8 @@ class ANNEntityIndex:
         if self.vector_idx_to_id is None:
             raise ValueError("Please call insert_vector_dict first")
 
-        self.approx_knn_index.build(
-            **index_build_kwargs
-            if index_build_kwargs
-            else {
-                "m": 64,
-                "max_m0": 64,
-                "ef_construction": 150,
-                "n_threads": os.cpu_count(),
-            }
-        )
+        actual_index_build_kwargs = build_index_build_kwargs(index_build_kwargs)
+        self.approx_knn_index.build(**actual_index_build_kwargs)
         self.is_built = True
 
     def search_pairs(self, k, sim_threshold, index_search_kwargs=None):
@@ -642,13 +628,13 @@ class ANNEntityIndex:
         logger.debug("Searching on approx_knn_index...")
 
         distance_threshold = 1 - sim_threshold
+
+        actual_index_search_kwargs = build_index_search_kwargs(index_search_kwargs)
         neighbor_and_distance_list_of_list = self.approx_knn_index.batch_search_by_ids(
             item_ids=self.vector_idx_to_id.keys(),
             k=k,
             include_distances=True,
-            **index_search_kwargs
-            if index_search_kwargs
-            else {"ef_search": -1, "num_threads": os.cpu_count()},
+            **actual_index_search_kwargs,
         )
 
         logger.debug("Search on approx_knn_index done, building found_pair_set now...")

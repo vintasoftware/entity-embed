@@ -1,6 +1,5 @@
 import itertools
 import logging
-import os
 import random
 from collections import Counter, defaultdict
 from importlib import import_module
@@ -156,12 +155,3 @@ def import_function(function_dotted_path):
     module_dotted_path, function_name = function_dotted_path.rsplit(".", 1)
     module = import_module(module_dotted_path)
     return getattr(module, function_name)
-
-
-def build_loader_kwargs(**kwargs):
-    num_workers = kwargs.get("num_workers") or os.cpu_count()
-    multiprocessing_context = kwargs.get("multiprocessing_context") or "fork"
-    return {
-        "num_workers": num_workers,
-        "multiprocessing_context": multiprocessing_context,
-    }
