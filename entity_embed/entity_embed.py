@@ -150,6 +150,7 @@ class LinkageDataModule(pl.LightningDataModule):
         row_numericalizer,
         batch_size,
         row_batch_size,
+        cluster_attr=None,
         true_pair_set=None,
         train_cluster_len=None,
         valid_cluster_len=None,
@@ -174,33 +175,48 @@ class LinkageDataModule(pl.LightningDataModule):
         self.pair_loader_kwargs = build_loader_kwargs(pair_loader_kwargs)
         self.row_loader_kwargs = build_loader_kwargs(row_loader_kwargs)
         self.random_seed = random_seed
-
-        if true_pair_set is None:
-            if train_true_pair_set is None:
-                raise ValueError("train_true_pair_set can't be None")
+        if train_true_pair_set:
             if valid_true_pair_set is None:
-                raise ValueError("valid_true_pair_set can't be None")
+                raise ValueError(
+                    "valid_true_pair_set can't be None when train_true_pair_set is provided"
+                )
             if test_true_pair_set is None:
-                raise ValueError("test_true_pair_set can't be None")
-
+                raise ValueError(
+                    "test_true_pair_set can't be None when train_true_pair_set is provided"
+                )
             self.train_true_pair_set = train_true_pair_set
             self.valid_true_pair_set = valid_true_pair_set
             self.test_true_pair_set = test_true_pair_set
-        else:
+        elif true_pair_set:
             if train_cluster_len is None:
                 raise ValueError("train_cluster_len can't be None")
             if valid_cluster_len is None:
                 raise ValueError("valid_cluster_len can't be None")
             if test_cluster_len is None:
                 raise ValueError("test_cluster_len can't be None")
-
             self._split_clusters(
                 true_pair_set=true_pair_set,
                 train_cluster_len=train_cluster_len,
                 valid_cluster_len=valid_cluster_len,
                 test_cluster_len=test_cluster_len,
             )
-
+        elif cluster_attr:
+            if train_cluster_len is None:
+                raise ValueError("train_cluster_len can't be None")
+            if valid_cluster_len is None:
+                raise ValueError("valid_cluster_len can't be None")
+            if test_cluster_len is None:
+                raise ValueError("test_cluster_len can't be None")
+            cluster_dict = row_dict_to_cluster_dict(row_dict, cluster_attr)
+            true_pair_set = cluster_dict_to_id_pairs(cluster_dict)
+            self._split_clusters(
+                true_pair_set=true_pair_set,
+                train_cluster_len=train_cluster_len,
+                valid_cluster_len=valid_cluster_len,
+                test_cluster_len=test_cluster_len,
+            )
+        else:
+            raise Exception("Please set one of train_true_pair_set, true_pair_set or cluster_attr")
         self.train_row_dict = None
         self.valid_row_dict = None
         self.test_row_dict = None
