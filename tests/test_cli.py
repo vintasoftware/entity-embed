@@ -143,6 +143,8 @@ def test_cli(
             10,
             "-check_val_every_n_epoch",
             1,
+            "-best_model_save_filepath",
+            "weights.ckpt",
         ],
     )
 
@@ -179,6 +181,7 @@ def test_cli(
         "only_plural_clusters": None,
         "random_seed": None,
         "left": None,
+        "best_model_save_filepath": "weights.ckpt",
     }
 
     mock_trainer = mock_build_trainer.return_value
@@ -209,11 +212,13 @@ def test_build_linkage_datamodule(datamodule_files):
 
 
 @mock.patch("entity_embed.cli.pl.Trainer")
+@mock.patch("entity_embed.cli.ModelCheckpoint")
 @mock.patch("entity_embed.cli.TensorBoardLogger")
 @mock.patch("entity_embed.cli.EarlyStopping")
 def test_build_trainer(
     mock_early_stopping,
     mock_logger,
+    mock_checkpoint,
     mock_trainer,
 ):
     trainer = _build_trainer(
@@ -227,6 +232,7 @@ def test_build_trainer(
             "check_val_every_n_epoch": 2,
             "tb_name": "foo",
             "tb_log_dir": "bar",
+            "best_model_save_filepath": "weights.ckpt",
         }
     )
 
@@ -238,13 +244,20 @@ def test_build_trainer(
         mode="min",
     )
 
+    mock_checkpoint.assert_called_once_with(
+        monitor="pair_entity_ratio_at_f0",
+        verbose=True,
+        filename="weights.ckpt",
+        save_top_k=1,
+    )
+
     mock_logger.assert_called_once_with("bar", name="foo")
 
     mock_trainer.assert_called_once_with(
         gpus=2,
         max_epochs=20,
         check_val_every_n_epoch=2,
-        callbacks=[mock_early_stopping.return_value],
+        callbacks=[mock_early_stopping.return_value, mock_checkpoint.return_value],
         logger=mock_logger.return_value,
     )
 

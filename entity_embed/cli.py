@@ -7,6 +7,7 @@ from entity_embed import validate_best
 from entity_embed.data_utils.helpers import AttrInfoDictParser
 from entity_embed.data_utils.utils import Enumerator
 from entity_embed.entity_embed import DeduplicationDataModule, EntityEmbed, LinkageDataModule
+from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 from pytorch_lightning.loggers import TensorBoardLogger
 
@@ -120,11 +121,18 @@ def _build_trainer(parser_args_dict):
         mode=mode,
     )
 
+    checkpoint_callback = ModelCheckpoint(
+        monitor=monitor,
+        save_top_k=1,
+        verbose=True,
+        filename=parser_args_dict["best_model_save_filepath"],
+    )
+
     trainer_args = {
         "gpus": parser_args_dict["gpus"],
         "max_epochs": parser_args_dict["max_epochs"],
         "check_val_every_n_epoch": parser_args_dict["check_val_every_n_epoch"],
-        "callbacks": [early_stop_callback],
+        "callbacks": [early_stop_callback, checkpoint_callback],
     }
 
     if parser_args_dict["tb_name"] and parser_args_dict["tb_log_dir"]:
@@ -137,6 +145,7 @@ def _build_trainer(parser_args_dict):
 
 
 @click.command()
+@click.option("-best_model_save_filepath", type=str)
 @click.option("-tb_log_dir", type=str)
 @click.option("-tb_name", type=str)
 @click.option("-check_val_every_n_epoch", type=int, required=True)
