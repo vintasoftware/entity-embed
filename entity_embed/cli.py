@@ -29,9 +29,13 @@ def _build_datamodule(parser_args_dict):
         "row_numericalizer": row_numericalizer,
         "batch_size": parser_args_dict["batch_size"],
         "row_batch_size": parser_args_dict["row_batch_size"],
+        "train_cluster_len": parser_args_dict["train_len"],
+        "valid_cluster_len": parser_args_dict["valid_len"],
+        "test_cluster_len": parser_args_dict["test_len"],
+        "only_plural_clusters": parser_args_dict["only_plural_clusters"],
     }
 
-    if parser_args_dict["left"]:
+    if parser_args_dict.get("left"):
         left_id_set = set()
         right_id_set = set()
         for id, row in row_dict.items():
@@ -50,22 +54,16 @@ def _build_datamodule(parser_args_dict):
         datamodule_args["right_id_set"] = right_id_set
         datamodule_cls = LinkageDataModule
     else:
-        datamodule_args["train_cluster_len"] = parser_args_dict["train_len"]
-        datamodule_args["valid_cluster_len"] = parser_args_dict["valid_len"]
-        datamodule_args["test_cluster_len"] = parser_args_dict["test_len"]
         datamodule_cls = DeduplicationDataModule
 
-    if parser_args_dict["only_plural_clusters"]:
-        datamodule_args["only_plural_clusters"] = parser_args_dict["only_plural_clusters"]
-
-    if parser_args_dict["num_workers"] or parser_args_dict["multiprocessing_context"]:
+    if parser_args_dict.get("num_workers") or parser_args_dict.get("multiprocessing_context"):
         for k in ["pair_loader_kwargs", "row_loader_kwargs"]:
             datamodule_args[k] = {}
             for inner_k in ["num_workers", "multiprocessing_context"]:
                 if parser_args_dict[inner_k]:
                     datamodule_args[k][inner_k] = parser_args_dict[inner_k]
 
-    if parser_args_dict["random_seed"]:
+    if parser_args_dict.get("random_seed"):
         datamodule_args["random_seed"] = parser_args_dict["random_seed"]
 
     return datamodule_cls(**datamodule_args)
@@ -158,9 +156,9 @@ def _build_trainer(parser_args_dict):
 @click.option("-ann_k", type=int)
 @click.option("-lr", type=str)
 @click.option("-embedding_size", type=int)
-@click.option("-test_len", type=int)
-@click.option("-valid_len", type=int)
-@click.option("-train_len", type=int)
+@click.option("-test_len", type=int, required=True)
+@click.option("-valid_len", type=int, required=True)
+@click.option("-train_len", type=int, required=True)
 @click.option("-only_plural_clusters", type=bool)
 @click.option("-random_seed", type=int)
 @click.option("-left", type=str)
@@ -173,7 +171,7 @@ def main(**kwargs):
     datamodule = _build_datamodule(kwargs)
     model = _build_model(datamodule, kwargs)
 
-    trainer = _build_trainer()
+    trainer = _build_trainer(kwargs)
     trainer.fit(model, datamodule)
     validate_best(trainer)
     trainer.test(ckpt_path="best", verbose=False)
