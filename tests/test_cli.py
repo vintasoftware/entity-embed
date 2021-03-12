@@ -105,16 +105,15 @@ def test_cli(
     mock_validate_best,
     datamodule_files,
 ):
-    attr_info_json_filepath, row_dict_csv_filepath = datamodule_files
-
+    attr_info_json_filepath, csv_filepath = datamodule_files
     runner = CliRunner()
     result = runner.invoke(
         main,
         [
             "-attr_info_json_filepath",
             attr_info_json_filepath,
-            "-row_dict_csv_filepath",
-            row_dict_csv_filepath,
+            "-csv_filepath",
+            csv_filepath,
             "-cluster_attr",
             "name",
             "-batch_size",
@@ -143,7 +142,7 @@ def test_cli(
             10,
             "-check_val_every_n_epoch",
             1,
-            "-best_model_save_filepath",
+            "-model_save_filepath",
             "weights.ckpt",
         ],
     )
@@ -152,7 +151,8 @@ def test_cli(
 
     expected_parser_args_dict = {
         "attr_info_json_filepath": attr_info_json_filepath,
-        "row_dict_csv_filepath": row_dict_csv_filepath,
+        "csv_filepath": csv_filepath,
+        "csv_encoding": "utf-8",
         "cluster_attr": "name",
         "batch_size": 10,
         "row_batch_size": 10,
@@ -181,7 +181,7 @@ def test_cli(
         "only_plural_clusters": None,
         "random_seed": None,
         "left": None,
-        "best_model_save_filepath": "weights.ckpt",
+        "model_save_filepath": "weights.ckpt",
     }
 
     mock_trainer = mock_build_trainer.return_value
@@ -192,12 +192,12 @@ def test_cli(
 
 
 def test_build_linkage_datamodule(datamodule_files):
-    attr_info_json_filepath, row_dict_csv_filepath = datamodule_files
-
+    attr_info_json_filepath, csv_filepath = datamodule_files
     datamodule = _build_datamodule(
         {
             "attr_info_json_filepath": attr_info_json_filepath,
-            "row_dict_csv_filepath": row_dict_csv_filepath,
+            "csv_filepath": csv_filepath,
+            "csv_encoding": "utf-8",
             "cluster_attr": "name",
             "batch_size": 10,
             "row_batch_size": 10,
@@ -232,7 +232,7 @@ def test_build_trainer(
             "check_val_every_n_epoch": 2,
             "tb_name": "foo",
             "tb_log_dir": "bar",
-            "best_model_save_filepath": "weights.ckpt",
+            "model_save_filepath": "weights.ckpt",
         }
     )
 

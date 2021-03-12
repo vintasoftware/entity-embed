@@ -160,3 +160,6 @@ release-backup-*/
 
 # Notebooks Benchmark Data
 /notebooks/data/
+
+# PyTorch Lightning logs
+/lightning_logs/
