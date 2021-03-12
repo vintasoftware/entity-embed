@@ -156,6 +156,11 @@ def _build_trainer(parser_args_dict):
             parser_args_dict["tb_log_dir"],
             name=parser_args_dict["tb_name"],
         )
+    elif parser_args_dict["tb_name"] or parser_args_dict["tb_log_dir"]:
+        raise KeyError(
+            'Please provide both "tb_name" and "tb_log_dir" to enable '
+            "TensorBoardLogger or omit both to disable it"
+        )
 
     return pl.Trainer(**trainer_args)
 
