@@ -122,10 +122,12 @@ def _build_model(datamodule, parser_args_dict):
 
 
 def _build_trainer(parser_args_dict):
-    monitor = parser_args_dict["monitor"]
-    min_delta = parser_args_dict["min_delta"]
-    patience = parser_args_dict["patience"]
-    mode = parser_args_dict["mode"] or ("min" if "pair_entity_ratio_at" in monitor else "max")
+    monitor = parser_args_dict["early_stopping_monitor"]
+    min_delta = parser_args_dict["early_stopping_min_delta"]
+    patience = parser_args_dict["early_stopping_patience"]
+    mode = parser_args_dict["early_stopping_mode"] or (
+        "min" if "pair_entity_ratio_at" in monitor else "max"
+    )
 
     early_stop_callback = EarlyStopping(
         monitor=monitor,
@@ -165,10 +167,11 @@ def _build_trainer(parser_args_dict):
 @click.option("-check_val_every_n_epoch", type=int, default=1)
 @click.option("-max_epochs", type=int, required=True)
 @click.option("-gpus", type=int, default=1)
-@click.option("-mode", type=str)
-@click.option("-patience", type=int, required=True)
-@click.option("-min_delta", type=float, required=True)
-@click.option("-monitor", type=str, required=True)
+@click.option("-early_stopping_mode", type=str)
+@click.option("-early_stopping_patience", type=int, required=True)
+@click.option("-early_stopping_min_delta", type=float, required=True)
+@click.option("-early_stopping_monitor", type=str, required=True)
+@click.option("-ann_k", type=int)
 @click.option("-ef_search", type=int)
 @click.option("-ef_construction", type=int)
 @click.option("-max_m0", type=int)
@@ -176,7 +179,6 @@ def _build_trainer(parser_args_dict):
 @click.option("-multiprocessing_context", type=str)
 @click.option("-num_workers", type=int)
 @click.option("-sim_threshold", "--sim_threshold_list", type=float, multiple=True)
-@click.option("-ann_k", type=int)
 @click.option("-lr", type=str)
 @click.option("-embedding_size", type=int)
 @click.option("-test_len", type=int, required=True)
