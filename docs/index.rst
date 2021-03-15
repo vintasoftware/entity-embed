@@ -18,6 +18,7 @@ Release v\ |version|.
    :caption: Developer Documentation
 
    dev/contributing
+   dev/release_process
    dev/authors
 
 .. toctree::

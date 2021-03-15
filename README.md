@@ -42,16 +42,9 @@ Then check the example Jupyter Notebooks:
 - Deduplication, when you have a single dirty dataset with duplicates: [notebooks/Deduplication-Example.ipynb](/notebooks/Deduplication-Example.ipynb)
 - Record Linkage, when you have multiple clean datasets you need to link: [notebooks/Record-Linkage-Example.ipynb](/notebooks/Record-Linkage-Example.ipynb)
 
+## Releases
 
-## Release Process
-
-* Update `CHANGELOG.md` with the version changes
-* Commit changes
-* Run `bump2version <minor|major|patch>` to update the version number (pick one of the options)
-    * Version number on `entity_embed/__init__.py` and `setup.py` will be updated automatically
-    * You can specify the `--new_version` flag in case you wish to manually set the newest version (if not provided, it will be done automatically based on the chosen option)
-* Run `etc/release.sh` to generate and upload the new version artifacts
-
+See [CHANGELOG.md](/CHANGELOG.md).
 
 ## Credits
 
