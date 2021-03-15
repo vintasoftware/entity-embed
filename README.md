@@ -7,14 +7,38 @@
 
 Transform entities like companies, products, etc. into vectors to support scalable Record Linkage / Entity Resolution using Approximate Nearest Neighbors.
 
-⚠️ Warning: this project is under heavy development and version 0.0.1 has not yet been launched.
+**⚠️ Warning: this project is under heavy development and version 0.0.1 has not yet been launched.**
 
-* Documentation (Under Construction): https://entity-embed.readthedocs.io
+## Requirements
+
+- **Python**: >= 3.6
+- **[Numpy](https://numpy.org/)**: >= 1.19.0
+- **[PyTorch](https://pytorch.org/)**: >= 1.7.1
+- **[PyTorch Lightning](https://pytorch-lightning.readthedocs.io/en/latest/)**: >= 1.1.6
+- **[N2](https://github.com/kakao/n2/)**: >= 0.1.7
+
+And others, see [requirements.txt](/requirements.txt)
+
+## Installation
+
+```
+pip install entity-embed
+```
+
+## Documentation
+
+Under Construction: https://entity-embed.readthedocs.io
 
 
 ## Examples
 
-Check the example Jupyter Notebooks:
+Run:
+
+```
+pip install -r requirements-examples.txt
+```
+
+Then check the example Jupyter Notebooks:
 
 - Deduplication, when you have a single dirty dataset with duplicates: [notebooks/Deduplication-Example.ipynb](/notebooks/Deduplication-Example.ipynb)
 - Record Linkage, when you have multiple clean datasets you need to link: [notebooks/Record-Linkage-Example.ipynb](/notebooks/Record-Linkage-Example.ipynb)
@@ -39,7 +63,7 @@ This package was created with [Cookiecutter](https://github.com/audreyr/cookiecu
 
 ## Commercial Support
 
-We are always looking for exciting work, so if you need any commercial support, feel free to get in touch: contact@vinta.com.br
+[Vinta Software](https://www.vintasoftware.com/) is always looking for exciting work, so if you need any commercial support, feel free to get in touch: contact@vinta.com.br
 
 
 ## Citations
