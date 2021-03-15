@@ -1,20 +1,27 @@
-Welcome to entity-embed's documentation!
-======================================
+Welcome to Entity Embed's documentation!
+========================================
+
+Release v\ |version|.
+
+**Entity Embed** allows you to transform entities like companies, products, etc. into vectors to support scalable Record Linkage / Entity Resolution using Approximate Nearest Neighbors.
 
 .. toctree::
    :maxdepth: 2
-   :caption: Contents:
+   :caption: User Guide
 
-   readme
-   installation
-   usage
-   modules
-   contributing
-   authors
-   history
+   guide/install
+   guide/usage
+   guide/tips
 
-Indices and tables
-==================
-* :ref:`genindex`
-* :ref:`modindex`
-* :ref:`search`
+.. toctree::
+   :maxdepth: 1
+   :caption: Developer Documentation
+
+   dev/contributing
+   dev/authors
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Releases
+
+   changelog

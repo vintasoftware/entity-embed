@@ -15,49 +15,38 @@ Types of Contributions
 Report Bugs
 ~~~~~~~~~~~
 
-Report bugs at https://github.com/vintasoftware/entity-embed/issues.
+Report bugs at https://github.com/vintasoftware/entity-embed/issues
 
-If you are reporting a bug, please include:
+Before reporting a bug, please double-check the requirements of Entity Embed: https://github.com/vintasoftware/entity-embed/blob/main/README.md#requirements
 
-* Your operating system name and version.
-* Any details about your local setup that might be helpful in troubleshooting.
-* Detailed steps to reproduce the bug.
+If you think you really found a bug, please create a GitHub issue and use the "Bug report" template.
 
 Fix Bugs
 ~~~~~~~~
 
-Look through the GitHub issues for bugs. Anything tagged with "bug" and "help
-wanted" is open to whoever wants to implement it.
+Look through the GitHub issues for bugs. Anything tagged with "bug" and "help wanted" is open to whoever wants to implement it. Please comment on the issue saying you're working in a solution.
 
 Implement Features
 ~~~~~~~~~~~~~~~~~~
 
-Look through the GitHub issues for features. Anything tagged with "enhancement"
-and "help wanted" is open to whoever wants to implement it.
+Look through the GitHub issues for features. Anything tagged with "enhancement" and "help wanted" is open to whoever wants to implement it. Please comment on the issue saying you're working in a solution.
 
 Write Documentation
 ~~~~~~~~~~~~~~~~~~~
 
-entity-embed could always use more documentation, whether as part of the
-official entity-embed docs, in docstrings, or even on the web in blog posts,
-articles, and such.
+entity-embed could always use more documentation, whether as part of the official entity-embed docs, in docstrings, or even on the web in blog posts, articles, and such.
 
 Submit Feedback
 ~~~~~~~~~~~~~~~
 
-The best way to send feedback is to file an issue at https://github.com/vintasoftware/entity-embed/issues.
-
-If you are proposing a feature:
-
-* Explain in detail how it would work.
-* Keep the scope as narrow as possible, to make it easier to implement.
-* Remember that this is a volunteer-driven project, and that contributions
-  are welcome :)
+If you have a suggestion, concern, or want to propose a feature, please create a GitHub issue and use the "New feature" template.
 
 Get Started!
 ------------
 
-Ready to contribute? Here's how to set up `entity-embed` for local development.
+Ready to contribute? Please read our Code of Conduct: https://github.com/vintasoftware/entity-embed/blob/main/CODE_OF_CONDUCT.md
+
+Now, here's how to set up `entity-embed` for local development.
 
 1. Fork the `entity-embed` repo on GitHub.
 2. Clone your fork locally::
@@ -70,59 +59,38 @@ Ready to contribute? Here's how to set up `entity-embed` for local development.
     $ cd entity-embed/
     $ python setup.py develop
 
-4. Create a branch for local development::
+4. Install dev requirements:
+
+    $ pip install -r requirements-dev.txt
+
+5. Create a branch for local development::
 
     $ git checkout -b name-of-your-bugfix-or-feature
 
    Now you can make your changes locally.
 
-5. When you're done making changes, check that your changes pass flake8 and the
+6. When you're done making changes, check that your changes pass flake8 and the
    tests, including testing other Python versions with tox::
 
     $ flake8 entity-embed tests
-    $ python setup.py test or pytest
+    $ pytest
     $ tox
 
    To get flake8 and tox, just pip install them into your virtualenv.
 
-6. Commit your changes and push your branch to GitHub::
+7. Commit your changes and push your branch to GitHub::
 
     $ git add .
     $ git commit -m "Your detailed description of your changes."
     $ git push origin name-of-your-bugfix-or-feature
 
-7. Submit a pull request through the GitHub website.
+8. Submit a Pull Request through the GitHub website.
 
 Pull Request Guidelines
 -----------------------
 
-Before you submit a pull request, check that it meets these guidelines:
+Before you submit a Pull Request, check that it meets these guidelines:
 
-1. The pull request should include tests.
-2. If the pull request adds functionality, the docs should be updated. Put
-   your new functionality into a function with a docstring, and add the
-   feature to the list in README.rst.
-3. The pull request should work for Python 3.5, 3.6, 3.7 and 3.8, and for PyPy. Check
-   <TODO: CI LINK HERE>
-   and make sure that the tests pass for all supported Python versions.
-
-Tips
-----
-
-To run a subset of tests::
-
-$ pytest tests.test_entity_embed
-
-
-Deploying
----------
-
-A reminder for the maintainers on how to deploy.
-Make sure all your changes are committed (including an entry in HISTORY.rst).
-Then run::
-
-$ bump2version patch # possible: major / minor / patch
-$ git push
-$ git push --tags
-
-TODO: CI deployment here.
+1. The Pull Request should include tests.
+2. If the Pull Request adds functionality, the docs should be updated.
+3. The CI should pass.

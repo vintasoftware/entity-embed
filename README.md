@@ -7,7 +7,11 @@
 
 Transform entities like companies, products, etc. into vectors to support scalable Record Linkage / Entity Resolution using Approximate Nearest Neighbors.
 
-**⚠️ Warning: this project is under heavy development and version 0.0.1 has not yet been launched.**
+**⚠️ Warning: this project is under heavy development.**
+
+## Documentation
+
+https://entity-embed.readthedocs.io
 
 ## Requirements
 
@@ -24,11 +28,6 @@ And others, see [requirements.txt](/requirements.txt)
 ```
 pip install entity-embed
 ```
-
-## Documentation
-
-Under Construction: https://entity-embed.readthedocs.io
-
 
 ## Examples
 
@@ -56,7 +55,7 @@ Then check the example Jupyter Notebooks:
 
 ## Credits
 
-This project is maintanted by [Vinta Software](https://www.vintasoftware.com/).
+This project is maintained by [Vinta Software](https://www.vintasoftware.com/).
 
 This package was created with [Cookiecutter](https://github.com/audreyr/cookiecutter) and the [`audreyr/cookiecutter-pypackage`](https://github.com/audreyr/cookiecutter-pypackage) project template.
 
