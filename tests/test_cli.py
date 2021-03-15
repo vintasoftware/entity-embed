@@ -7,11 +7,11 @@ import mock
 import pytest
 from click.testing import CliRunner
 from entity_embed.cli import _build_datamodule, _build_trainer, main
-from entity_embed.entity_embed import LinkageDataModule
+from entity_embed.data_utils.numericalizer import RowNumericalizer
 
 
 @pytest.fixture
-def datamodule_files():
+def attr_info_json_filepath():
     attr_info_dict = {
         "name": {
             "field_type": "MULTITOKEN",
@@ -20,81 +20,88 @@ def datamodule_files():
         }
     }
 
-    row_dict_values = [
-        {
-            "id": "1",
-            "name": "foo product",
-            "price": 1.00,
-            "__source": "foo",
-        },
-        {
-            "id": "2",
-            "name": "the foo product from world",
-            "price": 1.20,
-            "__source": "bar",
-        },
-        {
-            "id": "3",
-            "name": "the foo product from world",
-            "price": 1.00,
-            "__source": "foo",
-        },
-        {
-            "id": "4",
-            "name": "foo product",
-            "price": 1.00,
-            "__source": "foo",
-        },
-        {
-            "id": "5",
-            "name": "foo product",
-            "price": 1.30,
-            "__source": "bar",
-        },
-        {
-            "id": "6",
-            "name": "foo pr",
-            "price": 1.30,
-            "__source": "bar",
-        },
-        {
-            "id": "7",
-            "name": "foo pr",
-            "price": 1.30,
-            "__source": "foo",
-        },
-        {
-            "id": "8",
-            "name": "foo product",
-            "price": 1.30,
-            "__source": "bar",
-        },
-        {
-            "id": "9",
-            "name": "foo propaganda",
-            "price": 1.30,
-            "__source": "bar",
-        },
-        {
-            "id": "10",
-            "name": "foo propaganda",
-            "price": 1.30,
-            "__source": "foo",
-        },
-    ]
-
     with tempfile.NamedTemporaryFile("w", delete=False) as attr_info_json_file:
         json.dump(attr_info_dict, attr_info_json_file)
 
-    with tempfile.NamedTemporaryFile("w", delete=False) as row_dict_csv_file:
-        csv_writer = csv.writer(row_dict_csv_file)
-        csv_writer.writerow(row_dict_values[0].keys())
-        for row in row_dict_values:
-            csv_writer.writerow(row.values())
-
-    yield (attr_info_json_file.name, row_dict_csv_file.name)
+    yield attr_info_json_file.name
 
     os.remove(attr_info_json_file.name)
+
+
+ROW_DICT_VALUES = [
+    {
+        "id": "1",
+        "name": "foo product",
+        "price": 1.00,
+        "__source": "foo",
+    },
+    {
+        "id": "2",
+        "name": "the foo product from world",
+        "price": 1.20,
+        "__source": "bar",
+    },
+    {
+        "id": "3",
+        "name": "the foo product from world",
+        "price": 1.00,
+        "__source": "foo",
+    },
+    {
+        "id": "4",
+        "name": "foo product",
+        "price": 1.00,
+        "__source": "foo",
+    },
+    {
+        "id": "5",
+        "name": "foo product",
+        "price": 1.30,
+        "__source": "bar",
+    },
+    {
+        "id": "6",
+        "name": "foo pr",
+        "price": 1.30,
+        "__source": "bar",
+    },
+    {
+        "id": "7",
+        "name": "foo pr",
+        "price": 1.30,
+        "__source": "foo",
+    },
+    {
+        "id": "8",
+        "name": "foo product",
+        "price": 1.30,
+        "__source": "bar",
+    },
+    {
+        "id": "9",
+        "name": "foo propaganda",
+        "price": 1.30,
+        "__source": "bar",
+    },
+    {
+        "id": "10",
+        "name": "foo propaganda",
+        "price": 1.30,
+        "__source": "foo",
+    },
+]
+
+
+@pytest.fixture
+def csv_filepath():
+    with tempfile.NamedTemporaryFile("w", delete=False) as row_dict_csv_file:
+        csv_writer = csv.writer(row_dict_csv_file)
+        csv_writer.writerow(ROW_DICT_VALUES[0].keys())
+        for row in ROW_DICT_VALUES:
+            csv_writer.writerow(row.values())
+
+    yield row_dict_csv_file.name
+
     os.remove(row_dict_csv_file.name)
 
 
@@ -103,9 +110,9 @@ def datamodule_files():
 def test_cli(
     mock_build_trainer,
     mock_validate_best,
-    datamodule_files,
+    attr_info_json_filepath,
+    csv_filepath,
 ):
-    attr_info_json_filepath, csv_filepath = datamodule_files
     runner = CliRunner()
     result = runner.invoke(
         main,
@@ -191,9 +198,13 @@ def test_cli(
     mock_trainer.test.assert_called_once_with(ckpt_path="best", verbose=False)
 
 
-def test_build_linkage_datamodule(datamodule_files):
-    attr_info_json_filepath, csv_filepath = datamodule_files
-    datamodule = _build_datamodule(
+@mock.patch("entity_embed.entity_embed.LinkageDataModule.__init__", return_value=None)
+def test_build_linkage_datamodule(
+    mock_linkage_datamodule,
+    attr_info_json_filepath,
+    csv_filepath,
+):
+    _build_datamodule(
         {
             "attr_info_json_filepath": attr_info_json_filepath,
             "csv_filepath": csv_filepath,
@@ -206,19 +217,77 @@ def test_build_linkage_datamodule(datamodule_files):
             "valid_len": 2,
             "train_len": 2,
             "only_plural_clusters": False,
+            "random_seed": 30,
+            "num_workers": 16,
+            "multiprocessing_context": None,
         }
     )
-    assert isinstance(datamodule, LinkageDataModule)
+
+    mock_linkage_datamodule.assert_called_once_with(
+        row_dict=mock.ANY,
+        cluster_attr="name",
+        row_numericalizer=mock.ANY,
+        batch_size=10,
+        row_batch_size=10,
+        train_cluster_len=2,
+        valid_cluster_len=2,
+        test_cluster_len=1,
+        only_plural_clusters=False,
+        left_id_set={0, 2, 3, 6, 9},
+        right_id_set={1, 4, 5, 7, 8},
+        random_seed=30,
+        pair_loader_kwargs={"num_workers": 16},
+        row_loader_kwargs={"num_workers": 16},
+    )
+    call_args = mock_linkage_datamodule.call_args.kwargs
+    assert isinstance(call_args["row_numericalizer"], RowNumericalizer)
+
+
+def test_build_linkage_datamodule_without_source_raises(attr_info_json_filepath):
+    wrong_row_dict_values = []
+    for row in ROW_DICT_VALUES:
+        wrong_row_dict_values.append(
+            {
+                "id": row["id"],
+                "name": row["name"],
+                "price": row["price"],
+            }
+        )
+
+    with tempfile.NamedTemporaryFile("w", delete=False) as row_dict_csv_file:
+        csv_writer = csv.writer(row_dict_csv_file)
+        csv_writer.writerow(wrong_row_dict_values[0].keys())
+        for row in wrong_row_dict_values:
+            csv_writer.writerow(row.values())
+
+    with pytest.raises(KeyError):
+        _build_datamodule(
+            {
+                "attr_info_json_filepath": attr_info_json_filepath,
+                "csv_filepath": row_dict_csv_file.name,
+                "csv_encoding": "utf-8",
+                "cluster_attr": "name",
+                "batch_size": 10,
+                "row_batch_size": 10,
+                "left": "foo",
+                "test_len": 1,
+                "valid_len": 2,
+                "train_len": 2,
+                "only_plural_clusters": False,
+            }
+        )
+
+    os.remove(row_dict_csv_file.name)
 
 
 @mock.patch("entity_embed.cli.pl.Trainer")
-@mock.patch("entity_embed.cli.ModelCheckpoint")
 @mock.patch("entity_embed.cli.TensorBoardLogger")
+@mock.patch("entity_embed.cli.ModelCheckpoint")
 @mock.patch("entity_embed.cli.EarlyStopping")
 def test_build_trainer(
     mock_early_stopping,
-    mock_logger,
     mock_checkpoint,
+    mock_logger,
     mock_trainer,
 ):
     trainer = _build_trainer(
@@ -262,3 +331,41 @@ def test_build_trainer(
     )
 
     assert trainer == mock_trainer.return_value
+
+
+@mock.patch("entity_embed.cli.ModelCheckpoint")
+@mock.patch("entity_embed.cli.EarlyStopping")
+def test_build_trainer_with_only_tb_name_raises(
+    mock_early_stopping,
+    mock_checkpoint,
+):
+    with pytest.raises(KeyError):
+        _build_trainer(
+            {
+                "early_stopping_monitor": "pair_entity_ratio_at_f0",
+                "early_stopping_min_delta": 0.1,
+                "early_stopping_patience": 20,
+                "early_stopping_mode": None,
+                "gpus": 2,
+                "max_epochs": 20,
+                "check_val_every_n_epoch": 2,
+                "tb_name": "foo",
+                "tb_log_dir": None,
+                "model_save_filepath": "weights.ckpt",
+            }
+        )
+
+    mock_early_stopping.assert_called_once_with(
+        monitor="pair_entity_ratio_at_f0",
+        min_delta=0.1,
+        patience=20,
+        verbose=True,
+        mode="min",
+    )
+
+    mock_checkpoint.assert_called_once_with(
+        monitor="pair_entity_ratio_at_f0",
+        verbose=True,
+        filename="weights.ckpt",
+        save_top_k=1,
+    )
