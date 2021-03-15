@@ -6,7 +6,7 @@ import tempfile
 import mock
 import pytest
 from click.testing import CliRunner
-from entity_embed.cli import _build_datamodule, _build_trainer, main
+from entity_embed.cli import _build_datamodule, _build_model, _build_trainer, main
 from entity_embed.data_utils.numericalizer import RowNumericalizer
 
 
@@ -178,6 +178,7 @@ def test_cli(
         "m": None,
         "multiprocessing_context": None,
         "num_workers": None,
+        "n_threads": None,
         "sim_threshold_list": (0.2, 0.4, 0.6),
         "ann_k": None,
         "lr": None,
@@ -368,4 +369,32 @@ def test_build_trainer_with_only_tb_name_raises(
         verbose=True,
         filename="weights.ckpt",
         save_top_k=1,
+    )
+
+
+@mock.patch("entity_embed.entity_embed.EntityEmbed.__init__", return_value=None)
+def test_build_model(mock_entity_embed):
+    mock_datamodule = mock.MagicMock()
+    _build_model(
+        mock_datamodule,
+        {
+            "embedding_size": 125,
+            "lr": 0.2,
+            "ann_k": 10,
+            "sim_threshold_list": (0.2, 0.4, 0.6, 0.8),
+            "m": None,
+            "max_m0": None,
+            "ef_construction": 128,
+            "n_threads": 4,
+            "ef_search": -1,
+        },
+    )
+    mock_entity_embed.assert_called_once_with(
+        datamodule=mock_datamodule,
+        embedding_size=125,
+        learning_rate=0.2,
+        ann_k=10,
+        sim_threshold_list=(0.2, 0.4, 0.6, 0.8),
+        index_build_kwargs={"ef_construction": 128, "n_threads": 4},
+        index_search_kwargs={"ef_search": -1, "n_threads": 4},
     )

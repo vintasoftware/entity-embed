@@ -103,14 +103,14 @@ def _build_model(datamodule, parser_args_dict):
         parser_args_dict["m"]
         or parser_args_dict["max_m0"]
         or parser_args_dict["ef_construction"]
-        or parser_args_dict["num_workers"]
+        or parser_args_dict["n_threads"]
     ):
         model_args["index_build_kwargs"] = {}
         for k in ["m", "max_m0", "ef_construction", "n_threads"]:
             if parser_args_dict[k]:
                 model_args["index_build_kwargs"][k] = parser_args_dict[k]
 
-    if parser_args_dict["ef_search"] or parser_args_dict["num_workers"]:
+    if parser_args_dict["ef_search"] or parser_args_dict["n_threads"]:
         model_args["index_search_kwargs"] = {}
         for k in ["ef_search", "n_threads"]:
             if parser_args_dict[k]:
@@ -199,6 +199,10 @@ def _build_trainer(parser_args_dict):
 @click.option("-cluster_attr", type=str, required=True)
 @click.option("-attr_info_json_filepath", type=str, required=True)
 def main(**kwargs):
+    # Duplicate "num_workers" key into "n_threads" key since _build_datamodule
+    # uses "num_workers" and _build_model uses "n_threads"
+    kwargs["n_threads"] = kwargs["num_workers"]
+
     datamodule = _build_datamodule(kwargs)
     model = _build_model(datamodule, kwargs)
 
