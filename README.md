@@ -40,3 +40,21 @@ This package was created with [Cookiecutter](https://github.com/audreyr/cookiecu
 ## Commercial Support
 
 We are always looking for exciting work, so if you need any commercial support, feel free to get in touch: contact@vinta.com.br
+
+
+## Citations
+
+If you use Entity Embed in your research, please consider citing it.
+
+BibTeX entry:
+
+```
+@software{entity-embed,
+  title = {{Entity Embed}: Transform entities like companies, products, etc. into vectors.},
+  author = {Juvenal, Flávio and Vieira, Renato},
+  url = {https://github.com/vintasoftware/entity-embed},
+  version = {0.0.1},
+  date = {2021-03-15},
+  year = {2021}
+}
+```
