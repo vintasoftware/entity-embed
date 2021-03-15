@@ -33,7 +33,7 @@ class DeduplicationDataModule(pl.LightningDataModule):
         cluster_attr,
         row_numericalizer,
         batch_size,
-        row_batch_size,
+        eval_batch_size,
         train_cluster_len,
         valid_cluster_len,
         test_cluster_len,
@@ -47,7 +47,7 @@ class DeduplicationDataModule(pl.LightningDataModule):
         self.cluster_attr = cluster_attr
         self.row_numericalizer = row_numericalizer
         self.batch_size = batch_size
-        self.row_batch_size = row_batch_size
+        self.eval_batch_size = eval_batch_size
         self.train_cluster_len = train_cluster_len
         self.valid_cluster_len = valid_cluster_len
         self.test_cluster_len = test_cluster_len
@@ -116,7 +116,7 @@ class DeduplicationDataModule(pl.LightningDataModule):
         valid_row_dataset = RowDataset(
             row_dict=self.valid_row_dict,
             row_numericalizer=self.row_numericalizer,
-            batch_size=self.row_batch_size,
+            batch_size=self.eval_batch_size,
         )
         valid_row_loader = torch.utils.data.DataLoader(
             valid_row_dataset,
@@ -130,7 +130,7 @@ class DeduplicationDataModule(pl.LightningDataModule):
         test_row_dataset = RowDataset(
             row_dict=self.test_row_dict,
             row_numericalizer=self.row_numericalizer,
-            batch_size=self.row_batch_size,
+            batch_size=self.eval_batch_size,
         )
         test_row_loader = torch.utils.data.DataLoader(
             test_row_dataset,
@@ -149,7 +149,7 @@ class LinkageDataModule(pl.LightningDataModule):
         right_id_set,
         row_numericalizer,
         batch_size,
-        row_batch_size,
+        eval_batch_size,
         cluster_attr=None,
         true_pair_set=None,
         train_cluster_len=None,
@@ -170,7 +170,7 @@ class LinkageDataModule(pl.LightningDataModule):
         self.right_id_set = right_id_set
         self.row_numericalizer = row_numericalizer
         self.batch_size = batch_size
-        self.row_batch_size = row_batch_size
+        self.eval_batch_size = eval_batch_size
         self.only_plural_clusters = only_plural_clusters
         self.pair_loader_kwargs = build_loader_kwargs(pair_loader_kwargs)
         self.row_loader_kwargs = build_loader_kwargs(row_loader_kwargs)
@@ -278,7 +278,7 @@ class LinkageDataModule(pl.LightningDataModule):
         valid_row_dataset = RowDataset(
             row_dict=self.valid_row_dict,
             row_numericalizer=self.row_numericalizer,
-            batch_size=self.row_batch_size,
+            batch_size=self.eval_batch_size,
         )
         valid_row_loader = torch.utils.data.DataLoader(
             valid_row_dataset,
@@ -292,7 +292,7 @@ class LinkageDataModule(pl.LightningDataModule):
         test_row_dataset = RowDataset(
             row_dict=self.test_row_dict,
             row_numericalizer=self.row_numericalizer,
-            batch_size=self.row_batch_size,
+            batch_size=self.eval_batch_size,
         )
         test_row_loader = torch.utils.data.DataLoader(
             test_row_dataset,

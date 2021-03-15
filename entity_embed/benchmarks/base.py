@@ -112,14 +112,14 @@ class DeepmatcherBenchmark(ABC):
 
         return true_pair_set, false_pair_set
 
-    def build_datamodule(self, row_numericalizer, batch_size, row_batch_size, random_seed):
+    def build_datamodule(self, row_numericalizer, batch_size, eval_batch_size, random_seed):
         return LinkageDataModule(
             row_dict=self.row_dict,
             left_id_set=self.left_id_set,
             right_id_set=self.right_id_set,
             row_numericalizer=row_numericalizer,
             batch_size=batch_size,
-            row_batch_size=row_batch_size,
+            eval_batch_size=eval_batch_size,
             train_true_pair_set=self.train_true_pair_set,
             valid_true_pair_set=self.valid_true_pair_set,
             test_true_pair_set=self.test_true_pair_set,
