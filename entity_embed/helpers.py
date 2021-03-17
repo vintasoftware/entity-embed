@@ -31,7 +31,8 @@ def build_index_search_kwargs(kwargs_dict=None):
     if not kwargs_dict:
         kwargs_dict = {}
     ef_search = kwargs_dict.get("ef_search") or -1
-    num_threads = kwargs_dict.get("num_threads") or os.cpu_count()
+    # Note the N2 API is inconsistent! Here it's num_threads, on build it's n_threads
+    num_threads = kwargs_dict.get("n_threads") or os.cpu_count()
     return {
         "ef_search": ef_search,
         "num_threads": num_threads,

@@ -26,13 +26,26 @@ def row_dict_to_cluster_dict(row_dict, cluster_attr):
     return cluster_dict
 
 
-def cluster_dict_to_id_pairs(cluster_dict):
-    return set(
-        pair
-        for cluster_id_list in cluster_dict.values()
-        # must use sorted to always have smaller id on left of pair tuple
-        for pair in itertools.combinations(sorted(cluster_id_list), 2)
-    )
+def cluster_dict_to_id_pairs(cluster_dict, left_id_set=None, right_id_set=None):
+    if left_id_set is None and right_id_set is None:
+        return set(
+            pair
+            for cluster_id_list in cluster_dict.values()
+            # must use sorted to always have smaller id on left of pair tuple
+            for pair in itertools.combinations(sorted(cluster_id_list), 2)
+        )
+    else:
+        pair_set = set()
+        for cluster_id_list in cluster_dict.values():
+            for (id_left, id_right) in itertools.combinations(cluster_id_list, 2):
+                if id_right in left_id_set and id_left in right_id_set:
+                    pair = (id_right, id_left)
+                elif id_left in left_id_set and id_right in right_id_set:
+                    pair = (id_left, id_right)
+                else:  # ignore left-left and right-right pairs
+                    continue
+                pair_set.add(pair)
+        return pair_set
 
 
 def count_cluster_dict_pairs(cluster_dict):
@@ -68,10 +81,6 @@ def split_clusters(
     test_cluster_id_set = all_minus_train_cluster_id_set - valid_cluster_id_set
     if test_len < len(test_cluster_id_set):
         test_cluster_id_set = OrderedSet(rnd.sample(test_cluster_id_set, test_len))
-
-    assert train_cluster_id_set.isdisjoint(valid_cluster_id_set)
-    assert train_cluster_id_set.isdisjoint(test_cluster_id_set)
-    assert valid_cluster_id_set.isdisjoint(test_cluster_id_set)
 
     train_cluster_dict = {
         cluster_id: cluster_dict[cluster_id] for cluster_id in train_cluster_id_set
@@ -149,6 +158,17 @@ def id_pairs_to_cluster_mapping_and_dict(id_pairs):
     # must be called after component_dict, because of find calls
     cluster_mapping = uf.parents
     return cluster_mapping, cluster_dict
+
+
+def assign_clusters(row_dict, cluster_attr, cluster_mapping):
+    current_singleton_cluster_id = max(cluster_mapping.values()) + 1
+
+    for id_, row in row_dict.items():
+        try:
+            row[cluster_attr] = cluster_mapping[id_]
+        except KeyError:
+            row[cluster_attr] = current_singleton_cluster_id
+            current_singleton_cluster_id += 1
 
 
 def import_function(function_dotted_path):

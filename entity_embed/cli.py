@@ -1,133 +1,151 @@
 import csv
 import logging
-import sys
+import os
 
 import click
+import numpy as np
 import pytorch_lightning as pl
-from entity_embed import validate_best
-from entity_embed.data_utils.helpers import AttrInfoDictParser
-from entity_embed.data_utils.utils import Enumerator
-from entity_embed.entity_embed import DeduplicationDataModule, EntityEmbed, LinkageDataModule
+import torch
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 from pytorch_lightning.loggers import TensorBoardLogger
+
+from . import ANNEntityIndex, ANNLinkageIndex, validate_best
+from .data_utils import utils
+from .data_utils.helpers import AttrInfoDictParser
+from .entity_embed import DeduplicationDataModule, EntityEmbed, LinkageDataModule, LinkageEmbed
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-def _build_datamodule(parser_args_dict):
-    id_enumerator = Enumerator()
+def _fix_workers_kwargs(kwargs):
+    # Accept -1 as "num_workers"
+    if kwargs["num_workers"] == -1:
+        kwargs["num_workers"] = os.cpu_count()
+    # Duplicate "num_workers" key into "n_threads" key since _build_datamodule
+    # uses "num_workers" and _build_model uses "n_threads"
+    kwargs["n_threads"] = kwargs["num_workers"]
+
+
+def _set_random_seeds(kwargs):
+    if kwargs.get("random_seed") is not None:
+        random_seed = kwargs["random_seed"]
+        torch.manual_seed(random_seed)
+        np.random.seed(random_seed)
+
+
+def _build_row_dict(csv_filepath, kwargs):
+    csv_encoding = kwargs["csv_encoding"]
     row_dict = {}
 
-    csv_filepath = parser_args_dict["csv_filepath"]
-    encoding = parser_args_dict["csv_encoding"]
-    with open(csv_filepath, "r", encoding=encoding) as row_dict_csv_file:
-        for row in csv.DictReader(row_dict_csv_file):
-            row["id"] = id_enumerator[row["id"]]
-            row_dict[row["id"]] = row
+    with open(csv_filepath, "r", newline="", encoding=csv_encoding) as row_dict_csv_file:
+        for id_, row in enumerate(csv.DictReader(row_dict_csv_file)):
+            row_dict[id_] = row
 
     logger.info(f"Finished reading {csv_filepath}")
+    return row_dict
 
-    attr_info_json_filepath = parser_args_dict["attr_info_json_filepath"]
+
+def _build_row_numericalizer(row_list, kwargs):
+    attr_info_json_filepath = kwargs["attr_info_json_filepath"]
+
     with open(attr_info_json_filepath, "r") as attr_info_json_file:
-        row_numericalizer = AttrInfoDictParser.from_json(attr_info_json_file, row_dict=row_dict)
+        row_numericalizer = AttrInfoDictParser.from_json(attr_info_json_file, row_list=row_list)
 
     logger.info(f"Finished reading {attr_info_json_filepath}")
+    return row_numericalizer
+
+
+def _build_left_right_id_sets(row_dict, source_attr, left_source):
+    left_id_set = set()
+    right_id_set = set()
+    for id, row in row_dict.items():
+        if row[source_attr] == left_source:
+            left_id_set.add(id)
+        else:
+            right_id_set.add(id)
+    return left_id_set, right_id_set
+
+
+def _build_datamodule(row_dict, row_numericalizer, kwargs):
+    left_source = kwargs.get("left_source")
+    if left_source:  # is record linkage
+        try:
+            source_attr = kwargs["source_attr"]
+        except KeyError as e:
+            raise KeyError('You must provide a "source_attr" to perform Record Linkage') from e
 
     datamodule_args = {
         "row_dict": row_dict,
-        "cluster_attr": parser_args_dict["cluster_attr"],
+        "cluster_attr": kwargs["cluster_attr"],
         "row_numericalizer": row_numericalizer,
-        "batch_size": parser_args_dict["batch_size"],
-        "eval_batch_size": parser_args_dict["eval_batch_size"],
-        "train_cluster_len": parser_args_dict["train_len"],
-        "valid_cluster_len": parser_args_dict["valid_len"],
-        "test_cluster_len": parser_args_dict["test_len"],
-        "only_plural_clusters": parser_args_dict["only_plural_clusters"],
+        "batch_size": kwargs["batch_size"],
+        "eval_batch_size": kwargs["eval_batch_size"],
+        "train_cluster_len": kwargs["train_len"],
+        "valid_cluster_len": kwargs["valid_len"],
+        "test_cluster_len": kwargs["test_len"],
+        "only_plural_clusters": kwargs["only_plural_clusters"],
     }
 
-    if parser_args_dict.get("left"):
-        left_id_set = set()
-        right_id_set = set()
-        for id, row in row_dict.items():
-            try:
-                if row["__source"] == parser_args_dict["left"]:
-                    left_id_set.add(id)
-                else:
-                    right_id_set.add(id)
-            except KeyError:
-                raise KeyError(
-                    f'You must provide a "__source" column on {csv_filepath} '
-                    "in order to determine left_id_set and right_id_set on LinkageDataModule"
-                )
+    if left_source:  # is record linkage
+        left_id_set, right_id_set = _build_left_right_id_sets(row_dict, source_attr, left_source)
         datamodule_args["left_id_set"] = left_id_set
         datamodule_args["right_id_set"] = right_id_set
         datamodule_cls = LinkageDataModule
     else:
         datamodule_cls = DeduplicationDataModule
 
-    if parser_args_dict.get("num_workers") or parser_args_dict.get("multiprocessing_context"):
+    if kwargs.get("num_workers") or kwargs.get("multiprocessing_context"):
         for k in ["pair_loader_kwargs", "row_loader_kwargs"]:
             datamodule_args[k] = {}
             for inner_k in ["num_workers", "multiprocessing_context"]:
-                if parser_args_dict[inner_k]:
-                    datamodule_args[k][inner_k] = parser_args_dict[inner_k]
+                if kwargs[inner_k]:
+                    datamodule_args[k][inner_k] = kwargs[inner_k]
 
-    if parser_args_dict.get("random_seed"):
-        datamodule_args["random_seed"] = parser_args_dict["random_seed"]
+    if kwargs.get("random_seed"):
+        datamodule_args["random_seed"] = kwargs["random_seed"]
 
     logger.info("Building datamodule...")
 
     return datamodule_cls(**datamodule_args)
 
 
-def _build_model(datamodule, parser_args_dict):
-    model_args = {
-        "datamodule": datamodule,
-    }
+def _build_model(row_numericalizer, kwargs):
+    model_args = {"row_numericalizer": row_numericalizer, "eval_with_clusters": True}
 
-    if parser_args_dict["embedding_size"]:
-        model_args["embedding_size"] = parser_args_dict["embedding_size"]
+    if kwargs["embedding_size"]:
+        model_args["embedding_size"] = kwargs["embedding_size"]
 
-    if parser_args_dict["lr"]:
-        model_args["learning_rate"] = parser_args_dict["lr"]
+    if kwargs["lr"]:
+        model_args["learning_rate"] = kwargs["lr"]
 
-    if parser_args_dict["ann_k"]:
-        model_args["ann_k"] = parser_args_dict["ann_k"]
+    if kwargs["ann_k"]:
+        model_args["ann_k"] = kwargs["ann_k"]
 
-    if parser_args_dict["sim_threshold_list"]:
-        model_args["sim_threshold_list"] = parser_args_dict["sim_threshold_list"]
+    if kwargs["sim_threshold_list"]:
+        model_args["sim_threshold_list"] = kwargs["sim_threshold_list"]
 
-    if (
-        parser_args_dict["m"]
-        or parser_args_dict["max_m0"]
-        or parser_args_dict["ef_construction"]
-        or parser_args_dict["n_threads"]
-    ):
-        model_args["index_build_kwargs"] = {}
-        for k in ["m", "max_m0", "ef_construction", "n_threads"]:
-            if parser_args_dict[k]:
-                model_args["index_build_kwargs"][k] = parser_args_dict[k]
+    model_args["index_build_kwargs"] = {}
+    for k in ["m", "max_m0", "ef_construction", "n_threads"]:
+        if kwargs[k]:
+            model_args["index_build_kwargs"][k] = kwargs[k]
 
-    if parser_args_dict["ef_search"] or parser_args_dict["n_threads"]:
-        model_args["index_search_kwargs"] = {}
-        for k in ["ef_search", "n_threads"]:
-            if parser_args_dict[k]:
-                model_args["index_search_kwargs"][k] = parser_args_dict[k]
+    model_args["index_search_kwargs"] = {}
+    for k in ["ef_search", "n_threads"]:
+        if kwargs[k]:
+            model_args["index_search_kwargs"][k] = kwargs[k]
 
     logger.info("Building model...")
 
     return EntityEmbed(**model_args)
 
 
-def _build_trainer(parser_args_dict):
-    monitor = parser_args_dict["early_stopping_monitor"]
-    min_delta = parser_args_dict["early_stopping_min_delta"]
-    patience = parser_args_dict["early_stopping_patience"]
-    mode = parser_args_dict["early_stopping_mode"] or (
-        "min" if "pair_entity_ratio_at" in monitor else "max"
-    )
+def _build_trainer(kwargs):
+    monitor = kwargs["early_stopping_monitor"]
+    min_delta = kwargs["early_stopping_min_delta"]
+    patience = kwargs["early_stopping_patience"]
+    mode = kwargs["early_stopping_mode"] or ("min" if "pair_entity_ratio_at" in monitor else "max")
 
     early_stop_callback = EarlyStopping(
         monitor=monitor,
@@ -140,23 +158,24 @@ def _build_trainer(parser_args_dict):
     checkpoint_callback = ModelCheckpoint(
         monitor=monitor,
         save_top_k=1,
+        mode=mode,
         verbose=True,
-        filename=parser_args_dict["model_save_filepath"],
+        dirpath=kwargs["model_save_dirpath"],
     )
 
     trainer_args = {
-        "gpus": parser_args_dict["gpus"],
-        "max_epochs": parser_args_dict["max_epochs"],
-        "check_val_every_n_epoch": parser_args_dict["check_val_every_n_epoch"],
+        "gpus": kwargs["gpus"],
+        "max_epochs": kwargs["max_epochs"],
+        "check_val_every_n_epoch": kwargs["check_val_every_n_epoch"],
         "callbacks": [early_stop_callback, checkpoint_callback],
     }
 
-    if parser_args_dict["tb_name"] and parser_args_dict["tb_save_dir"]:
+    if kwargs["tb_name"] and kwargs["tb_save_dir"]:
         trainer_args["logger"] = TensorBoardLogger(
-            parser_args_dict["tb_save_dir"],
-            name=parser_args_dict["tb_name"],
+            kwargs["tb_save_dir"],
+            name=kwargs["tb_name"],
         )
-    elif parser_args_dict["tb_name"] or parser_args_dict["tb_save_dir"]:
+    elif kwargs["tb_name"] or kwargs["tb_save_dir"]:
         raise KeyError(
             'Please provide both "tb_name" and "tb_save_dir" to enable '
             "TensorBoardLogger or omit both to disable it"
@@ -167,9 +186,10 @@ def _build_trainer(parser_args_dict):
 
 @click.command()
 @click.option(
-    "-model_save_filepath",
+    "-model_save_dirpath",
     type=str,
-    help="Path where to save the best validation model using PyTorch Lightning",
+    help="Directory path where to save the best validation model checkpoint"
+    " using PyTorch Lightning",
 )
 @click.option("-tb_save_dir", type=str, help="TensorBoard save directory")
 @click.option("-tb_name", type=str, help="TensorBoard experiment name")
@@ -222,6 +242,7 @@ def _build_trainer(parser_args_dict):
 @click.option(
     "-multiprocessing_context",
     type=str,
+    default="fork",
     help="Context name for multiprocessing for PyTorch Lightning datamodules, "
     "like `spawn`, `fork`, `forkserver` (currently only tested with `fork`)",
 )
@@ -229,7 +250,7 @@ def _build_trainer(parser_args_dict):
     "-num_workers",
     type=int,
     help="Number of workers to use in PyTorch Lightning datamodules "
-    "and also number of threads to use in ANN",
+    "and also number of threads to use in ANN. Set -1 to use all available CPUs",
 )
 @click.option(
     "-sim_threshold",
@@ -241,7 +262,7 @@ def _build_trainer(parser_args_dict):
     "(precision, recall, etc.) are computed, "
     "but ignoring any ANN neighbors with cosine similarity BELOW the threshold",
 )
-@click.option("-lr", type=str, help="Learning Rate for training")
+@click.option("-lr", type=float, help="Learning Rate for training")
 @click.option("-embedding_size", type=int, help="Embedding Dimensionality, for example: 300")
 @click.option(
     "-test_len",
@@ -268,16 +289,36 @@ def _build_trainer(parser_args_dict):
 )
 @click.option("-random_seed", type=int, help="Random seed to help with reproducibility")
 @click.option(
-    "-left",
+    "-source_attr",
     type=str,
     help="Set this when doing Record Linkage. "
-    "Consider any row with this value in the `__source` column as the left dataset. "
-    "The rows with other `__source` values are considered the right dataset",
+    "Column of the CSV dataset that contains the indication of the left or right source "
+    "for Record Linkage",
+)
+@click.option(
+    "-left_source",
+    type=str,
+    help="Set this when doing Record Linkage. "
+    "Consider any row with this value in the `source_attr` column as the left_source dataset. "
+    "The rows with other `source_attr` values are considered the right dataset",
 )
 @click.option("-eval_batch_size", type=int, required=True, help="Evaluation batch size, in ROWS")
 @click.option("-batch_size", type=int, required=True, help="Training batch size, in CLUSTERS")
-@click.option("-csv_encoding", type=str, default="utf-8", help="Encoding of the dataset CSV file")
-@click.option("-csv_filepath", type=str, required=True, help="Path of the dataset CSV file")
+@click.option(
+    "-csv_encoding", type=str, default="utf-8", help="Encoding of the input dataset CSV file"
+)
+@click.option(
+    "-labeled_input_csv_filepath",
+    type=str,
+    required=True,
+    help="Path of the LABELED input dataset CSV file",
+)
+@click.option(
+    "-unlabeled_input_csv_filepath",
+    type=str,
+    required=True,
+    help="Path of the UNLABELED input dataset CSV file",
+)
 @click.option(
     "-cluster_attr",
     type=str,
@@ -292,27 +333,281 @@ def _build_trainer(parser_args_dict):
     help="Path of the JSON configuration file "
     "that defines how columns will be processed by the neural network",
 )
-def main(**kwargs):
+def train(**kwargs):
     """
     Transform entities like companies, products, etc. into vectors
     to support scalable Record Linkage / Entity Resolution
     using Approximate Nearest Neighbors.
     """
-
-    # Duplicate "num_workers" key into "n_threads" key since _build_datamodule
-    # uses "num_workers" and _build_model uses "n_threads"
-    kwargs["n_threads"] = kwargs["num_workers"]
-
-    datamodule = _build_datamodule(kwargs)
-    model = _build_model(datamodule, kwargs)
+    _fix_workers_kwargs(kwargs)
+    _set_random_seeds(kwargs)
+    row_dict_labeled = _build_row_dict(
+        csv_filepath=kwargs["labeled_input_csv_filepath"], kwargs=kwargs
+    )
+    row_dict_unlabeled = _build_row_dict(
+        csv_filepath=kwargs["unlabeled_input_csv_filepath"], kwargs=kwargs
+    )
+    row_list_all = list(row_dict_labeled.values()) + list(row_dict_unlabeled.values())
+    row_numericalizer = _build_row_numericalizer(row_list=row_list_all, kwargs=kwargs)
+    del row_list_all, row_dict_unlabeled
+    datamodule = _build_datamodule(
+        row_dict=row_dict_labeled, row_numericalizer=row_numericalizer, kwargs=kwargs
+    )
+    model = _build_model(row_numericalizer=row_numericalizer, kwargs=kwargs)
 
     trainer = _build_trainer(kwargs)
     trainer.fit(model, datamodule)
-    validate_best(trainer)
-    trainer.test(ckpt_path="best", verbose=False)
+    del model, datamodule
+    valid_metrics = validate_best(trainer)
+    logger.info(valid_metrics)
+    test_metrics = trainer.test(ckpt_path="best", verbose=False)
+    logger.info(test_metrics)
+
+    logger.info(f"Saved best model at path {trainer.checkpoint_callback.best_model_path}")
 
     return 0
 
 
-if __name__ == "__main__":
-    sys.exit(main())  # pragma: no cover
+def _load_model(kwargs):
+    is_record_linkage = "left_source" in kwargs
+    if is_record_linkage:
+        model_cls = LinkageEmbed
+    else:
+        model_cls = EntityEmbed
+    return model_cls.load_from_checkpoint(kwargs["model_save_filepath"], datamodule=None)
+
+
+def _assign_clusters(row_dict, model, kwargs):
+    eval_batch_size = kwargs["eval_batch_size"]
+    num_workers = kwargs["num_workers"]
+    multiprocessing_context = kwargs["multiprocessing_context"]
+    ann_k = kwargs["ann_k"]
+    sim_threshold = kwargs["sim_threshold"]
+    left_source = kwargs.get("left_source")
+    if left_source:  # is record linkage
+        try:
+            source_attr = kwargs["source_attr"]
+        except KeyError as e:
+            raise KeyError('You must provide a "source_attr" to perform Record Linkage') from e
+    cluster_attr = kwargs["cluster_attr"]
+
+    index_build_kwargs = {}
+    for k in ["m", "max_m0", "ef_construction", "n_threads"]:
+        if kwargs[k]:
+            index_build_kwargs[k] = kwargs[k]
+
+    index_search_kwargs = {}
+    for k in ["ef_search", "n_threads"]:
+        if kwargs[k]:
+            index_search_kwargs[k] = kwargs[k]
+
+    if left_source:  # is record linkage
+        left_id_set, right_id_set = _build_left_right_id_sets(row_dict, source_attr, left_source)
+        cluster_mapping = _find_clusters_rl(
+            row_dict=row_dict,
+            left_id_set=left_id_set,
+            right_id_set=right_id_set,
+            model=model,
+            eval_batch_size=eval_batch_size,
+            num_workers=num_workers,
+            multiprocessing_context=multiprocessing_context,
+            ann_k=ann_k,
+            sim_threshold=sim_threshold,
+            index_build_kwargs=index_build_kwargs,
+            index_search_kwargs=index_search_kwargs,
+        )
+    else:
+        cluster_mapping = _find_clusters_er(
+            row_dict=row_dict,
+            model=model,
+            eval_batch_size=eval_batch_size,
+            num_workers=num_workers,
+            multiprocessing_context=multiprocessing_context,
+            ann_k=ann_k,
+            sim_threshold=sim_threshold,
+            index_build_kwargs=index_build_kwargs,
+            index_search_kwargs=index_search_kwargs,
+        )
+
+    utils.assign_clusters(
+        row_dict=row_dict, cluster_attr=cluster_attr, cluster_mapping=cluster_mapping
+    )
+
+
+def _find_clusters_rl(
+    row_dict,
+    left_id_set,
+    right_id_set,
+    model,
+    eval_batch_size,
+    num_workers,
+    multiprocessing_context,
+    ann_k,
+    sim_threshold,
+    index_build_kwargs,
+    index_search_kwargs,
+):
+    left_vector_dict, right_vector_dict = model.predict(
+        row_dict=row_dict,
+        left_id_set=left_id_set,
+        right_id_set=right_id_set,
+        batch_size=eval_batch_size,
+        loader_kwargs={
+            "num_workers": num_workers,
+            "multiprocessing_context": multiprocessing_context,
+        },
+        show_progress=True,
+    )
+    ann_index = ANNLinkageIndex(embedding_size=model.embedding_size)
+    ann_index.insert_vector_dict(
+        left_vector_dict=left_vector_dict, right_vector_dict=right_vector_dict
+    )
+    ann_index.build(index_build_kwargs=index_build_kwargs)
+    cluster_mapping, __ = ann_index.search_clusters(
+        k=ann_k,
+        sim_threshold=sim_threshold,
+        left_vector_dict=left_vector_dict,
+        right_vector_dict=right_vector_dict,
+        index_search_kwargs=index_search_kwargs,
+    )
+    return cluster_mapping
+
+
+def _find_clusters_er(
+    row_dict,
+    model,
+    eval_batch_size,
+    num_workers,
+    multiprocessing_context,
+    ann_k,
+    sim_threshold,
+    index_build_kwargs,
+    index_search_kwargs,
+):
+    vector_dict = model.predict(
+        row_dict=row_dict,
+        batch_size=eval_batch_size,
+        loader_kwargs={
+            "num_workers": num_workers,
+            "multiprocessing_context": multiprocessing_context,
+        },
+        show_progress=True,
+    )
+    ann_index = ANNEntityIndex(embedding_size=model.embedding_size)
+    ann_index.insert_vector_dict(vector_dict)
+    ann_index.build(index_build_kwargs=index_build_kwargs)
+    cluster_mapping = ann_index.search_clusters(
+        k=ann_k, sim_threshold=sim_threshold, index_search_kwargs=index_search_kwargs
+    )
+    return cluster_mapping
+
+
+def _write_csv(row_dict, kwargs):
+    with open(kwargs["output_csv_filepath"], "w", newline="", encoding=kwargs["csv_encoding"]) as f:
+        writer = csv.DictWriter(f, fieldnames=next(iter(row_dict.values())).keys())
+        writer.writeheader()
+        writer.writerows(row_dict.values())
+
+
+@click.command()
+@click.option(
+    "-model_save_filepath",
+    type=str,
+    help="Path where the model checkpoint was saved",
+)
+@click.option(
+    "-ann_k",
+    type=int,
+    help="When finding duplicates, use this number as the K for the Approximate Nearest Neighbors",
+)
+@click.option("-ef_search", type=int, help="Parameter for the ANN. See N2 docs: n2.readthedocs.io")
+@click.option(
+    "-ef_construction", type=int, help="Parameter for the ANN. See N2 docs: n2.readthedocs.io"
+)
+@click.option("-max_m0", type=int, help="Parameter for the ANN. See N2 docs: n2.readthedocs.io")
+@click.option("-m", type=int, help="Parameter for the ANN. See N2 docs: n2.readthedocs.io")
+@click.option(
+    "-multiprocessing_context",
+    type=str,
+    default="fork",
+    help="Context name for multiprocessing for PyTorch Lightning datamodules, "
+    "like `spawn`, `fork`, `forkserver` (currently only tested with `fork`)",
+)
+@click.option(
+    "-num_workers",
+    type=int,
+    help="Number of workers to use in PyTorch Lightning datamodules "
+    "and also number of threads to use in ANN. Set -1 to use all available CPUs",
+)
+@click.option(
+    "-sim_threshold",
+    type=float,
+    multiple=False,
+    help="A SINGLE Cosine Similarity threshold to use when finding duplicates. "
+    "Any ANN neighbors with cosine similarity BELOW this threshold is ignored",
+)
+@click.option("-random_seed", type=int, help="Random seed to help with reproducibility")
+@click.option(
+    "-source_attr",
+    type=str,
+    help="Set this when doing Record Linkage. "
+    "Column of the CSV dataset that contains the indication of the left or right source "
+    "for Record Linkage",
+)
+@click.option(
+    "-left_source",
+    type=str,
+    help="Set this when doing Record Linkage. "
+    "Consider any row with this value in the `source_attr` column as the left_source dataset. "
+    "The rows with other `source_attr` values are considered the right dataset",
+)
+@click.option("-eval_batch_size", type=int, required=True, help="Evaluation batch size, in ROWS")
+@click.option(
+    "-csv_encoding",
+    type=str,
+    default="utf-8",
+    help="Encoding of the input and output dataset CSV files",
+)
+@click.option(
+    "-unlabeled_input_csv_filepath",
+    type=str,
+    required=True,
+    help="Path of the unlabeled input dataset CSV file",
+)
+@click.option(
+    "-attr_info_json_filepath",
+    type=str,
+    required=True,
+    help="Path of the JSON configuration file "
+    "that defines how columns will be processed by the neural network",
+)
+@click.option(
+    "-output_csv_filepath",
+    type=str,
+    required=True,
+    help="Path of the output CSV file that will contain the `cluster_attr` with the found values. "
+    "The CSV will be equal to the dataset CSV but with the additional `cluster_attr` column",
+)
+@click.option(
+    "-cluster_attr",
+    type=str,
+    required=True,
+    help="Column of the CSV dataset that will contain the cluster assignment. "
+    "Equivalent to the label in tabular classification",
+)
+def predict(**kwargs):
+    _fix_workers_kwargs(kwargs)
+    _set_random_seeds(kwargs)
+    model = _load_model(kwargs)
+    row_dict = _build_row_dict(
+        csv_filepath=kwargs["unlabeled_input_csv_filepath"],
+        kwargs=kwargs,
+    )
+    _assign_clusters(row_dict=row_dict, model=model, kwargs=kwargs)
+    _write_csv(row_dict=row_dict, kwargs=kwargs)
+
+    logger.info(
+        f"File {kwargs['output_csv_filepath']} is now labeled at column {kwargs['cluster_attr']}"
+    )
+
+    return 0

@@ -39,12 +39,12 @@ AVAILABLE_VOCABS = [
 
 class AttrInfoDictParser:
     @classmethod
-    def from_json(cls, attr_info_json_file_obj, row_dict=None):
+    def from_json(cls, attr_info_json_file_obj, row_list):
         attr_info_dict = json.load(attr_info_json_file_obj)
-        return cls.from_dict(attr_info_dict, row_dict=row_dict)
+        return cls.from_dict(attr_info_dict, row_list=row_list)
 
     @classmethod
-    def from_dict(cls, attr_info_dict, row_dict=None):
+    def from_dict(cls, attr_info_dict, row_list):
         attr_info_dict = dict(attr_info_dict)  # make a copy
         attr_to_numericalizer = {}
         attr_info_dict_vocab = None
@@ -65,14 +65,14 @@ class AttrInfoDictParser:
                         f'"{attr_info_dict_vocab}" != "{numericalize_info_dict_vocab}"'
                     )
             numericalize_info = cls._parse_numericalize_info_dict(
-                attr, numericalize_info_dict, row_dict=row_dict
+                attr, numericalize_info_dict, row_list=row_list
             )
             attr_info_dict[attr] = numericalize_info
             attr_to_numericalizer[attr] = cls._build_attr_numericalizer(attr, numericalize_info)
         return RowNumericalizer(attr_info_dict, attr_to_numericalizer)
 
     @classmethod
-    def _parse_numericalize_info_dict(cls, attr, numericalize_info_dict, row_dict=None):
+    def _parse_numericalize_info_dict(cls, attr, numericalize_info_dict, row_list):
         field_type = FieldType[numericalize_info_dict["field_type"]]
         tokenizer = import_function(
             numericalize_info_dict.get("tokenizer", "entity_embed.default_tokenizer")
@@ -95,14 +95,14 @@ class AttrInfoDictParser:
                 )
             try:
                 vocab_counter = compute_vocab_counter(
-                    attr_val_gen=(row[source_attr] for row in row_dict.values()),
+                    attr_val_gen=(row[source_attr] for row in row_list),
                     tokenizer=tokenizer,
                 )
             except KeyError:
                 raise ValueError(
                     f"Cannot compute vocab_counter for attr={source_attr}. "
                     f"Please make sure that attr={attr} is a key in every "
-                    "row of row_dict.values() or define source_attr in "
+                    "row of row_list or define source_attr in "
                     "numericalize_info_dict if you wish to use a override "
                     "an attr name."
                 )
@@ -111,35 +111,25 @@ class AttrInfoDictParser:
 
         # Compute max_str_len if necessary
         if field_type in (FieldType.STRING, FieldType.MULTITOKEN) and (max_str_len is None):
-            if row_dict is None:
-                raise ValueError(
-                    f"Cannot compute max_str_len for attr={attr}. "
-                    "row_dict cannot be None if max_str_len is None. "
-                    "Please set row_dict, a dictionary of id -> row with ALL your data "
-                    "(train, test, valid). "
-                    "Or call entity_embed.data_utils.compute_max_str_len "
-                    "over ALL your data (train, test, valid) to compute max_str_len."
+            logger.info(f"For attr={attr}, computing actual max_str_len")
+            is_multitoken = field_type in (FieldType.MULTITOKEN, FieldType.SEMANTIC_MULTITOKEN)
+            try:
+                actual_max_str_len = compute_max_str_len(
+                    attr_val_gen=(row[source_attr] for row in row_list),
+                    is_multitoken=is_multitoken,
+                    tokenizer=tokenizer,
                 )
-            else:
-                logger.info(f"For attr={attr}, computing actual max_str_len")
-                is_multitoken = field_type in (FieldType.MULTITOKEN, FieldType.SEMANTIC_MULTITOKEN)
-                try:
-                    actual_max_str_len = compute_max_str_len(
-                        attr_val_gen=(row[source_attr] for row in row_dict.values()),
-                        is_multitoken=is_multitoken,
-                        tokenizer=tokenizer,
-                    )
-                except KeyError:
-                    raise ValueError(
-                        f"Cannot compute max_str_len for attr={source_attr}. "
-                        f"Please make sure that attr={attr} is a key in every "
-                        "row of row_dict.values() or define source_attr in "
-                        "numericalize_info_dict if you wish to use a override "
-                        "an attr name."
-                    )
-                if max_str_len is None:
-                    logger.info(f"For attr={attr}, using actual_max_str_len={actual_max_str_len}")
-                    max_str_len = actual_max_str_len
+            except KeyError:
+                raise ValueError(
+                    f"Cannot compute max_str_len for attr={source_attr}. "
+                    f"Please make sure that attr={attr} is a key in every "
+                    "row of row_list or define source_attr in "
+                    "numericalize_info_dict if you wish to use a override "
+                    "an attr name."
+                )
+            if max_str_len is None:
+                logger.info(f"For attr={attr}, using actual_max_str_len={actual_max_str_len}")
+                max_str_len = actual_max_str_len
 
         n_channels = numericalize_info_dict.get("n_channels", 8)
         embed_dropout_p = numericalize_info_dict.get("embed_dropout_p", 0.2)

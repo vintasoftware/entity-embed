@@ -34,7 +34,8 @@ setup(
     description=short_description,
     entry_points={
         "console_scripts": [
-            "entity_embed=entity_embed.cli:main",
+            "entity_embed_train=entity_embed.cli:train",
+            "entity_embed_predict=entity_embed.cli:predict",
         ],
     },
     install_requires=requirements,

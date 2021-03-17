@@ -1,0 +1,59 @@
+entity_embed_train \
+    -model_save_dirpath trained-models \
+    -tb_save_dir tb_logs \
+    -tb_name rl-example \
+    -check_val_every_n_epoch 1 \
+    -max_epochs 100 \
+    -gpus 1 \
+    -early_stopping_mode max \
+    -early_stopping_patience 20 \
+    -early_stopping_min_delta 0 \
+    -early_stopping_monitor valid_f1_at_0.5 \
+    -ann_k 100 \
+    -ef_search -1 \
+    -ef_construction 150 \
+    -max_m0 64 \
+    -m 64 \
+    -multiprocessing_context fork \
+    -num_workers -1 \
+    -sim_threshold 0.3 \
+    -sim_threshold 0.5 \
+    -sim_threshold 0.7 \
+    -sim_threshold 0.9 \
+    -lr 0.001 \
+    -embedding_size 300 \
+    -test_len 200 \
+    -valid_len 200 \
+    -train_len 200 \
+    -only_plural_clusters 1 \
+    -random_seed 42 \
+    -source_attr __source \
+    -left_source amazon \
+    -eval_batch_size 50 \
+    -batch_size 10 \
+    -csv_encoding utf-8 \
+    -labeled_input_csv_filepath example-data/rl-example-labeled.csv \
+    -unlabeled_input_csv_filepath example-data/rl-example-unlabeled.csv \
+    -cluster_attr cluster \
+    -attr_info_json_filepath example-data/rl-example-attr-info.json
+
+
+entity_embed_predict \
+    -model_save_filepath "trained-models/epoch=44-step=899.ckpt" \
+    -ann_k 100 \
+    -ef_search -1 \
+    -ef_construction 150 \
+    -max_m0 64 \
+    -m 64 \
+    -multiprocessing_context fork \
+    -num_workers -1 \
+    -sim_threshold 0.5 \
+    -source_attr __source \
+    -random_seed 42 \
+    -left_source amazon \
+    -eval_batch_size 50 \
+    -csv_encoding utf-8 \
+    -unlabeled_input_csv_filepath example-data/rl-example-unlabeled.csv \
+    -cluster_attr cluster \
+    -output_csv_filepath example-data/rl-example-unlabeled-prediction.csv \
+    -attr_info_json_filepath example-data/rl-example-attr-info.json
