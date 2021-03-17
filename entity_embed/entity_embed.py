@@ -88,9 +88,9 @@ class DeduplicationDataModule(pl.LightningDataModule):
             self.valid_row_dict = None
 
     def train_dataloader(self):
-        train_cluster_dataset = ClusterDataset.from_pairs(
+        train_cluster_dataset = ClusterDataset.from_cluster_dict(
             row_dict=self.train_row_dict,
-            true_pair_set=self.train_true_pair_set,
+            cluster_attr=self.cluster_attr,
             row_numericalizer=self.row_numericalizer,
             batch_size=self.batch_size,
             max_cluster_size_in_batch=self.batch_size // 3,
@@ -304,7 +304,7 @@ class LinkageDataModule(pl.LightningDataModule):
         return test_row_loader
 
     def separate_dict_left_right(self, d):
-        return utils.utils.separate_dict_left_right(
+        return utils.separate_dict_left_right(
             d, left_id_set=self.left_id_set, right_id_set=self.right_id_set
         )
 
@@ -408,7 +408,7 @@ class EntityEmbed(pl.LightningModule):
             vector_list.extend(v.data.numpy() for v in embedding_batch.cpu().unbind())
         vector_dict = dict(zip(row_dict.keys(), vector_list))
 
-        ann_index = ANNEntityIndex(embedding_size=self.blocker_net.embedding_size)
+        ann_index = ANNEntityIndex(embedding_size=self.embedding_size)
         ann_index.insert_vector_dict(vector_dict)
         ann_index.build(index_build_kwargs=self.index_build_kwargs)
 
@@ -515,6 +515,7 @@ def validate_best(trainer):
     old_model = trainer.get_model()
     model = old_model.load_from_checkpoint(trainer.checkpoint_callback.best_model_path)
     model.freeze()
+    model.trainer = trainer
 
     embedding_batch_list = []
     for tensor_dict, sequence_length_dict in trainer.datamodule.val_dataloader():
@@ -537,11 +538,11 @@ class LinkageEmbed(EntityEmbed):
         for embedding_batch in embedding_batch_list:
             vector_list.extend(v.data.numpy() for v in embedding_batch.cpu().unbind())
         vector_dict = dict(zip(row_dict.keys(), vector_list))
-        left_vector_dict, right_vector_dict = self.datamodule.utils.separate_dict_left_right(
+        left_vector_dict, right_vector_dict = self.trainer.datamodule.separate_dict_left_right(
             vector_dict
         )
 
-        ann_index = ANNLinkageIndex(embedding_size=self.blocker_net.embedding_size)
+        ann_index = ANNLinkageIndex(embedding_size=self.embedding_size)
         ann_index.insert_vector_dict(
             left_vector_dict=left_vector_dict, right_vector_dict=right_vector_dict
         )
@@ -559,7 +560,11 @@ class LinkageEmbed(EntityEmbed):
                     right_vector_dict=right_vector_dict,
                     index_search_kwargs=self.index_search_kwargs,
                 )
-                found_pair_set = utils.cluster_dict_to_id_pairs(cluster_dict)
+                found_pair_set = utils.cluster_dict_to_id_pairs(
+                    cluster_dict,
+                    left_id_set=self.trainer.datamodule.left_id_set,
+                    right_id_set=self.trainer.datamodule.right_id_set,
+                )
             else:
                 found_pair_set = ann_index.search_pairs(
                     k=self.ann_k,

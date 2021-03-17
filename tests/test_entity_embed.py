@@ -36,7 +36,7 @@ def test_set_embedding_size_when_using_semantic_attrs(
         cluster_attr="name",
         row_numericalizer=row_numericalizer,
         batch_size=10,
-        eval_batch_size=20,
+        eval_batch_size=32,
         train_cluster_len=10,
         valid_cluster_len=10,
         test_cluster_len=10,

@@ -86,10 +86,12 @@ class ClusterDataset(Dataset):
         max_cluster_size_in_batch,
         random_seed,
     ):
-        # Note: there's a caveat in using pairs: you don't have singleton clusters!
         cluster_mapping, cluster_dict = utils.id_pairs_to_cluster_mapping_and_dict(
             id_pairs=true_pair_set
         )
+        # Note: since this cluster_dict is produced from true_pair_set,
+        # it won't have any singletons. That's fine for Record Linkage,
+        # but for Entity Resolution it can be useful to train with singletons.
         return ClusterDataset(
             row_dict=row_dict,
             row_numericalizer=row_numericalizer,
