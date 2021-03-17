@@ -8,7 +8,7 @@ from pytorch_metric_learning.distances import DotProductSimilarity
 from tqdm.auto import tqdm
 
 from .data_utils import utils
-from .data_utils.datasets import ClusterDataset, RowDataset, collate_cluster_tensor_dict
+from .data_utils.datasets import ClusterDataset, RowDataset
 from .evaluation import f1_score, pair_entity_ratio, precision_and_recall
 from .helpers import build_index_build_kwargs, build_index_search_kwargs, build_loader_kwargs
 from .losses import SupConLoss
@@ -28,7 +28,6 @@ class DeduplicationDataModule(pl.LightningDataModule):
         train_cluster_len,
         valid_cluster_len,
         test_cluster_len,
-        only_plural_clusters=True,
         pair_loader_kwargs=None,
         row_loader_kwargs=None,
         random_seed=42,
@@ -42,7 +41,6 @@ class DeduplicationDataModule(pl.LightningDataModule):
         self.train_cluster_len = train_cluster_len
         self.valid_cluster_len = valid_cluster_len
         self.test_cluster_len = test_cluster_len
-        self.only_plural_clusters = only_plural_clusters
         self.pair_loader_kwargs = build_loader_kwargs(pair_loader_kwargs)
         self.row_loader_kwargs = build_loader_kwargs(row_loader_kwargs)
         self.random_seed = random_seed
@@ -62,7 +60,6 @@ class DeduplicationDataModule(pl.LightningDataModule):
             valid_len=self.valid_cluster_len,
             test_len=self.test_cluster_len,
             random_seed=self.random_seed,
-            only_plural_clusters=self.only_plural_clusters,
         )
         self.valid_true_pair_set = utils.cluster_dict_to_id_pairs(valid_cluster_dict)
         self.test_true_pair_set = utils.cluster_dict_to_id_pairs(test_cluster_dict)
@@ -91,18 +88,21 @@ class DeduplicationDataModule(pl.LightningDataModule):
             self.valid_row_dict = None
 
     def train_dataloader(self):
-        train_cluster_dataset = ClusterDataset.from_cluster_dict(
+        train_cluster_dataset = ClusterDataset.from_pairs(
             row_dict=self.train_row_dict,
-            cluster_attr=self.cluster_attr,
+            true_pair_set=self.train_true_pair_set,
             row_numericalizer=self.row_numericalizer,
+            batch_size=self.batch_size,
+            max_cluster_size_in_batch=self.batch_size // 3,
+            # Combined with reload_dataloaders_every_epoch on Trainer,
+            # this re-shuffles training batches every epoch,
+            # therefore improving contrastive learning:
+            random_seed=self.random_seed + self.trainer.current_epoch,
         )
         train_cluster_loader = torch.utils.data.DataLoader(
             train_cluster_dataset,
-            batch_size=self.batch_size,
-            collate_fn=lambda cluster_batch: collate_cluster_tensor_dict(
-                cluster_batch, self.row_numericalizer
-            ),
-            shuffle=True,
+            batch_size=None,  # batch size is set on ClusterDataset
+            shuffle=False,  # shuffling is implemented on ClusterDataset
             **self.pair_loader_kwargs,
         )
         return train_cluster_loader
@@ -150,7 +150,6 @@ class LinkageDataModule(pl.LightningDataModule):
         train_cluster_len=None,
         valid_cluster_len=None,
         test_cluster_len=None,
-        only_plural_clusters=True,
         train_true_pair_set=None,
         valid_true_pair_set=None,
         test_true_pair_set=None,
@@ -166,7 +165,6 @@ class LinkageDataModule(pl.LightningDataModule):
         self.row_numericalizer = row_numericalizer
         self.batch_size = batch_size
         self.eval_batch_size = eval_batch_size
-        self.only_plural_clusters = only_plural_clusters
         self.pair_loader_kwargs = build_loader_kwargs(pair_loader_kwargs)
         self.row_loader_kwargs = build_loader_kwargs(row_loader_kwargs)
         self.random_seed = random_seed
@@ -223,7 +221,6 @@ class LinkageDataModule(pl.LightningDataModule):
             valid_len=valid_cluster_len,
             test_len=test_cluster_len,
             random_seed=self.random_seed,
-            only_plural_clusters=self.only_plural_clusters,
         )
         self.train_true_pair_set = utils.cluster_dict_to_id_pairs(
             cluster_dict=train_cluster_dict,
@@ -263,14 +260,17 @@ class LinkageDataModule(pl.LightningDataModule):
             row_dict=self.train_row_dict,
             true_pair_set=self.train_true_pair_set,
             row_numericalizer=self.row_numericalizer,
+            batch_size=self.batch_size,
+            max_cluster_size_in_batch=self.batch_size // 3,
+            # Combined with reload_dataloaders_every_epoch on Trainer,
+            # this re-shuffles training batches every epoch,
+            # therefore improving contrastive learning:
+            random_seed=self.random_seed + self.trainer.current_epoch,
         )
         train_cluster_loader = torch.utils.data.DataLoader(
             train_cluster_dataset,
-            batch_size=self.batch_size,
-            collate_fn=lambda cluster_batch: collate_cluster_tensor_dict(
-                cluster_batch, self.row_numericalizer
-            ),
-            shuffle=True,
+            batch_size=None,  # batch size is set on ClusterDataset
+            shuffle=False,  # shuffling is implemented on ClusterDataset
             **self.pair_loader_kwargs,
         )
         return train_cluster_loader

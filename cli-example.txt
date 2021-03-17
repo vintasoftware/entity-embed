@@ -25,12 +25,11 @@ entity_embed_train \
     -test_len 200 \
     -valid_len 200 \
     -train_len 200 \
-    -only_plural_clusters 1 \
     -random_seed 42 \
     -source_attr __source \
     -left_source amazon \
     -eval_batch_size 50 \
-    -batch_size 10 \
+    -batch_size 32 \
     -csv_encoding utf-8 \
     -labeled_input_csv_filepath example-data/rl-example-labeled.csv \
     -unlabeled_input_csv_filepath example-data/rl-example-unlabeled.csv \

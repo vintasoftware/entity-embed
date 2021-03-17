@@ -186,7 +186,6 @@ def test_cli(
         "test_len": 1,
         "valid_len": 2,
         "train_len": 2,
-        "only_plural_clusters": None,
         "random_seed": None,
         "left": None,
         "model_save_filepath": "weights.ckpt",
@@ -217,7 +216,6 @@ def test_build_linkage_datamodule(
             "test_len": 1,
             "valid_len": 2,
             "train_len": 2,
-            "only_plural_clusters": False,
             "random_seed": 30,
             "num_workers": 16,
             "multiprocessing_context": None,
@@ -233,7 +231,6 @@ def test_build_linkage_datamodule(
         train_cluster_len=2,
         valid_cluster_len=2,
         test_cluster_len=1,
-        only_plural_clusters=False,
         left_id_set={0, 2, 3, 6, 9},
         right_id_set={1, 4, 5, 7, 8},
         random_seed=30,
@@ -274,7 +271,6 @@ def test_build_linkage_datamodule_without_source_raises(attr_info_json_filepath)
                 "test_len": 1,
                 "valid_len": 2,
                 "train_len": 2,
-                "only_plural_clusters": False,
             }
         )
 

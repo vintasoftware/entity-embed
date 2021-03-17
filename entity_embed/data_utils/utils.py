@@ -55,28 +55,17 @@ def count_cluster_dict_pairs(cluster_dict):
     )
 
 
-def split_clusters(
-    cluster_dict, train_len, valid_len, test_len, random_seed, only_plural_clusters=True
-):
+def split_clusters(cluster_dict, train_len, valid_len, test_len, random_seed):
     rnd = random.Random(random_seed)
-    if only_plural_clusters:
-        # consider only clusters that have more than 1 entity for train and valid
-        all_cluster_id_set = OrderedSet(
-            cluster_id
-            for cluster_id, cluster_id_list in cluster_dict.items()
-            if len(cluster_id_list) > 1
-        )
-    else:
-        all_cluster_id_set = cluster_dict.keys()
 
-    if train_len + valid_len + test_len < len(all_cluster_id_set):
+    if train_len + valid_len + test_len < len(cluster_dict):
         logger.warning(
             f"(train_len + valid_len + test_len)={train_len + valid_len + test_len} "
-            f"is less than len(all_cluster_id_set)={len(all_cluster_id_set)}"
+            f"is less than len(cluster_dict)={len(cluster_dict)}"
         )
 
-    train_cluster_id_set = OrderedSet(rnd.sample(all_cluster_id_set, train_len))
-    all_minus_train_cluster_id_set = all_cluster_id_set - train_cluster_id_set
+    train_cluster_id_set = OrderedSet(rnd.sample(cluster_dict.keys(), train_len))
+    all_minus_train_cluster_id_set = cluster_dict.keys() - train_cluster_id_set
     valid_cluster_id_set = OrderedSet(rnd.sample(all_minus_train_cluster_id_set, valid_len))
     test_cluster_id_set = all_minus_train_cluster_id_set - valid_cluster_id_set
     if test_len < len(test_cluster_id_set):

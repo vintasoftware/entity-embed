@@ -86,7 +86,6 @@ def _build_datamodule(row_dict, row_numericalizer, kwargs):
         "train_cluster_len": kwargs["train_len"],
         "valid_cluster_len": kwargs["valid_len"],
         "test_cluster_len": kwargs["test_len"],
-        "only_plural_clusters": kwargs["only_plural_clusters"],
     }
 
     if left_source:  # is record linkage
@@ -169,6 +168,7 @@ def _build_trainer(kwargs):
         "max_epochs": kwargs["max_epochs"],
         "check_val_every_n_epoch": kwargs["check_val_every_n_epoch"],
         "callbacks": [early_stop_callback, checkpoint_callback],
+        "reload_dataloaders_every_epoch": True,  # for shuffling ClusterDataset every epoch
     }
 
     if kwargs["tb_name"] and kwargs["tb_save_dir"]:
@@ -282,11 +282,6 @@ def _build_trainer(kwargs):
     type=int,
     required=True,
     help="Number of CLUSTERS from the dataset to use for training",
-)
-@click.option(
-    "-only_plural_clusters",
-    type=bool,
-    help="Use only clusters with more than one element for training, validation, testing",
 )
 @click.option("-random_seed", type=int, help="Random seed to help with reproducibility")
 @click.option(
