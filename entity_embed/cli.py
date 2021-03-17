@@ -1,6 +1,7 @@
 import csv
 import logging
 import os
+import statistics
 
 import click
 import numpy as np
@@ -403,7 +404,7 @@ def _assign_clusters(row_dict, model, kwargs):
 
     if left_source:  # is record linkage
         left_id_set, right_id_set = _build_left_right_id_sets(row_dict, source_attr, left_source)
-        cluster_mapping = _find_clusters_rl(
+        cluster_mapping, cluster_dict = _find_clusters_rl(
             row_dict=row_dict,
             left_id_set=left_id_set,
             right_id_set=right_id_set,
@@ -417,7 +418,7 @@ def _assign_clusters(row_dict, model, kwargs):
             index_search_kwargs=index_search_kwargs,
         )
     else:
-        cluster_mapping = _find_clusters_er(
+        cluster_mapping, cluster_dict = _find_clusters_er(
             row_dict=row_dict,
             model=model,
             eval_batch_size=eval_batch_size,
@@ -432,6 +433,7 @@ def _assign_clusters(row_dict, model, kwargs):
     utils.assign_clusters(
         row_dict=row_dict, cluster_attr=cluster_attr, cluster_mapping=cluster_mapping
     )
+    return cluster_mapping, cluster_dict
 
 
 def _find_clusters_rl(
@@ -463,14 +465,14 @@ def _find_clusters_rl(
         left_vector_dict=left_vector_dict, right_vector_dict=right_vector_dict
     )
     ann_index.build(index_build_kwargs=index_build_kwargs)
-    cluster_mapping, __ = ann_index.search_clusters(
+    cluster_mapping, cluster_dict = ann_index.search_clusters(
         k=ann_k,
         sim_threshold=sim_threshold,
         left_vector_dict=left_vector_dict,
         right_vector_dict=right_vector_dict,
         index_search_kwargs=index_search_kwargs,
     )
-    return cluster_mapping
+    return cluster_mapping, cluster_dict
 
 
 def _find_clusters_er(
@@ -496,10 +498,17 @@ def _find_clusters_er(
     ann_index = ANNEntityIndex(embedding_size=model.embedding_size)
     ann_index.insert_vector_dict(vector_dict)
     ann_index.build(index_build_kwargs=index_build_kwargs)
-    cluster_mapping = ann_index.search_clusters(
+    cluster_mapping, cluster_dict = ann_index.search_clusters(
         k=ann_k, sim_threshold=sim_threshold, index_search_kwargs=index_search_kwargs
     )
-    return cluster_mapping
+    return cluster_mapping, cluster_dict
+
+
+def _log_cluster_size_stats(cluster_dict):
+    cluster_size_list = sorted(len(cluster) for cluster in cluster_dict.values())
+    quantiles = statistics.quantiles(cluster_size_list, n=10)
+    logger.info(f"Cluster size quantiles: {quantiles}")
+    logger.info(f"Top 5 cluster sizes: {cluster_size_list[-5:]}")
 
 
 def _write_csv(row_dict, kwargs):
@@ -603,7 +612,8 @@ def predict(**kwargs):
         csv_filepath=kwargs["unlabeled_input_csv_filepath"],
         kwargs=kwargs,
     )
-    _assign_clusters(row_dict=row_dict, model=model, kwargs=kwargs)
+    __, cluster_dict = _assign_clusters(row_dict=row_dict, model=model, kwargs=kwargs)
+    _log_cluster_size_stats(cluster_dict)
     _write_csv(row_dict=row_dict, kwargs=kwargs)
 
     logger.info(
