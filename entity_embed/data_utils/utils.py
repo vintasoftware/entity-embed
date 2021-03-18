@@ -18,7 +18,13 @@ def Enumerator(start=0, initial=()):
 def row_dict_to_cluster_dict(row_dict, cluster_attr):
     cluster_dict = defaultdict(list)
     for id_, row in row_dict.items():
-        cluster_dict[row[cluster_attr]].append(id_)
+        cluster_id = row[cluster_attr]
+        if not isinstance(cluster_id, int):
+            raise ValueError(
+                "cluster_attr values must always be an int, "
+                f"found {type(cluster_id)} at row={row}"
+            )
+        cluster_dict[cluster_id].append(id_)
 
     # must use sorted to always have smaller id on left of pair tuple
     for c in cluster_dict.values():

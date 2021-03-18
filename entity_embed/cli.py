@@ -38,10 +38,14 @@ def _set_random_seeds(kwargs):
 
 def _build_row_dict(csv_filepath, kwargs):
     csv_encoding = kwargs["csv_encoding"]
+    cluster_attr = kwargs["cluster_attr"]
     row_dict = {}
 
     with open(csv_filepath, "r", newline="", encoding=csv_encoding) as row_dict_csv_file:
         for id_, row in enumerate(csv.DictReader(row_dict_csv_file)):
+            if cluster_attr in row:
+                # force cluster_attr to be an int, if there's a cluster_attr
+                row[cluster_attr] = int(row[cluster_attr])
             row_dict[id_] = row
 
     logger.info(f"Finished reading {csv_filepath}")
