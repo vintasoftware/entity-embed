@@ -1,8 +1,7 @@
-import logging
-
 import mock
+import pytest
 from entity_embed.data_utils.helpers import AttrInfoDictParser
-from entity_embed.entity_embed import DeduplicationDataModule, EntityEmbed
+from entity_embed.entity_embed import EntityEmbed
 from torch import tensor
 
 
@@ -11,7 +10,6 @@ from torch import tensor
 def test_set_embedding_size_when_using_semantic_attrs(
     mock_load_vectors,
     mock_blocker_net_init,
-    caplog,
 ):
     attr_info_dict = {
         "name": {
@@ -24,33 +22,14 @@ def test_set_embedding_size_when_using_semantic_attrs(
 
     row_dict = {x: {"id": x, "name": f"foo product {x}"} for x in range(50)}
 
-    row_numericalizer = AttrInfoDictParser.from_dict(attr_info_dict, row_dict=row_dict)
+    row_numericalizer = AttrInfoDictParser.from_dict(attr_info_dict, row_list=row_dict.values())
 
     mock_load_vectors.assert_called_once_with("charngram.100d")
 
     EXPECTED_EMBEDDING_SIZE = 100
     row_numericalizer.attr_info_dict["name"].vocab.vectors = tensor([[0] * EXPECTED_EMBEDDING_SIZE])
 
-    datamodule = DeduplicationDataModule(
-        row_dict=row_dict,
-        cluster_attr="name",
-        row_numericalizer=row_numericalizer,
-        batch_size=10,
-        eval_batch_size=32,
-        train_cluster_len=10,
-        valid_cluster_len=10,
-        test_cluster_len=10,
-    )
+    with pytest.raises(ValueError) as excinfo:
+        EntityEmbed(row_numericalizer=row_numericalizer, embedding_size=500)
 
-    caplog.set_level(logging.WARNING)
-    model = EntityEmbed(datamodule=datamodule, embedding_size=500)
-    assert (
-        "Overriding embedding_size=500 with embedding_size=100 "
-        "since you're using semantic fields" in caplog.text
-    )
-
-    mock_blocker_net_init.assert_called_once_with(
-        row_numericalizer.attr_info_dict, embedding_size=EXPECTED_EMBEDDING_SIZE
-    )
-
-    assert model.embedding_size == EXPECTED_EMBEDDING_SIZE
+        assert "Invalid embedding_size=500. Expected 100, due to semantic fields." == excinfo.value

@@ -6,7 +6,7 @@ import tempfile
 import mock
 import pytest
 from click.testing import CliRunner
-from entity_embed.cli import _build_datamodule, _build_model, _build_trainer, main
+from entity_embed import cli
 from entity_embed.data_utils.numericalizer import RowNumericalizer
 
 
@@ -115,7 +115,7 @@ def test_cli(
 ):
     runner = CliRunner()
     result = runner.invoke(
-        main,
+        cli.train,
         [
             "-attr_info_json_filepath",
             attr_info_json_filepath,
@@ -204,7 +204,7 @@ def test_build_linkage_datamodule(
     attr_info_json_filepath,
     csv_filepath,
 ):
-    _build_datamodule(
+    cli._build_datamodule(
         {
             "attr_info_json_filepath": attr_info_json_filepath,
             "csv_filepath": csv_filepath,
@@ -259,7 +259,7 @@ def test_build_linkage_datamodule_without_source_raises(attr_info_json_filepath)
             csv_writer.writerow(row.values())
 
     with pytest.raises(KeyError):
-        _build_datamodule(
+        cli._build_datamodule(
             {
                 "attr_info_json_filepath": attr_info_json_filepath,
                 "csv_filepath": row_dict_csv_file.name,
@@ -287,7 +287,7 @@ def test_build_trainer(
     mock_logger,
     mock_trainer,
 ):
-    trainer = _build_trainer(
+    trainer = cli._build_trainer(
         {
             "early_stopping_monitor": "pair_entity_ratio_at_f0",
             "early_stopping_min_delta": 0.1,
@@ -337,7 +337,7 @@ def test_build_trainer_with_only_tb_name_raises(
     mock_checkpoint,
 ):
     with pytest.raises(KeyError):
-        _build_trainer(
+        cli._build_trainer(
             {
                 "early_stopping_monitor": "pair_entity_ratio_at_f0",
                 "early_stopping_min_delta": 0.1,
@@ -371,7 +371,7 @@ def test_build_trainer_with_only_tb_name_raises(
 @mock.patch("entity_embed.entity_embed.EntityEmbed.__init__", return_value=None)
 def test_build_model(mock_entity_embed):
     mock_datamodule = mock.MagicMock()
-    _build_model(
+    cli._build_model(
         mock_datamodule,
         {
             "embedding_size": 125,

@@ -1,6 +1,8 @@
 name: tests
 
-on: [push]
+on:
+  - push
+  - pull_request
 
 jobs:
   test:
@@ -18,15 +20,13 @@ jobs:
       uses: actions/setup-python@v2
       with:
         python-version: ${{ matrix.python-version }}
-
     - name: Cache installed requirements
       uses: actions/cache@v2
       with:
         path: ${{ env.pythonLocation }}
         key: ${{ env.pythonLocation }}-${{ hashFiles('**/requirements.txt', '**/requirements-dev.txt') }}
-
     - name: Install tox
-      run: pip install tox
+      run: pip install tox==3.21.3
     - name: Run tests with tox
       env:
         TEST_DEVICE: "cpu"

@@ -37,20 +37,20 @@ def test_enumerator_with_start():
 
 def test_row_dict_to_cluster_dict():
     row_dict = {
-        1: {"id": 1, "name": "foo"},
-        2: {"id": 2, "name": "bar"},
-        3: {"id": 3, "name": "foo"},
-        4: {"id": 4, "name": "foo"},
-        5: {"id": 5, "name": "bar"},
-        6: {"id": 6, "name": "baz"},
+        1: {"id": 1, "cluster": 0},
+        2: {"id": 2, "cluster": 1},
+        3: {"id": 3, "cluster": 0},
+        4: {"id": 4, "cluster": 0},
+        5: {"id": 5, "cluster": 1},
+        6: {"id": 6, "cluster": 2},
     }
 
-    cluster_dict = row_dict_to_cluster_dict(row_dict=row_dict, cluster_attr="name")
+    cluster_dict = row_dict_to_cluster_dict(row_dict=row_dict, cluster_attr="cluster")
 
     assert cluster_dict == {
-        "foo": [1, 3, 4],
-        "bar": [2, 5],
-        "baz": [6],
+        0: [1, 3, 4],
+        1: [2, 5],
+        2: [6],
     }
 
 
@@ -259,9 +259,7 @@ def test_split_clusters_not_all_clusters_used(mock_rnd_sample, caplog):
         test_len=2,
         random_seed=40,
     )
-    assert (
-        "(train_len + valid_len + test_len)=6 is less than len(all_cluster_id_set)=7" in caplog.text
-    )
+    assert "(train_len + valid_len + test_len)=6 is less than len(cluster_dict)=7" in caplog.text
 
     assert mock_rnd_sample.call_count == 3
 
