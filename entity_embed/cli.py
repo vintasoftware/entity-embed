@@ -369,7 +369,7 @@ def train(**kwargs):
 
 
 def _load_model(kwargs):
-    is_record_linkage = "left_source" in kwargs
+    is_record_linkage = kwargs["left_source"]
     if is_record_linkage:
         model_cls = LinkageEmbed
     else:
@@ -512,7 +512,12 @@ def _log_cluster_size_stats(cluster_dict):
 
 def _write_csv(row_dict, kwargs):
     with open(kwargs["output_csv_filepath"], "w", newline="", encoding=kwargs["csv_encoding"]) as f:
-        writer = csv.DictWriter(f, fieldnames=next(iter(row_dict.values())).keys())
+        fieldnames = next(iter(row_dict.values())).keys()
+        # move cluster_attr to start of fieldnames
+        fieldnames = [kwargs["cluster_attr"]] + [
+            f for f in fieldnames if f != kwargs["cluster_attr"]
+        ]
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(row_dict.values())
 

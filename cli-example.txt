@@ -106,7 +106,7 @@ entity_embed_predict \
     -m 64 \
     -multiprocessing_context fork \
     -num_workers -1 \
-    -sim_threshold 0.5 \
+    -sim_threshold 0.7 \
     -random_seed 42 \
     -eval_batch_size 50 \
     -csv_encoding utf-8 \
