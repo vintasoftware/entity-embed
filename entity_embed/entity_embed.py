@@ -185,8 +185,6 @@ class LinkageDataModule(pl.LightningDataModule):
                 raise ValueError("train_cluster_len can't be None")
             if valid_cluster_len is None:
                 raise ValueError("valid_cluster_len can't be None")
-            if test_cluster_len is None:
-                raise ValueError("test_cluster_len can't be None")
             __, cluster_dict = utils.id_pairs_to_cluster_mapping_and_dict(true_pair_set)
             self._split_clusters(
                 cluster_dict=cluster_dict,
@@ -199,8 +197,6 @@ class LinkageDataModule(pl.LightningDataModule):
                 raise ValueError("train_cluster_len can't be None")
             if valid_cluster_len is None:
                 raise ValueError("valid_cluster_len can't be None")
-            if test_cluster_len is None:
-                raise ValueError("test_cluster_len can't be None")
             cluster_dict = utils.row_dict_to_cluster_dict(row_dict, cluster_attr)
             self._split_clusters(
                 cluster_dict=cluster_dict,

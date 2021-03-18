@@ -127,8 +127,8 @@ def _build_model(row_numericalizer, kwargs):
     if kwargs["ann_k"]:
         model_args["ann_k"] = kwargs["ann_k"]
 
-    if kwargs["sim_threshold_list"]:
-        model_args["sim_threshold_list"] = kwargs["sim_threshold_list"]
+    if kwargs["sim_threshold"]:
+        model_args["sim_threshold_list"] = kwargs["sim_threshold"]
 
     model_args["index_build_kwargs"] = {}
     for k in ["m", "max_m0", "ef_construction", "n_threads"]:
@@ -168,7 +168,7 @@ def _build_trainer(kwargs):
     )
 
     trainer_args = {
-        "gpus": kwargs["gpus"],
+        "gpus": 1,
         "max_epochs": kwargs["max_epochs"],
         "check_val_every_n_epoch": kwargs["check_val_every_n_epoch"],
         "callbacks": [early_stop_callback, checkpoint_callback],
@@ -191,147 +191,143 @@ def _build_trainer(kwargs):
 
 @click.command()
 @click.option(
-    "-model_save_dirpath",
-    type=str,
-    help="Directory path where to save the best validation model checkpoint"
-    " using PyTorch Lightning",
-)
-@click.option("-tb_save_dir", type=str, help="TensorBoard save directory")
-@click.option("-tb_name", type=str, help="TensorBoard experiment name")
-@click.option(
-    "-check_val_every_n_epoch",
-    type=int,
-    default=1,
-    help="Run validation every N epochs.",
-)
-@click.option("-max_epochs", type=int, required=True, help="Max number of epochs to run")
-@click.option(
-    "-gpus", type=int, default=1, help="Number of GPUs to use (currently only tested with 1)"
-)
-@click.option(
-    "-early_stopping_mode",
-    type=str,
-    help="Mode for early stopping. Values are `max` or `min`. "
-    "Based on `early_stopping_monitor` metric",
-)
-@click.option(
-    "-early_stopping_patience",
-    type=int,
-    required=True,
-    help="Number of validation runs with no improvement after which training will be stopped",
-)
-@click.option(
-    "-early_stopping_min_delta",
-    type=float,
-    required=True,
-    help="Minimum change in the monitored metric to qualify as an improvement",
-)
-@click.option(
-    "-early_stopping_monitor",
+    "--attr_info_json_filepath",
     type=str,
     required=True,
-    help="Metric to be monitored for early stoping. E.g. `valid_recall_at_0.3`. "
-    "The float on `at_X` must be one of `sim_threshold_list`",
+    help="Path of the JSON configuration file "
+    "that defines how columns will be processed by the neural network",
 )
 @click.option(
-    "-ann_k",
-    type=int,
-    help="When finding duplicates, use this number as the K for the Approximate Nearest Neighbors",
-)
-@click.option("-ef_search", type=int, help="Parameter for the ANN. See N2 docs: n2.readthedocs.io")
-@click.option(
-    "-ef_construction", type=int, help="Parameter for the ANN. See N2 docs: n2.readthedocs.io"
-)
-@click.option("-max_m0", type=int, help="Parameter for the ANN. See N2 docs: n2.readthedocs.io")
-@click.option("-m", type=int, help="Parameter for the ANN. See N2 docs: n2.readthedocs.io")
-@click.option(
-    "-multiprocessing_context",
-    type=str,
-    default="fork",
-    help="Context name for multiprocessing for PyTorch Lightning datamodules, "
-    "like `spawn`, `fork`, `forkserver` (currently only tested with `fork`)",
-)
-@click.option(
-    "-num_workers",
-    type=int,
-    help="Number of workers to use in PyTorch Lightning datamodules "
-    "and also number of threads to use in ANN. Set -1 to use all available CPUs",
-)
-@click.option(
-    "-sim_threshold",
-    "--sim_threshold_list",
-    type=float,
-    multiple=True,
-    help="Cosine Similarity thresholds to use when computing validation and testing metrics. "
-    "For each of these thresholds, validation and testing metrics "
-    "(precision, recall, etc.) are computed, "
-    "but ignoring any ANN neighbors with cosine similarity BELOW the threshold",
-)
-@click.option("-lr", type=float, help="Learning Rate for training")
-@click.option("-embedding_size", type=int, help="Embedding Dimensionality, for example: 300")
-@click.option(
-    "-test_len",
-    type=int,
-    required=True,
-    help="Number of CLUSTERS from the dataset to use for testing",
-)
-@click.option(
-    "-valid_len",
-    type=int,
-    required=True,
-    help="Number of CLUSTERS from the dataset to use for validation",
-)
-@click.option(
-    "-train_len",
-    type=int,
-    required=True,
-    help="Number of CLUSTERS from the dataset to use for training",
-)
-@click.option("-random_seed", type=int, help="Random seed to help with reproducibility")
-@click.option(
-    "-source_attr",
-    type=str,
-    help="Set this when doing Record Linkage. "
-    "Column of the CSV dataset that contains the indication of the left or right source "
-    "for Record Linkage",
-)
-@click.option(
-    "-left_source",
-    type=str,
-    help="Set this when doing Record Linkage. "
-    "Consider any row with this value in the `source_attr` column as the left_source dataset. "
-    "The rows with other `source_attr` values are considered the right dataset",
-)
-@click.option("-eval_batch_size", type=int, required=True, help="Evaluation batch size, in ROWS")
-@click.option("-batch_size", type=int, required=True, help="Training batch size, in CLUSTERS")
-@click.option(
-    "-csv_encoding", type=str, default="utf-8", help="Encoding of the input dataset CSV file"
-)
-@click.option(
-    "-labeled_input_csv_filepath",
+    "--labeled_input_csv_filepath",
     type=str,
     required=True,
     help="Path of the LABELED input dataset CSV file",
 )
 @click.option(
-    "-unlabeled_input_csv_filepath",
+    "--unlabeled_input_csv_filepath",
     type=str,
     required=True,
     help="Path of the UNLABELED input dataset CSV file",
 )
 @click.option(
-    "-cluster_attr",
+    "--csv_encoding", type=str, default="utf-8", help="Encoding of the input dataset CSV file"
+)
+@click.option(
+    "--cluster_attr",
     type=str,
     required=True,
     help="Column of the CSV dataset that contains the true cluster assignment. "
     "Equivalent to the label in tabular classification",
 )
 @click.option(
-    "-attr_info_json_filepath",
+    "--source_attr",
+    type=str,
+    help="Set this when doing Record Linkage. "
+    "Column of the CSV dataset that contains the indication of the left or right source "
+    "for Record Linkage",
+)
+@click.option(
+    "--left_source",
+    type=str,
+    help="Set this when doing Record Linkage. "
+    "Consider any row with this value in the `source_attr` column as the left_source dataset. "
+    "The rows with other `source_attr` values are considered the right dataset",
+)
+@click.option("--embedding_size", type=int, help="Embedding Dimensionality, for example: 300")
+@click.option("--lr", type=float, help="Learning Rate for training")
+@click.option(
+    "--train_len",
+    type=int,
+    required=True,
+    help="Number of CLUSTERS from the dataset to use for training",
+)
+@click.option(
+    "--valid_len",
+    type=int,
+    required=True,
+    help="Number of CLUSTERS from the dataset to use for validation",
+)
+@click.option(
+    "--test_len",
+    type=int,
+    help="Number of CLUSTERS from the dataset to use for testing. "
+    "It not specified, will use the remaining clusters",
+)
+@click.option("--max_epochs", type=int, required=True, help="Max number of epochs to run")
+@click.option(
+    "--early_stopping_monitor",
     type=str,
     required=True,
-    help="Path of the JSON configuration file "
-    "that defines how columns will be processed by the neural network",
+    help="Metric to be monitored for early stoping. E.g. `valid_recall_at_0.3`. "
+    "The float on `at_X` must be one of `sim_threshold`",
+)
+@click.option(
+    "--early_stopping_min_delta",
+    type=float,
+    required=True,
+    help="Minimum change in the monitored metric to qualify as an improvement",
+)
+@click.option(
+    "--early_stopping_patience",
+    type=int,
+    required=True,
+    help="Number of validation runs with no improvement after which training will be stopped",
+)
+@click.option(
+    "--early_stopping_mode",
+    type=str,
+    help="Mode for early stopping. Values are `max` or `min`. "
+    "Based on `early_stopping_monitor` metric",
+)
+@click.option("--tb_save_dir", type=str, help="TensorBoard save directory")
+@click.option("--tb_name", type=str, help="TensorBoard experiment name")
+@click.option(
+    "--check_val_every_n_epoch",
+    type=int,
+    default=1,
+    help="Run validation every N epochs.",
+)
+@click.option("--batch_size", type=int, required=True, help="Training batch size, in CLUSTERS")
+@click.option("--eval_batch_size", type=int, required=True, help="Evaluation batch size, in ROWS")
+@click.option(
+    "--num_workers",
+    type=int,
+    help="Number of workers to use in PyTorch Lightning datamodules "
+    "and also number of threads to use in ANN. Set -1 to use all available CPUs",
+)
+@click.option(
+    "--multiprocessing_context",
+    type=str,
+    default="fork",
+    help="Context name for multiprocessing for PyTorch Lightning datamodules, "
+    "like `spawn`, `fork`, `forkserver` (currently only tested with `fork`)",
+)
+@click.option(
+    "--sim_threshold",
+    type=float,
+    multiple=True,
+    help="Cosine similarity thresholds to use when computing validation and testing metrics. "
+    "For each of these thresholds, validation and testing metrics "
+    "(precision, recall, etc.) are computed, "
+    "but ignoring any ANN neighbors with cosine similarity BELOW the threshold",
+)
+@click.option(
+    "--ann_k",
+    type=int,
+    help="When finding duplicates, use this number as the K for the Approximate Nearest Neighbors",
+)
+@click.option("--m", type=int, help="Parameter for the ANN. See N2 docs: n2.readthedocs.io")
+@click.option("--max_m0", type=int, help="Parameter for the ANN. See N2 docs: n2.readthedocs.io")
+@click.option(
+    "--ef_construction", type=int, help="Parameter for the ANN. See N2 docs: n2.readthedocs.io"
+)
+@click.option("--ef_search", type=int, help="Parameter for the ANN. See N2 docs: n2.readthedocs.io")
+@click.option("--random_seed", type=int, help="Random seed to help with reproducibility")
+@click.option(
+    "--model_save_dirpath",
+    type=str,
+    help="Directory path where to save the best validation model checkpoint"
+    " using PyTorch Lightning",
 )
 def train(**kwargs):
     """
@@ -363,7 +359,8 @@ def train(**kwargs):
     test_metrics = trainer.test(ckpt_path="best", verbose=False)
     logger.info(test_metrics)
 
-    logger.info(f"Saved best model at path {trainer.checkpoint_callback.best_model_path}")
+    logger.info("Saved best model at path:")
+    logger.info(trainer.checkpoint_callback.best_model_path)
 
     return 0
 
@@ -524,85 +521,85 @@ def _write_csv(row_dict, kwargs):
 
 @click.command()
 @click.option(
-    "-model_save_filepath",
+    "--model_save_filepath",
     type=str,
     help="Path where the model checkpoint was saved",
 )
 @click.option(
-    "-ann_k",
-    type=int,
-    help="When finding duplicates, use this number as the K for the Approximate Nearest Neighbors",
-)
-@click.option("-ef_search", type=int, help="Parameter for the ANN. See N2 docs: n2.readthedocs.io")
-@click.option(
-    "-ef_construction", type=int, help="Parameter for the ANN. See N2 docs: n2.readthedocs.io"
-)
-@click.option("-max_m0", type=int, help="Parameter for the ANN. See N2 docs: n2.readthedocs.io")
-@click.option("-m", type=int, help="Parameter for the ANN. See N2 docs: n2.readthedocs.io")
-@click.option(
-    "-multiprocessing_context",
-    type=str,
-    default="fork",
-    help="Context name for multiprocessing for PyTorch Lightning datamodules, "
-    "like `spawn`, `fork`, `forkserver` (currently only tested with `fork`)",
-)
-@click.option(
-    "-num_workers",
-    type=int,
-    help="Number of workers to use in PyTorch Lightning datamodules "
-    "and also number of threads to use in ANN. Set -1 to use all available CPUs",
-)
-@click.option(
-    "-sim_threshold",
-    type=float,
-    multiple=False,
-    help="A SINGLE Cosine Similarity threshold to use when finding duplicates. "
-    "Any ANN neighbors with cosine similarity BELOW this threshold is ignored",
-)
-@click.option("-random_seed", type=int, help="Random seed to help with reproducibility")
-@click.option(
-    "-source_attr",
-    type=str,
-    help="Set this when doing Record Linkage. "
-    "Column of the CSV dataset that contains the indication of the left or right source "
-    "for Record Linkage",
-)
-@click.option(
-    "-left_source",
-    type=str,
-    help="Set this when doing Record Linkage. "
-    "Consider any row with this value in the `source_attr` column as the left_source dataset. "
-    "The rows with other `source_attr` values are considered the right dataset",
-)
-@click.option("-eval_batch_size", type=int, required=True, help="Evaluation batch size, in ROWS")
-@click.option(
-    "-csv_encoding",
-    type=str,
-    default="utf-8",
-    help="Encoding of the input and output dataset CSV files",
-)
-@click.option(
-    "-unlabeled_input_csv_filepath",
-    type=str,
-    required=True,
-    help="Path of the unlabeled input dataset CSV file",
-)
-@click.option(
-    "-attr_info_json_filepath",
+    "--attr_info_json_filepath",
     type=str,
     required=True,
     help="Path of the JSON configuration file "
     "that defines how columns will be processed by the neural network",
 )
 @click.option(
-    "-output_csv_filepath",
+    "--unlabeled_input_csv_filepath",
+    type=str,
+    required=True,
+    help="Path of the unlabeled input dataset CSV file",
+)
+@click.option(
+    "--csv_encoding",
+    type=str,
+    default="utf-8",
+    help="Encoding of the input and output dataset CSV files",
+)
+@click.option(
+    "--source_attr",
+    type=str,
+    help="Set this when doing Record Linkage. "
+    "Column of the CSV dataset that contains the indication of the left or right source "
+    "for Record Linkage",
+)
+@click.option(
+    "--left_source",
+    type=str,
+    help="Set this when doing Record Linkage. "
+    "Consider any row with this value in the `source_attr` column as the left_source dataset. "
+    "The rows with other `source_attr` values are considered the right dataset",
+)
+@click.option("--eval_batch_size", type=int, required=True, help="Evaluation batch size, in ROWS")
+@click.option(
+    "--num_workers",
+    type=int,
+    help="Number of workers to use in PyTorch Lightning datamodules "
+    "and also number of threads to use in ANN. Set -1 to use all available CPUs",
+)
+@click.option(
+    "--multiprocessing_context",
+    type=str,
+    default="fork",
+    help="Context name for multiprocessing for PyTorch Lightning datamodules, "
+    "like `spawn`, `fork`, `forkserver` (currently only tested with `fork`)",
+)
+@click.option(
+    "--sim_threshold",
+    type=float,
+    multiple=False,
+    help="A SINGLE cosine similarity threshold to use when finding duplicates. "
+    "Any ANN neighbors with cosine similarity BELOW this threshold is ignored",
+)
+@click.option(
+    "--ann_k",
+    type=int,
+    help="When finding duplicates, use this number as the K for the Approximate Nearest Neighbors",
+)
+@click.option("--m", type=int, help="Parameter for the ANN. See N2 docs: n2.readthedocs.io")
+@click.option("--max_m0", type=int, help="Parameter for the ANN. See N2 docs: n2.readthedocs.io")
+@click.option(
+    "--ef_construction", type=int, help="Parameter for the ANN. See N2 docs: n2.readthedocs.io"
+)
+@click.option("--ef_search", type=int, help="Parameter for the ANN. See N2 docs: n2.readthedocs.io")
+@click.option("--random_seed", type=int, help="Random seed to help with reproducibility")
+@click.option(
+    "--output_csv_filepath",
     type=str,
     required=True,
     help="Path of the output CSV file that will contain the `cluster_attr` with the found values. "
     "The CSV will be equal to the dataset CSV but with the additional `cluster_attr` column",
 )
 @click.option(
-    "-cluster_attr",
+    "--cluster_attr",
     type=str,
     required=True,
     help="Column of the CSV dataset that will contain the cluster assignment. "
@@ -620,8 +617,7 @@ def predict(**kwargs):
     _log_cluster_size_stats(cluster_dict)
     _write_csv(row_dict=row_dict, kwargs=kwargs)
 
-    logger.info(
-        f"File {kwargs['output_csv_filepath']} is now labeled at column {kwargs['cluster_attr']}"
-    )
+    logger.info(f"File is now labeled at column {kwargs['cluster_attr']}:")
+    logger.info(kwargs["output_csv_filepath"])
 
     return 0
