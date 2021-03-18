@@ -264,7 +264,7 @@ def _build_trainer(kwargs):
 @click.option(
     "--early_stopping_min_delta",
     type=float,
-    required=True,
+    default=0.0,
     help="Minimum change in the monitored metric to qualify as an improvement",
 )
 @click.option(
@@ -292,6 +292,7 @@ def _build_trainer(kwargs):
 @click.option(
     "--num_workers",
     type=int,
+    default=-1,
     help="Number of workers to use in PyTorch Lightning datamodules "
     "and also number of threads to use in ANN. Set -1 to use all available CPUs",
 )
@@ -562,6 +563,7 @@ def _write_csv(row_dict, kwargs):
 @click.option(
     "--num_workers",
     type=int,
+    default=-1,
     help="Number of workers to use in PyTorch Lightning datamodules "
     "and also number of threads to use in ANN. Set -1 to use all available CPUs",
 )
