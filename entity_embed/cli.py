@@ -1,6 +1,7 @@
 import csv
 import logging
 import os
+import random
 import statistics
 
 import click
@@ -34,6 +35,7 @@ def _set_random_seeds(kwargs):
         random_seed = kwargs["random_seed"]
         torch.manual_seed(random_seed)
         np.random.seed(random_seed)
+        random.seed(random_seed)
 
 
 def _build_row_dict(csv_filepath, kwargs):
@@ -233,8 +235,10 @@ def _build_trainer(kwargs):
     "Consider any row with this value in the `source_attr` column as the left_source dataset. "
     "The rows with other `source_attr` values are considered the right dataset",
 )
-@click.option("--embedding_size", type=int, help="Embedding Dimensionality, for example: 300")
-@click.option("--lr", type=float, help="Learning Rate for training")
+@click.option(
+    "--embedding_size", type=int, default=300, help="Embedding Dimensionality, for example: 300"
+)
+@click.option("--lr", type=float, default=0.001, help="Learning Rate for training")
 @click.option(
     "--train_len",
     type=int,

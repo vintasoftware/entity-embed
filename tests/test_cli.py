@@ -28,76 +28,93 @@ def attr_info_json_filepath():
     os.remove(attr_info_json_file.name)
 
 
-ROW_DICT_VALUES = [
+LABELED_ROW_DICT_VALUES = [
     {
-        "id": "1",
+        "cluster": "1",
         "name": "foo product",
-        "price": 1.00,
+        "price": "1.00",
         "__source": "foo",
     },
     {
-        "id": "2",
+        "cluster": "1",
         "name": "the foo product from world",
-        "price": 1.20,
+        "price": "1.20",
         "__source": "bar",
     },
     {
-        "id": "3",
-        "name": "the foo product from world",
-        "price": 1.00,
-        "__source": "foo",
-    },
-    {
-        "id": "4",
+        "cluster": "1",
         "name": "foo product",
-        "price": 1.00,
+        "price": "1.00",
         "__source": "foo",
     },
     {
+        "cluster": "2",
         "id": "5",
-        "name": "foo product",
-        "price": 1.30,
+        "name": "bar product",
+        "price": "1.30",
         "__source": "bar",
     },
     {
-        "id": "6",
-        "name": "foo pr",
-        "price": 1.30,
+        "cluster": "2",
+        "name": "bar pr",
+        "price": "1.30",
         "__source": "bar",
     },
     {
-        "id": "7",
-        "name": "foo pr",
-        "price": 1.30,
+        "cluster": "2",
+        "name": "bar pr",
+        "price": "1.30",
         "__source": "foo",
     },
     {
-        "id": "8",
-        "name": "foo product",
-        "price": 1.30,
+        "cluster": "3",
+        "name": "dee",
+        "price": "1.30",
         "__source": "bar",
     },
     {
-        "id": "9",
-        "name": "foo propaganda",
-        "price": 1.30,
+        "cluster": "3",
+        "name": "dee pr",
+        "price": "1.30",
+        "__source": "foo",
+    },
+    {
+        "cluster": "4",
+        "name": "999",
+        "price": "10.00",
+        "__source": "foo",
+    },
+    {
+        "cluster": "4",
+        "name": "9999",
+        "price": "10.00",
+        "__source": "foo",
+    },
+]
+UNLABELED_ROW_DICT_VALUES = [
+    {
+        "name": "good product",
+        "price": "1.50",
+        "__source": "foo",
+    },
+    {
+        "name": "bad product",
+        "price": "1.90",
         "__source": "bar",
     },
     {
-        "id": "10",
-        "name": "foo propaganda",
-        "price": 1.30,
+        "name": "badd product",
+        "price": "1.90",
         "__source": "foo",
     },
 ]
 
 
-@pytest.fixture
-def csv_filepath():
+def yield_temporary_csv_filename(row_dict_values):
     with tempfile.NamedTemporaryFile("w", delete=False) as row_dict_csv_file:
         csv_writer = csv.writer(row_dict_csv_file)
-        csv_writer.writerow(ROW_DICT_VALUES[0].keys())
-        for row in ROW_DICT_VALUES:
+        csv_writer.writerow(row_dict_values[0].keys())
+        for row in row_dict_values:
             csv_writer.writerow(row.values())
 
     yield row_dict_csv_file.name
@@ -105,52 +122,103 @@ def csv_filepath():
     os.remove(row_dict_csv_file.name)
 
 
+@pytest.fixture
+def labeled_input_csv_filepath():
+    yield from yield_temporary_csv_filename(LABELED_ROW_DICT_VALUES)
+
+
+@pytest.fixture
+def unlabeled_input_csv_filepath():
+    yield from yield_temporary_csv_filename(UNLABELED_ROW_DICT_VALUES)
+
+
 @mock.patch("entity_embed.cli.validate_best")
 @mock.patch("entity_embed.cli._build_trainer")
-def test_cli(
+@mock.patch("os.cpu_count", return_value=16)
+@mock.patch("torch.manual_seed")
+@mock.patch("numpy.random.seed")
+@mock.patch("random.seed")
+def test_cli_train(
+    mock_random_seed,
+    mock_np_random_seed,
+    mock_torch_random_seed,
+    mock_cpu_count,
     mock_build_trainer,
     mock_validate_best,
     attr_info_json_filepath,
-    csv_filepath,
+    labeled_input_csv_filepath,
+    unlabeled_input_csv_filepath,
 ):
     runner = CliRunner()
     result = runner.invoke(
         cli.train,
         [
-            "-attr_info_json_filepath",
+            "--attr_info_json_filepath",
             attr_info_json_filepath,
-            "-csv_filepath",
-            csv_filepath,
-            "-cluster_attr",
-            "name",
-            "-batch_size",
-            10,
-            "-eval_batch_size",
-            10,
-            "-sim_threshold",
-            0.2,
-            "-sim_threshold",
-            0.4,
-            "-sim_threshold",
-            0.6,
-            "-test_len",
-            1,
-            "-valid_len",
-            2,
-            "-train_len",
-            2,
-            "-early_stopping_monitor",
+            "--labeled_input_csv_filepath",
+            labeled_input_csv_filepath,
+            "--unlabeled_input_csv_filepath",
+            unlabeled_input_csv_filepath,
+            "--csv_encoding",
+            "utf-8",
+            "--cluster_attr",
+            "cluster",
+            "--source_attr",
+            "__source",
+            "--left_source",
             "foo",
-            "-early_stopping_min_delta",
-            0.00,
-            "-early_stopping_patience",
-            20,
-            "-max_epochs",
-            10,
-            "-check_val_every_n_epoch",
+            "--embedding_size",
+            300,
+            "--lr",
+            0.001,
+            "--train_len",
+            2,
+            "--valid_len",
             1,
-            "-model_save_filepath",
-            "weights.ckpt",
+            "--test_len",
+            1,
+            "--max_epochs",
+            100,
+            "--early_stopping_monitor",
+            "valid_recall_at_0.9",
+            "--early_stopping_min_delta",
+            0.01,
+            "--early_stopping_patience",
+            20,
+            "--early_stopping_mode",
+            "max",
+            "--tb_save_dir",
+            "tb_logs",
+            "--tb_name",
+            "test_experiment",
+            "--check_val_every_n_epoch",
+            1,
+            "--batch_size",
+            16,
+            "--eval_batch_size",
+            64,
+            "--num_workers",
+            -1,
+            "--multiprocessing_context",
+            "fork",
+            "--sim_threshold",
+            0.6,
+            "--sim_threshold",
+            0.9,
+            "--ann_k",
+            3,
+            "--m",
+            64,
+            "--max_m0",
+            96,
+            "--ef_construction",
+            150,
+            "--ef_search",
+            -1,
+            "--random_seed",
+            42,
+            "--model_save_dirpath",
+            "trained-models",
         ],
     )
 
@@ -158,39 +226,42 @@ def test_cli(
 
     expected_parser_args_dict = {
         "attr_info_json_filepath": attr_info_json_filepath,
-        "csv_filepath": csv_filepath,
+        "labeled_input_csv_filepath": labeled_input_csv_filepath,
+        "unlabeled_input_csv_filepath": unlabeled_input_csv_filepath,
         "csv_encoding": "utf-8",
-        "cluster_attr": "name",
-        "batch_size": 10,
-        "eval_batch_size": 10,
-        "early_stopping_monitor": "foo",
-        "early_stopping_min_delta": 0,
-        "early_stopping_patience": 20,
-        "max_epochs": 10,
-        "check_val_every_n_epoch": 1,
-        "tb_save_dir": None,
-        "tb_name": None,
-        "gpus": 1,
-        "early_stopping_mode": None,
-        "ef_search": None,
-        "ef_construction": None,
-        "max_m0": None,
-        "m": None,
-        "multiprocessing_context": None,
-        "num_workers": None,
-        "n_threads": None,
-        "sim_threshold_list": (0.2, 0.4, 0.6),
-        "ann_k": None,
-        "lr": None,
-        "embedding_size": None,
-        "test_len": 1,
-        "valid_len": 2,
+        "cluster_attr": "cluster",
+        "source_attr": "__source",
+        "left_source": "foo",
+        "embedding_size": 300,
+        "lr": 0.001,
         "train_len": 2,
-        "random_seed": None,
-        "left": None,
-        "model_save_filepath": "weights.ckpt",
+        "valid_len": 1,
+        "test_len": 1,
+        "max_epochs": 100,
+        "early_stopping_monitor": "valid_recall_at_0.9",
+        "early_stopping_min_delta": 0.01,
+        "early_stopping_patience": 20,
+        "early_stopping_mode": "max",
+        "tb_save_dir": "tb_logs",
+        "tb_name": "test_experiment",
+        "check_val_every_n_epoch": 1,
+        "batch_size": 16,
+        "eval_batch_size": 64,
+        "num_workers": 16,  # assigned from os.cpu_count() mock
+        "multiprocessing_context": "fork",
+        "sim_threshold": (0.6, 0.9),
+        "ann_k": 3,
+        "m": 64,
+        "max_m0": 96,
+        "ef_construction": 150,
+        "ef_search": -1,
+        "random_seed": 42,
+        "model_save_dirpath": "trained-models",
+        "n_threads": 16,  # assigned
     }
-
+    mock_random_seed.assert_called_once_with(expected_parser_args_dict["random_seed"])
+    mock_np_random_seed.assert_called_once_with(expected_parser_args_dict["random_seed"])
+    mock_torch_random_seed.assert_called_once_with(expected_parser_args_dict["random_seed"])
     mock_trainer = mock_build_trainer.return_value
     mock_build_trainer.assert_called_once_with(expected_parser_args_dict)
     mock_trainer.fit.assert_called_once()
@@ -243,10 +314,9 @@ def test_build_linkage_datamodule(
 
 def test_build_linkage_datamodule_without_source_raises(attr_info_json_filepath):
     wrong_row_dict_values = []
-    for row in ROW_DICT_VALUES:
+    for row in LABELED_ROW_DICT_VALUES:
         wrong_row_dict_values.append(
             {
-                "id": row["id"],
                 "name": row["name"],
                 "price": row["price"],
             }
