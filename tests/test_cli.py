@@ -133,7 +133,7 @@ def unlabeled_input_csv_filepath():
 
 
 @mock.patch("entity_embed.cli.validate_best")
-@mock.patch("entity_embed.cli._build_trainer")
+@mock.patch("pytorch_lightning.Trainer")
 @mock.patch("os.cpu_count", return_value=16)
 @mock.patch("torch.manual_seed")
 @mock.patch("numpy.random.seed")
@@ -143,7 +143,7 @@ def test_cli_train(
     mock_np_random_seed,
     mock_torch_random_seed,
     mock_cpu_count,
-    mock_build_trainer,
+    mock_trainer,
     mock_validate_best,
     attr_info_json_filepath,
     labeled_input_csv_filepath,
@@ -224,7 +224,7 @@ def test_cli_train(
 
     assert result.exit_code == 0
 
-    expected_parser_args_dict = {
+    expected_args_dict = {
         "attr_info_json_filepath": attr_info_json_filepath,
         "labeled_input_csv_filepath": labeled_input_csv_filepath,
         "unlabeled_input_csv_filepath": unlabeled_input_csv_filepath,
@@ -259,14 +259,53 @@ def test_cli_train(
         "model_save_dirpath": "trained-models",
         "n_threads": 16,  # assigned
     }
-    mock_random_seed.assert_called_once_with(expected_parser_args_dict["random_seed"])
-    mock_np_random_seed.assert_called_once_with(expected_parser_args_dict["random_seed"])
-    mock_torch_random_seed.assert_called_once_with(expected_parser_args_dict["random_seed"])
-    mock_trainer = mock_build_trainer.return_value
-    mock_build_trainer.assert_called_once_with(expected_parser_args_dict)
-    mock_trainer.fit.assert_called_once()
-    mock_validate_best.assert_called_once_with(mock_trainer)
-    mock_trainer.test.assert_called_once_with(ckpt_path="best", verbose=False)
+
+    # random asserts
+    mock_random_seed.assert_called_once_with(expected_args_dict["random_seed"])
+    mock_np_random_seed.assert_called_once_with(expected_args_dict["random_seed"])
+    mock_torch_random_seed.assert_called_once_with(expected_args_dict["random_seed"])
+
+    # trainer asserts
+    __, trainer_kwargs = mock_trainer.call_args
+    early_stopping_cb, model_ckpt_cb = trainer_kwargs["callbacks"]
+    tb_logger = trainer_kwargs["logger"]
+
+    for early_stopping_attr, early_stopping_kwarg in [
+        ("monitor", "early_stopping_monitor"),
+        ("min_delta", "early_stopping_min_delta"),
+        ("patience", "early_stopping_patience"),
+        ("mode", "early_stopping_mode"),
+    ]:
+        assert (
+            getattr(early_stopping_cb, early_stopping_attr)
+            == expected_args_dict[early_stopping_kwarg]
+        )
+    assert early_stopping_cb.verbose
+
+    for model_ckpt_attr, model_ckpt_kwarg in [
+        ("monitor", "early_stopping_monitor"),
+        ("mode", "early_stopping_mode"),
+    ]:
+        assert getattr(model_ckpt_cb, model_ckpt_attr) == expected_args_dict[model_ckpt_kwarg]
+    assert model_ckpt_cb.dirpath.endswith(expected_args_dict["model_save_dirpath"])
+    assert model_ckpt_cb.save_top_k == 1
+    assert model_ckpt_cb.verbose
+
+    for tb_logger_attr, tb_logger_kwarg in [("save_dir", "tb_save_dir"), ("name", "tb_name")]:
+        assert getattr(tb_logger, tb_logger_attr) == expected_args_dict[tb_logger_kwarg]
+
+    for trainer_kwarg in ["max_epochs", "check_val_every_n_epoch"]:
+        assert trainer_kwargs[trainer_kwarg] == expected_args_dict[trainer_kwarg]
+    assert trainer_kwargs["gpus"] == 1
+    assert trainer_kwargs["reload_dataloaders_every_epoch"]
+
+    # fit assert
+    mock_trainer.return_value.fit.assert_called_once()
+    (model, datamodule), __ = mock_trainer.return_value.fit.call_args
+
+    # validate and test asserts
+    mock_validate_best.assert_called_once_with(mock_trainer.return_value)
+    mock_trainer.return_value.test.assert_called_once_with(ckpt_path="best", verbose=False)
 
 
 @mock.patch("entity_embed.entity_embed.LinkageDataModule.__init__", return_value=None)
