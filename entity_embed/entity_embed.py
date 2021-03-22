@@ -318,7 +318,7 @@ class EntityEmbed(pl.LightningModule):
         learning_rate=0.001,
         optimizer_kwargs=None,
         ann_k=10,
-        sim_threshold_list=[0.3, 0.5, 0.7, 0.9],
+        sim_threshold_list=[0.5, 0.7, 0.9],
         eval_with_clusters=True,
         index_build_kwargs=None,
         index_search_kwargs=None,
