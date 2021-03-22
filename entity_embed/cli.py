@@ -262,7 +262,7 @@ def _build_trainer(kwargs):
     "--early_stopping_monitor",
     type=str,
     required=True,
-    help="Metric to be monitored for early stoping. E.g. `valid_recall_at_0.3`. "
+    help="Metric to be monitored for early stoping. E.g. `valid_f1_at_0.7`. "
     "The float on `at_X` must be one of `sim_threshold`",
 )
 @click.option(
