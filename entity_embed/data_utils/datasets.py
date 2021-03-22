@@ -47,7 +47,7 @@ class ClusterDataset(Dataset):
         self.singleton_id_list = [cluster[0] for cluster in self.cluster_list if len(cluster) == 1]
         self.cluster_mapping = cluster_mapping
         self.batch_size = batch_size
-        self.max_cluster_size_in_batch = max_cluster_size_in_batch
+        self.max_cluster_size_in_batch = max(max_cluster_size_in_batch, 2)
         self.rnd = random.Random(random_seed)
 
         self.id_batch_list = self._compute_id_batch_list()
