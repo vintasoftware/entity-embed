@@ -613,7 +613,32 @@ def test_build_datamodule(mode):
     mock_datamodule.assert_called_once_with(**expected_kwargs)
 
 
-def test_build_linkage_datamodule_without_source_raises():
+@pytest.mark.parametrize("missing_kwarg", ["source_attr", "left_source"])
+def test_build_linkage_datamodule_without_source_attr_or_left_source_raises(missing_kwarg):
+    with pytest.raises(KeyError) as exc:
+        kwargs = {
+            "cluster_attr": "cluster",
+            "batch_size": 16,
+            "eval_batch_size": 64,
+            "train_len": 20,
+            "valid_len": 10,
+            "test_len": 5,
+            "source_attr": "__source",
+            "left_source": "foo",
+            "num_workers": 16,
+            "multiprocessing_context": "fork",
+            "random_seed": 42,
+        }
+        del kwargs[missing_kwarg]
+        cli._build_datamodule(
+            row_dict=dict(enumerate(LABELED_ROW_DICT_VALUES)),
+            row_numericalizer=mock.Mock(),
+            kwargs=kwargs,
+        )
+        assert 'must provide BOTH "source_attr" and "left_source"' in str(exc)
+
+
+def test_build_linkage_datamodule_without_source_in_row_raises():
     wrong_row_dict_values = copy.deepcopy(LABELED_ROW_DICT_VALUES)
     for row in wrong_row_dict_values:
         del row["__source"]
