@@ -2,8 +2,6 @@ import copy
 import csv
 import json
 import logging
-import os
-import tempfile
 
 import entity_embed
 import mock
@@ -20,7 +18,8 @@ from entity_embed.entity_embed import (
 
 
 @pytest.fixture
-def attr_info_json_filepath():
+def attr_info_json_filepath(tmp_path):
+    filepath = tmp_path / "attr_info.json"
     attr_info_dict = {
         "name": {
             "field_type": "MULTITOKEN",
@@ -29,12 +28,10 @@ def attr_info_json_filepath():
         }
     }
 
-    with tempfile.NamedTemporaryFile("w", delete=False) as attr_info_json_file:
-        json.dump(attr_info_dict, attr_info_json_file)
+    with open(filepath, "w") as f:
+        json.dump(attr_info_dict, f)
 
-    yield attr_info_json_file.name
-
-    os.remove(attr_info_json_file.name)
+    yield filepath
 
 
 LABELED_ROW_DICT_VALUES = [
@@ -118,26 +115,26 @@ UNLABELED_ROW_DICT_VALUES = [
 ]
 
 
-def yield_temporary_csv_filename(row_dict_values):
-    with tempfile.NamedTemporaryFile("w", delete=False) as row_dict_csv_file:
-        csv_writer = csv.writer(row_dict_csv_file)
+def yield_temporary_csv_filepath(row_dict_values, tmp_path, filename):
+    filepath = tmp_path / filename
+
+    with open(filepath, "w", newline="") as f:
+        csv_writer = csv.writer(f)
         csv_writer.writerow(row_dict_values[0].keys())
         for row in row_dict_values:
             csv_writer.writerow(row.values())
 
-    yield row_dict_csv_file.name
-
-    os.remove(row_dict_csv_file.name)
+    yield filepath
 
 
 @pytest.fixture
-def labeled_input_csv_filepath():
-    yield from yield_temporary_csv_filename(LABELED_ROW_DICT_VALUES)
+def labeled_input_csv_filepath(tmp_path):
+    yield from yield_temporary_csv_filepath(LABELED_ROW_DICT_VALUES, tmp_path, "labeled.csv")
 
 
 @pytest.fixture
-def unlabeled_input_csv_filepath():
-    yield from yield_temporary_csv_filename(UNLABELED_ROW_DICT_VALUES)
+def unlabeled_input_csv_filepath(tmp_path):
+    yield from yield_temporary_csv_filepath(UNLABELED_ROW_DICT_VALUES, tmp_path, "unlabeled.csv")
 
 
 @pytest.mark.parametrize("mode", ["linkage", "deduplication"])
@@ -384,7 +381,7 @@ def test_cli_train(
     mock_validate_best.assert_called_once_with(mock_trainer.return_value)
     mock_trainer.return_value.test.assert_called_once_with(ckpt_path="best", verbose=False)
 
-    # assert outpus
+    # assert outputs
     assert str(mock_validate_best.return_value) in caplog.records[-4].message
     assert str(mock_trainer.return_value.test.return_value) in caplog.records[-3].message
     assert "Saved best model at path:" in caplog.records[-2].message
@@ -410,6 +407,7 @@ def test_cli_predict(
     attr_info_json_filepath,
     unlabeled_input_csv_filepath,
     caplog,
+    tmp_path,
 ):
     if mode == "linkage":
         expected_model_cls = LinkageEmbed
@@ -424,6 +422,7 @@ def test_cli_predict(
             expected_cluster_mapping,
             expected_cluster_dict,
         )
+        expected_output_csv_filepath = tmp_path / f"labeled-{mode}.csv"
 
         runner = CliRunner()
         result = runner.invoke(
@@ -468,7 +467,7 @@ def test_cli_predict(
                 "--random_seed",
                 42,
                 "--output_csv_filepath",
-                "predict-labeled.csv",
+                expected_output_csv_filepath,
                 "--cluster_attr",
                 "cluster",
             ],
@@ -492,7 +491,7 @@ def test_cli_predict(
         "ef_construction": 150,
         "ef_search": -1,
         "random_seed": 42,
-        "output_csv_filepath": "predict-labeled.csv",
+        "output_csv_filepath": expected_output_csv_filepath,
         "cluster_attr": "cluster",
         "n_threads": 16,  # assigned
     }
@@ -544,9 +543,24 @@ def test_cli_predict(
         cluster_mapping=expected_cluster_mapping,
     )
 
-    # assert outpus
+    # assert outputs
+    assert (
+        "Cluster size quantiles: [0.3, 0.6, 0.9, 1.2, 1.5, 1.8, 2.1, 2.4, 2.7]"
+        in caplog.records[-4].message
+    )
+    assert "Top 5 cluster sizes: [1, 2]" in caplog.records[-3].message
     assert "File is now labeled at column cluster:" in caplog.records[-2].message
-    assert expected_args_dict["output_csv_filepath"] in caplog.records[-1].message
+    assert str(expected_args_dict["output_csv_filepath"]) in caplog.records[-1].message
+
+    # assert output file
+    expected_out_rows = [
+        # cluster is empty because assign_clusters is mocked
+        {"cluster": "", **row}
+        for row in UNLABELED_ROW_DICT_VALUES
+    ]
+    with open(expected_output_csv_filepath, newline="") as f:
+        out_rows = [row for row in csv.DictReader(f)]
+    assert out_rows == expected_out_rows
 
 
 @pytest.mark.parametrize("mode", ["linkage", "deduplication"])
