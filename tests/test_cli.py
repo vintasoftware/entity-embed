@@ -1,13 +1,15 @@
 import csv
 import json
+import logging
 import os
 import tempfile
 
+import entity_embed
 import mock
 import pytest
 from click.testing import CliRunner
 from entity_embed import cli
-from entity_embed.data_utils.numericalizer import RowNumericalizer
+from entity_embed.data_utils.numericalizer import FieldType, RowNumericalizer
 
 
 @pytest.fixture
@@ -30,62 +32,61 @@ def attr_info_json_filepath():
 
 LABELED_ROW_DICT_VALUES = [
     {
-        "cluster": "1",
+        "cluster": 1,
         "name": "foo product",
         "price": "1.00",
         "__source": "foo",
     },
     {
-        "cluster": "1",
-        "name": "the foo product from world",
+        "cluster": 1,
+        "name": "the foo product",
         "price": "1.20",
         "__source": "bar",
     },
     {
-        "cluster": "1",
+        "cluster": 1,
         "name": "foo product",
         "price": "1.00",
         "__source": "foo",
     },
     {
-        "cluster": "2",
-        "id": "5",
+        "cluster": 2,
         "name": "bar product",
         "price": "1.30",
         "__source": "bar",
     },
     {
-        "cluster": "2",
+        "cluster": 2,
         "name": "bar pr",
         "price": "1.30",
         "__source": "bar",
     },
     {
-        "cluster": "2",
+        "cluster": 2,
         "name": "bar pr",
         "price": "1.30",
         "__source": "foo",
     },
     {
-        "cluster": "3",
+        "cluster": 3,
         "name": "dee",
         "price": "1.30",
         "__source": "bar",
     },
     {
-        "cluster": "3",
+        "cluster": 3,
         "name": "dee pr",
         "price": "1.30",
         "__source": "foo",
     },
     {
-        "cluster": "4",
+        "cluster": 4,
         "name": "999",
         "price": "10.00",
         "__source": "foo",
     },
     {
-        "cluster": "4",
+        "cluster": 4,
         "name": "9999",
         "price": "10.00",
         "__source": "foo",
@@ -148,79 +149,81 @@ def test_cli_train(
     attr_info_json_filepath,
     labeled_input_csv_filepath,
     unlabeled_input_csv_filepath,
+    caplog,
 ):
-    runner = CliRunner()
-    result = runner.invoke(
-        cli.train,
-        [
-            "--attr_info_json_filepath",
-            attr_info_json_filepath,
-            "--labeled_input_csv_filepath",
-            labeled_input_csv_filepath,
-            "--unlabeled_input_csv_filepath",
-            unlabeled_input_csv_filepath,
-            "--csv_encoding",
-            "utf-8",
-            "--cluster_attr",
-            "cluster",
-            "--source_attr",
-            "__source",
-            "--left_source",
-            "foo",
-            "--embedding_size",
-            300,
-            "--lr",
-            0.001,
-            "--train_len",
-            2,
-            "--valid_len",
-            1,
-            "--test_len",
-            1,
-            "--max_epochs",
-            100,
-            "--early_stopping_monitor",
-            "valid_recall_at_0.9",
-            "--early_stopping_min_delta",
-            0.01,
-            "--early_stopping_patience",
-            20,
-            "--early_stopping_mode",
-            "max",
-            "--tb_save_dir",
-            "tb_logs",
-            "--tb_name",
-            "test_experiment",
-            "--check_val_every_n_epoch",
-            1,
-            "--batch_size",
-            16,
-            "--eval_batch_size",
-            64,
-            "--num_workers",
-            -1,
-            "--multiprocessing_context",
-            "fork",
-            "--sim_threshold",
-            0.6,
-            "--sim_threshold",
-            0.9,
-            "--ann_k",
-            3,
-            "--m",
-            64,
-            "--max_m0",
-            96,
-            "--ef_construction",
-            150,
-            "--ef_search",
-            -1,
-            "--random_seed",
-            42,
-            "--model_save_dirpath",
-            "trained-models",
-        ],
-    )
+    with caplog.at_level(logging.INFO):
+        runner = CliRunner()
+        result = runner.invoke(
+            cli.train,
+            [
+                "--attr_info_json_filepath",
+                attr_info_json_filepath,
+                "--labeled_input_csv_filepath",
+                labeled_input_csv_filepath,
+                "--unlabeled_input_csv_filepath",
+                unlabeled_input_csv_filepath,
+                "--csv_encoding",
+                "utf-8",
+                "--cluster_attr",
+                "cluster",
+                "--source_attr",
+                "__source",
+                "--left_source",
+                "foo",
+                "--embedding_size",
+                300,
+                "--lr",
+                0.001,
+                "--train_len",
+                2,
+                "--valid_len",
+                1,
+                "--test_len",
+                1,
+                "--max_epochs",
+                100,
+                "--early_stopping_monitor",
+                "valid_recall_at_0.9",
+                "--early_stopping_min_delta",
+                0.01,
+                "--early_stopping_patience",
+                20,
+                "--early_stopping_mode",
+                "max",
+                "--tb_save_dir",
+                "tb_logs",
+                "--tb_name",
+                "test_experiment",
+                "--check_val_every_n_epoch",
+                1,
+                "--batch_size",
+                16,
+                "--eval_batch_size",
+                64,
+                "--num_workers",
+                -1,
+                "--multiprocessing_context",
+                "fork",
+                "--sim_threshold",
+                0.6,
+                "--sim_threshold",
+                0.9,
+                "--ann_k",
+                3,
+                "--m",
+                64,
+                "--max_m0",
+                96,
+                "--ef_construction",
+                150,
+                "--ef_search",
+                -1,
+                "--random_seed",
+                42,
+                "--model_save_dirpath",
+                "trained-models",
+            ],
+        )
 
     assert result.exit_code == 0
 
@@ -259,8 +262,27 @@ def test_cli_train(
         "model_save_dirpath": "trained-models",
         "n_threads": 16,  # assigned
     }
+    expected_attr_info_name_dict = {
+        "source_attr": "name",
+        "field_type": FieldType.MULTITOKEN,
+        "tokenizer": entity_embed.data_utils.numericalizer.default_tokenizer,
+        "alphabet": entity_embed.data_utils.numericalizer.DEFAULT_ALPHABET,
+        "max_str_len": 8,
+        "vocab": None,
+        "n_channels": 8,
+        "embed_dropout_p": 0.2,
+        "use_attention": True,
+        "use_mask": True,
+    }
+    expected_left_id_set = {
+        id_ for id_, row in enumerate(LABELED_ROW_DICT_VALUES) if row["__source"] == "foo"
+    }
+    expected_right_id_set = {
+        id_ for id_, row in enumerate(LABELED_ROW_DICT_VALUES) if row["__source"] == "bar"
+    }
 
     # random asserts
+    mock_cpu_count.assert_called_once()
     mock_random_seed.assert_called_once_with(expected_args_dict["random_seed"])
     mock_np_random_seed.assert_called_once_with(expected_args_dict["random_seed"])
     mock_torch_random_seed.assert_called_once_with(expected_args_dict["random_seed"])
@@ -303,9 +325,53 @@ def test_cli_train(
     mock_trainer.return_value.fit.assert_called_once()
     (model, datamodule), __ = mock_trainer.return_value.fit.call_args
 
+    # model asserts
+    assert all(
+        getattr(model.row_numericalizer.attr_info_dict["name"], k) == expected
+        for k, expected in expected_attr_info_name_dict.items()
+    )
+    assert model.eval_with_clusters
+    assert model.embedding_size == expected_args_dict["embedding_size"]
+    assert model.learning_rate == expected_args_dict["lr"]
+    assert model.ann_k == expected_args_dict["ann_k"]
+    assert model.sim_threshold_list == expected_args_dict["sim_threshold"]
+    assert model.index_build_kwargs == {
+        k: expected_args_dict[k] for k in ["m", "max_m0", "ef_construction", "n_threads"]
+    }
+    assert model.index_search_kwargs == {
+        k: expected_args_dict[k] for k in ["ef_search", "n_threads"]
+    }
+
+    # datamodule asserts
+    assert datamodule.row_dict == dict(enumerate(LABELED_ROW_DICT_VALUES))
+    assert all(
+        getattr(model.row_numericalizer.attr_info_dict["name"], k) == expected
+        for k, expected in expected_attr_info_name_dict.items()
+    )
+    assert datamodule.batch_size == expected_args_dict["batch_size"]
+    assert datamodule.eval_batch_size == expected_args_dict["eval_batch_size"]
+    assert datamodule.left_id_set == expected_left_id_set
+    assert datamodule.right_id_set == expected_right_id_set
+    assert datamodule.pair_loader_kwargs == {
+        k: expected_args_dict[k] for k in ["num_workers", "multiprocessing_context"]
+    }
+    assert datamodule.row_loader_kwargs == {
+        k: expected_args_dict[k] for k in ["num_workers", "multiprocessing_context"]
+    }
+    assert datamodule.random_seed == expected_args_dict["random_seed"]
+
     # validate and test asserts
     mock_validate_best.assert_called_once_with(mock_trainer.return_value)
     mock_trainer.return_value.test.assert_called_once_with(ckpt_path="best", verbose=False)
+
+    # assert outpus
+    assert str(mock_validate_best.return_value) in caplog.records[-4].message
+    assert str(mock_trainer.return_value.test.return_value) in caplog.records[-3].message
+    assert "Saved best model at path:" in caplog.records[-2].message
+    assert (
+        str(mock_trainer.return_value.checkpoint_callback.best_model_path)
+        in caplog.records[-1].message
+    )
 
 
 @mock.patch("entity_embed.entity_embed.LinkageDataModule.__init__", return_value=None)

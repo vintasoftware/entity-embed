@@ -4,6 +4,8 @@ import logging
 from torchtext.vocab import Vocab
 
 from .numericalizer import (
+    AVAILABLE_VOCABS,
+    DEFAULT_ALPHABET,
     FieldType,
     MultitokenNumericalizer,
     NumericalizeInfo,
@@ -15,26 +17,6 @@ from .numericalizer import (
 from .utils import compute_max_str_len, compute_vocab_counter, import_function
 
 logger = logging.getLogger(__name__)
-
-
-DEFAULT_ALPHABET = list("0123456789abcdefghijklmnopqrstuvwxyz!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~ ")
-
-
-AVAILABLE_VOCABS = [
-    "charngram.100d",
-    "fasttext.en.300d",
-    "fasttext.simple.300d",
-    "glove.42B.300d",
-    "glove.840B.300d",
-    "glove.twitter.27B.25d",
-    "glove.twitter.27B.50d",
-    "glove.twitter.27B.100d",
-    "glove.twitter.27B.200d",
-    "glove.6B.50d",
-    "glove.6B.100d",
-    "glove.6B.200d",
-    "glove.6B.300d",
-]
 
 
 class AttrInfoDictParser:
