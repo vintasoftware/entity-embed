@@ -10,6 +10,7 @@ import pytest
 from click.testing import CliRunner
 from entity_embed import cli
 from entity_embed.data_utils.numericalizer import FieldType, RowNumericalizer
+from entity_embed.entity_embed import EntityEmbed, LinkageEmbed
 
 
 @pytest.fixture
@@ -133,6 +134,7 @@ def unlabeled_input_csv_filepath():
     yield from yield_temporary_csv_filename(UNLABELED_ROW_DICT_VALUES)
 
 
+@pytest.mark.parametrize("mode", ["linkage", "deduplication"])
 @mock.patch("entity_embed.cli.validate_best")
 @mock.patch("pytorch_lightning.Trainer")
 @mock.patch("os.cpu_count", return_value=16)
@@ -146,6 +148,7 @@ def test_cli_train(
     mock_cpu_count,
     mock_trainer,
     mock_validate_best,
+    mode,
     attr_info_json_filepath,
     labeled_input_csv_filepath,
     unlabeled_input_csv_filepath,
@@ -166,10 +169,16 @@ def test_cli_train(
                 "utf-8",
                 "--cluster_attr",
                 "cluster",
-                "--source_attr",
-                "__source",
-                "--left_source",
-                "foo",
+                *(
+                    [
+                        "--source_attr",
+                        "__source",
+                        "--left_source",
+                        "foo",
+                    ]
+                    if mode == "linkage"
+                    else []
+                ),
                 "--embedding_size",
                 300,
                 "--lr",
@@ -225,7 +234,7 @@ def test_cli_train(
             ],
         )
 
-    assert result.exit_code == 0
+    assert result.exit_code == 0, result.stdout_bytes.decode("utf-8")
 
     expected_args_dict = {
         "attr_info_json_filepath": attr_info_json_filepath,
@@ -233,8 +242,7 @@ def test_cli_train(
         "unlabeled_input_csv_filepath": unlabeled_input_csv_filepath,
         "csv_encoding": "utf-8",
         "cluster_attr": "cluster",
-        "source_attr": "__source",
-        "left_source": "foo",
+        **({"source_attr": "__source", "left_source": "foo"} if mode == "linkage" else {}),
         "embedding_size": 300,
         "lr": 0.001,
         "train_len": 2,
@@ -274,12 +282,13 @@ def test_cli_train(
         "use_attention": True,
         "use_mask": True,
     }
-    expected_left_id_set = {
-        id_ for id_, row in enumerate(LABELED_ROW_DICT_VALUES) if row["__source"] == "foo"
-    }
-    expected_right_id_set = {
-        id_ for id_, row in enumerate(LABELED_ROW_DICT_VALUES) if row["__source"] == "bar"
-    }
+    if mode == "linkage":
+        expected_left_id_set = {
+            id_ for id_, row in enumerate(LABELED_ROW_DICT_VALUES) if row["__source"] == "foo"
+        }
+        expected_right_id_set = {
+            id_ for id_, row in enumerate(LABELED_ROW_DICT_VALUES) if row["__source"] == "bar"
+        }
 
     # random asserts
     mock_cpu_count.assert_called_once()
@@ -326,6 +335,10 @@ def test_cli_train(
     (model, datamodule), __ = mock_trainer.return_value.fit.call_args
 
     # model asserts
+    if mode == "linkage":
+        assert isinstance(model, LinkageEmbed)
+    else:
+        assert isinstance(model, EntityEmbed)
     assert all(
         getattr(model.row_numericalizer.attr_info_dict["name"], k) == expected
         for k, expected in expected_attr_info_name_dict.items()
@@ -350,8 +363,9 @@ def test_cli_train(
     )
     assert datamodule.batch_size == expected_args_dict["batch_size"]
     assert datamodule.eval_batch_size == expected_args_dict["eval_batch_size"]
-    assert datamodule.left_id_set == expected_left_id_set
-    assert datamodule.right_id_set == expected_right_id_set
+    if mode == "linkage":
+        assert datamodule.left_id_set == expected_left_id_set
+        assert datamodule.right_id_set == expected_right_id_set
     assert datamodule.pair_loader_kwargs == {
         k: expected_args_dict[k] for k in ["num_workers", "multiprocessing_context"]
     }
@@ -372,6 +386,161 @@ def test_cli_train(
         str(mock_trainer.return_value.checkpoint_callback.best_model_path)
         in caplog.records[-1].message
     )
+
+
+@pytest.mark.parametrize("mode", ["linkage", "deduplication"])
+@mock.patch("os.cpu_count", return_value=16)
+@mock.patch("torch.manual_seed")
+@mock.patch("numpy.random.seed")
+@mock.patch("random.seed")
+@mock.patch("entity_embed.data_utils.utils.assign_clusters")
+def test_cli_predict(
+    mock_assign_clusters,
+    mock_random_seed,
+    mock_np_random_seed,
+    mock_torch_random_seed,
+    mock_cpu_count,
+    mode,
+    attr_info_json_filepath,
+    unlabeled_input_csv_filepath,
+    caplog,
+):
+    if mode == "linkage":
+        expected_model_cls = LinkageEmbed
+    else:
+        expected_model_cls = EntityEmbed
+    with mock.patch(
+        f"entity_embed.{expected_model_cls.__name__}.load_from_checkpoint"
+    ) as model_load, caplog.at_level(logging.INFO):
+        expected_cluster_mapping = {0: 0, 1: 1, 2: 1}
+        expected_cluster_dict = {0: [0], 1: [1, 2]}
+        model_load.return_value.predict_clusters.return_value = (
+            expected_cluster_mapping,
+            expected_cluster_dict,
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli.predict,
+            [
+                "--model_save_filepath",
+                "trained-model.ckpt",
+                "--attr_info_json_filepath",
+                attr_info_json_filepath,
+                "--unlabeled_input_csv_filepath",
+                unlabeled_input_csv_filepath,
+                "--csv_encoding",
+                "utf-8",
+                *(
+                    [
+                        "--source_attr",
+                        "__source",
+                        "--left_source",
+                        "foo",
+                    ]
+                    if mode == "linkage"
+                    else []
+                ),
+                "--eval_batch_size",
+                64,
+                "--num_workers",
+                -1,
+                "--multiprocessing_context",
+                "fork",
+                "--sim_threshold",
+                0.6,
+                "--ann_k",
+                3,
+                "--m",
+                64,
+                "--max_m0",
+                96,
+                "--ef_construction",
+                150,
+                "--ef_search",
+                -1,
+                "--random_seed",
+                42,
+                "--output_csv_filepath",
+                "predict-labeled.csv",
+                "--cluster_attr",
+                "cluster",
+            ],
+        )
+
+    assert result.exit_code == 0, result.stdout_bytes.decode("utf-8")
+
+    expected_args_dict = {
+        "model_save_filepath": "trained-model.ckpt",
+        "attr_info_json_filepath": attr_info_json_filepath,
+        "unlabeled_input_csv_filepath": unlabeled_input_csv_filepath,
+        "csv_encoding": "utf-8",
+        **({"source_attr": "__source", "left_source": "foo"} if mode == "linkage" else {}),
+        "eval_batch_size": 64,
+        "num_workers": 16,  # assigned from os.cpu_count() mock
+        "multiprocessing_context": "fork",
+        "sim_threshold": 0.6,
+        "ann_k": 3,
+        "m": 64,
+        "max_m0": 96,
+        "ef_construction": 150,
+        "ef_search": -1,
+        "random_seed": 42,
+        "output_csv_filepath": "predict-labeled.csv",
+        "cluster_attr": "cluster",
+        "n_threads": 16,  # assigned
+    }
+    if mode == "linkage":
+        expected_left_id_set = {
+            id_ for id_, row in enumerate(UNLABELED_ROW_DICT_VALUES) if row["__source"] == "foo"
+        }
+        expected_right_id_set = {
+            id_ for id_, row in enumerate(UNLABELED_ROW_DICT_VALUES) if row["__source"] == "bar"
+        }
+
+    # random asserts
+    mock_cpu_count.assert_called_once()
+    mock_random_seed.assert_called_once_with(expected_args_dict["random_seed"])
+    mock_np_random_seed.assert_called_once_with(expected_args_dict["random_seed"])
+    mock_torch_random_seed.assert_called_once_with(expected_args_dict["random_seed"])
+
+    # predict_clusters asserts
+    expected_row_dict = dict(enumerate(UNLABELED_ROW_DICT_VALUES))
+    model_load.return_value.predict_clusters.assert_called_once_with(
+        **{
+            "row_dict": expected_row_dict,
+            **(
+                {
+                    "left_id_set": expected_left_id_set,
+                    "right_id_set": expected_right_id_set,
+                }
+                if mode == "linkage"
+                else {}
+            ),
+            "batch_size": expected_args_dict["eval_batch_size"],
+            "ann_k": expected_args_dict["ann_k"],
+            "sim_threshold": expected_args_dict["sim_threshold"],
+            "loader_kwargs": {
+                "num_workers": expected_args_dict["num_workers"],
+                "multiprocessing_context": expected_args_dict["multiprocessing_context"],
+            },
+            "index_build_kwargs": {
+                k: expected_args_dict[k] for k in ["m", "max_m0", "ef_construction", "n_threads"]
+            },
+            "index_search_kwargs": {k: expected_args_dict[k] for k in ["ef_search", "n_threads"]},
+        }
+    )
+
+    # assign_clusters assert
+    mock_assign_clusters.assert_called_once_with(
+        row_dict=expected_row_dict,
+        cluster_attr=expected_args_dict["cluster_attr"],
+        cluster_mapping=expected_cluster_mapping,
+    )
+
+    # assert outpus
+    assert "File is now labeled at column cluster:" in caplog.records[-2].message
+    assert expected_args_dict["output_csv_filepath"] in caplog.records[-1].message
 
 
 @mock.patch("entity_embed.entity_embed.LinkageDataModule.__init__", return_value=None)

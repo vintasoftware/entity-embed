@@ -12,7 +12,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 from pytorch_lightning.loggers import TensorBoardLogger
 
-from . import ANNEntityIndex, ANNLinkageIndex, validate_best
+from . import validate_best
 from .data_utils import utils
 from .data_utils.helpers import AttrInfoDictParser
 from .entity_embed import DeduplicationDataModule, EntityEmbed, LinkageDataModule, LinkageEmbed
@@ -118,6 +118,12 @@ def _build_datamodule(row_dict, row_numericalizer, kwargs):
 
 
 def _build_model(row_numericalizer, kwargs):
+    is_record_linkage = kwargs["left_source"]
+    if is_record_linkage:
+        model_cls = LinkageEmbed
+    else:
+        model_cls = EntityEmbed
+
     model_args = {"row_numericalizer": row_numericalizer, "eval_with_clusters": True}
 
     if kwargs["embedding_size"]:
@@ -144,7 +150,7 @@ def _build_model(row_numericalizer, kwargs):
 
     logger.info("Building model...")
 
-    return EntityEmbed(**model_args)
+    return model_cls(**model_args)
 
 
 def _build_trainer(kwargs):
@@ -405,102 +411,36 @@ def _assign_clusters(row_dict, model, kwargs):
 
     if left_source:  # is record linkage
         left_id_set, right_id_set = _build_left_right_id_sets(row_dict, source_attr, left_source)
-        cluster_mapping, cluster_dict = _find_clusters_rl(
+        cluster_mapping, cluster_dict = model.predict_clusters(
             row_dict=row_dict,
             left_id_set=left_id_set,
             right_id_set=right_id_set,
-            model=model,
-            eval_batch_size=eval_batch_size,
-            num_workers=num_workers,
-            multiprocessing_context=multiprocessing_context,
+            batch_size=eval_batch_size,
             ann_k=ann_k,
             sim_threshold=sim_threshold,
+            loader_kwargs={
+                "num_workers": num_workers,
+                "multiprocessing_context": multiprocessing_context,
+            },
             index_build_kwargs=index_build_kwargs,
             index_search_kwargs=index_search_kwargs,
         )
     else:
-        cluster_mapping, cluster_dict = _find_clusters_er(
+        cluster_mapping, cluster_dict = model.predict_clusters(
             row_dict=row_dict,
-            model=model,
-            eval_batch_size=eval_batch_size,
-            num_workers=num_workers,
-            multiprocessing_context=multiprocessing_context,
+            batch_size=eval_batch_size,
             ann_k=ann_k,
             sim_threshold=sim_threshold,
+            loader_kwargs={
+                "num_workers": num_workers,
+                "multiprocessing_context": multiprocessing_context,
+            },
             index_build_kwargs=index_build_kwargs,
             index_search_kwargs=index_search_kwargs,
         )
 
     utils.assign_clusters(
         row_dict=row_dict, cluster_attr=cluster_attr, cluster_mapping=cluster_mapping
-    )
-    return cluster_mapping, cluster_dict
-
-
-def _find_clusters_rl(
-    row_dict,
-    left_id_set,
-    right_id_set,
-    model,
-    eval_batch_size,
-    num_workers,
-    multiprocessing_context,
-    ann_k,
-    sim_threshold,
-    index_build_kwargs,
-    index_search_kwargs,
-):
-    left_vector_dict, right_vector_dict = model.predict(
-        row_dict=row_dict,
-        left_id_set=left_id_set,
-        right_id_set=right_id_set,
-        batch_size=eval_batch_size,
-        loader_kwargs={
-            "num_workers": num_workers,
-            "multiprocessing_context": multiprocessing_context,
-        },
-        show_progress=True,
-    )
-    ann_index = ANNLinkageIndex(embedding_size=model.embedding_size)
-    ann_index.insert_vector_dict(
-        left_vector_dict=left_vector_dict, right_vector_dict=right_vector_dict
-    )
-    ann_index.build(index_build_kwargs=index_build_kwargs)
-    cluster_mapping, cluster_dict = ann_index.search_clusters(
-        k=ann_k,
-        sim_threshold=sim_threshold,
-        left_vector_dict=left_vector_dict,
-        right_vector_dict=right_vector_dict,
-        index_search_kwargs=index_search_kwargs,
-    )
-    return cluster_mapping, cluster_dict
-
-
-def _find_clusters_er(
-    row_dict,
-    model,
-    eval_batch_size,
-    num_workers,
-    multiprocessing_context,
-    ann_k,
-    sim_threshold,
-    index_build_kwargs,
-    index_search_kwargs,
-):
-    vector_dict = model.predict(
-        row_dict=row_dict,
-        batch_size=eval_batch_size,
-        loader_kwargs={
-            "num_workers": num_workers,
-            "multiprocessing_context": multiprocessing_context,
-        },
-        show_progress=True,
-    )
-    ann_index = ANNEntityIndex(embedding_size=model.embedding_size)
-    ann_index.insert_vector_dict(vector_dict)
-    ann_index.build(index_build_kwargs=index_build_kwargs)
-    cluster_mapping, cluster_dict = ann_index.search_clusters(
-        k=ann_k, sim_threshold=sim_threshold, index_search_kwargs=index_search_kwargs
     )
     return cluster_mapping, cluster_dict
 

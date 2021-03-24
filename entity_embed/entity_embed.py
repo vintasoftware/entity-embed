@@ -505,6 +505,31 @@ class EntityEmbed(pl.LightningModule):
         vector_dict = dict(zip(row_dict.keys(), vector_list))
         return vector_dict
 
+    def predict_clusters(
+        self,
+        row_dict,
+        batch_size,
+        ann_k,
+        sim_threshold,
+        loader_kwargs=None,
+        index_build_kwargs=None,
+        index_search_kwargs=None,
+        show_progress=True,
+    ):
+        vector_dict = self.predict(
+            row_dict=row_dict,
+            batch_size=batch_size,
+            loader_kwargs=loader_kwargs,
+            show_progress=show_progress,
+        )
+        ann_index = ANNEntityIndex(embedding_size=self.embedding_size)
+        ann_index.insert_vector_dict(vector_dict)
+        ann_index.build(index_build_kwargs=index_build_kwargs)
+        cluster_mapping, cluster_dict = ann_index.search_clusters(
+            k=ann_k, sim_threshold=sim_threshold, index_search_kwargs=index_search_kwargs
+        )
+        return cluster_mapping, cluster_dict
+
 
 def validate_best(trainer):
     logger.info("Validating best model...")
@@ -603,6 +628,41 @@ class LinkageEmbed(EntityEmbed):
             vector_dict, left_id_set=left_id_set, right_id_set=right_id_set
         )
         return left_vector_dict, right_vector_dict
+
+    def predict_clusters(
+        self,
+        row_dict,
+        left_id_set,
+        right_id_set,
+        batch_size,
+        ann_k,
+        sim_threshold,
+        loader_kwargs=None,
+        index_build_kwargs=None,
+        index_search_kwargs=None,
+        show_progress=True,
+    ):
+        left_vector_dict, right_vector_dict = self.predict(
+            row_dict=row_dict,
+            left_id_set=left_id_set,
+            right_id_set=right_id_set,
+            batch_size=batch_size,
+            loader_kwargs=loader_kwargs,
+            show_progress=show_progress,
+        )
+        ann_index = ANNLinkageIndex(embedding_size=self.embedding_size)
+        ann_index.insert_vector_dict(
+            left_vector_dict=left_vector_dict, right_vector_dict=right_vector_dict
+        )
+        ann_index.build(index_build_kwargs=index_build_kwargs)
+        cluster_mapping, cluster_dict = ann_index.search_clusters(
+            k=ann_k,
+            sim_threshold=sim_threshold,
+            left_vector_dict=left_vector_dict,
+            right_vector_dict=right_vector_dict,
+            index_search_kwargs=index_search_kwargs,
+        )
+        return cluster_mapping, cluster_dict
 
 
 class ANNEntityIndex:
