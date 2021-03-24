@@ -75,14 +75,19 @@ def _build_left_right_id_sets(row_dict, source_attr, left_source):
     return left_id_set, right_id_set
 
 
-def _build_datamodule(row_dict, row_numericalizer, kwargs):
+def _is_record_linkage(kwargs):
     left_source = kwargs.get("left_source")
-    if left_source:  # is record linkage
-        try:
-            source_attr = kwargs["source_attr"]
-        except KeyError as e:
-            raise KeyError('You must provide a "source_attr" to perform Record Linkage') from e
+    source_attr = kwargs.get("source_attr")
+    if (left_source and not source_attr) or (not left_source and source_attr):
+        raise KeyError(
+            'You must provide BOTH "source_attr" and "left_source" to perform Record Linkage. '
+            "Either remove both or provide both."
+        )
+    else:
+        return bool(left_source)
 
+
+def _build_datamodule(row_dict, row_numericalizer, kwargs):
     datamodule_args = {
         "row_dict": row_dict,
         "cluster_attr": kwargs["cluster_attr"],
@@ -94,8 +99,10 @@ def _build_datamodule(row_dict, row_numericalizer, kwargs):
         "test_cluster_len": kwargs["test_len"],
     }
 
-    if left_source:  # is record linkage
-        left_id_set, right_id_set = _build_left_right_id_sets(row_dict, source_attr, left_source)
+    if _is_record_linkage(kwargs):
+        left_id_set, right_id_set = _build_left_right_id_sets(
+            row_dict, kwargs["source_attr"], kwargs["left_source"]
+        )
         datamodule_args["left_id_set"] = left_id_set
         datamodule_args["right_id_set"] = right_id_set
         datamodule_cls = LinkageDataModule
@@ -113,7 +120,6 @@ def _build_datamodule(row_dict, row_numericalizer, kwargs):
         datamodule_args["random_seed"] = kwargs["random_seed"]
 
     logger.info("Building datamodule...")
-
     return datamodule_cls(**datamodule_args)
 
 
@@ -391,12 +397,6 @@ def _assign_clusters(row_dict, model, kwargs):
     multiprocessing_context = kwargs["multiprocessing_context"]
     ann_k = kwargs["ann_k"]
     sim_threshold = kwargs["sim_threshold"]
-    left_source = kwargs.get("left_source")
-    if left_source:  # is record linkage
-        try:
-            source_attr = kwargs["source_attr"]
-        except KeyError as e:
-            raise KeyError('You must provide a "source_attr" to perform Record Linkage') from e
     cluster_attr = kwargs["cluster_attr"]
 
     index_build_kwargs = {}
@@ -409,8 +409,10 @@ def _assign_clusters(row_dict, model, kwargs):
         if kwargs[k]:
             index_search_kwargs[k] = kwargs[k]
 
-    if left_source:  # is record linkage
-        left_id_set, right_id_set = _build_left_right_id_sets(row_dict, source_attr, left_source)
+    if _is_record_linkage(kwargs):
+        left_id_set, right_id_set = _build_left_right_id_sets(
+            row_dict, kwargs["source_attr"], kwargs["left_source"]
+        )
         cluster_mapping, cluster_dict = model.predict_clusters(
             row_dict=row_dict,
             left_id_set=left_id_set,

@@ -9,8 +9,13 @@ import mock
 import pytest
 from click.testing import CliRunner
 from entity_embed import cli
-from entity_embed.data_utils.numericalizer import FieldType, RowNumericalizer
-from entity_embed.entity_embed import EntityEmbed, LinkageEmbed
+from entity_embed.data_utils.numericalizer import FieldType
+from entity_embed.entity_embed import (
+    DeduplicationDataModule,
+    EntityEmbed,
+    LinkageDataModule,
+    LinkageEmbed,
+)
 
 
 @pytest.fixture
@@ -543,47 +548,68 @@ def test_cli_predict(
     assert expected_args_dict["output_csv_filepath"] in caplog.records[-1].message
 
 
-@mock.patch("entity_embed.entity_embed.LinkageDataModule.__init__", return_value=None)
-def test_build_linkage_datamodule(
-    mock_linkage_datamodule,
-    attr_info_json_filepath,
-    csv_filepath,
-):
-    cli._build_datamodule(
-        {
-            "attr_info_json_filepath": attr_info_json_filepath,
-            "csv_filepath": csv_filepath,
-            "csv_encoding": "utf-8",
-            "cluster_attr": "name",
-            "batch_size": 10,
-            "eval_batch_size": 10,
-            "left": "foo",
-            "test_len": 1,
-            "valid_len": 2,
-            "train_len": 2,
-            "random_seed": 30,
-            "num_workers": 16,
-            "multiprocessing_context": None,
+@pytest.mark.parametrize("mode", ["linkage", "deduplication"])
+def test_build_datamodule(mode):
+    expected_row_dict = dict(enumerate(LABELED_ROW_DICT_VALUES))
+    expected_row_numericalizer = mock.Mock()
+    if mode == "linkage":
+        expected_left_id_set = {
+            id_ for id_, row in enumerate(LABELED_ROW_DICT_VALUES) if row["__source"] == "foo"
         }
-    )
+        expected_right_id_set = {
+            id_ for id_, row in enumerate(LABELED_ROW_DICT_VALUES) if row["__source"] == "bar"
+        }
+    expected_kwargs = {
+        "row_dict": expected_row_dict,
+        "cluster_attr": "cluster",
+        "row_numericalizer": expected_row_numericalizer,
+        "batch_size": 16,
+        "eval_batch_size": 64,
+        "train_cluster_len": 20,
+        "valid_cluster_len": 10,
+        "test_cluster_len": 5,
+        **(
+            {
+                "left_id_set": expected_left_id_set,
+                "right_id_set": expected_right_id_set,
+            }
+            if mode == "linkage"
+            else {}
+        ),
+        "pair_loader_kwargs": {
+            "num_workers": 16,
+            "multiprocessing_context": "fork",
+        },
+        "row_loader_kwargs": {
+            "num_workers": 16,
+            "multiprocessing_context": "fork",
+        },
+        "random_seed": 42,
+    }
+    if mode == "linkage":
+        expected_model_cls = LinkageDataModule
+    else:
+        expected_model_cls = DeduplicationDataModule
 
-    mock_linkage_datamodule.assert_called_once_with(
-        row_dict=mock.ANY,
-        cluster_attr="name",
-        row_numericalizer=mock.ANY,
-        batch_size=10,
-        eval_batch_size=10,
-        train_cluster_len=2,
-        valid_cluster_len=2,
-        test_cluster_len=1,
-        left_id_set={0, 2, 3, 6, 9},
-        right_id_set={1, 4, 5, 7, 8},
-        random_seed=30,
-        pair_loader_kwargs={"num_workers": 16},
-        row_loader_kwargs={"num_workers": 16},
-    )
-    call_args = mock_linkage_datamodule.call_args.kwargs
-    assert isinstance(call_args["row_numericalizer"], RowNumericalizer)
+    with mock.patch(f"entity_embed.cli.{expected_model_cls.__name__}") as mock_datamodule:
+        cli._build_datamodule(
+            row_dict=expected_row_dict,
+            row_numericalizer=expected_row_numericalizer,
+            kwargs={
+                "cluster_attr": "cluster",
+                "batch_size": 16,
+                "eval_batch_size": 64,
+                "train_len": 20,
+                "valid_len": 10,
+                "test_len": 5,
+                **({"source_attr": "__source", "left_source": "foo"} if mode == "linkage" else {}),
+                "num_workers": 16,
+                "multiprocessing_context": "fork",
+                "random_seed": 42,
+            },
+        )
+
+    mock_datamodule.assert_called_once_with(**expected_kwargs)
 
 
 def test_build_linkage_datamodule_without_source_raises(attr_info_json_filepath):
