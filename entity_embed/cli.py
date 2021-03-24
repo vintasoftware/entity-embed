@@ -124,8 +124,7 @@ def _build_datamodule(row_dict, row_numericalizer, kwargs):
 
 
 def _build_model(row_numericalizer, kwargs):
-    is_record_linkage = kwargs["left_source"]
-    if is_record_linkage:
+    if _is_record_linkage(kwargs):
         model_cls = LinkageEmbed
     else:
         model_cls = EntityEmbed
@@ -383,11 +382,11 @@ def train(**kwargs):
 
 
 def _load_model(kwargs):
-    is_record_linkage = kwargs["left_source"]
-    if is_record_linkage:
+    if _is_record_linkage(kwargs):
         model_cls = LinkageEmbed
     else:
         model_cls = EntityEmbed
+
     return model_cls.load_from_checkpoint(kwargs["model_save_filepath"], datamodule=None)
 
 

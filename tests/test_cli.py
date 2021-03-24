@@ -1,3 +1,4 @@
+import copy
 import csv
 import json
 import logging
@@ -587,11 +588,11 @@ def test_build_datamodule(mode):
         "random_seed": 42,
     }
     if mode == "linkage":
-        expected_model_cls = LinkageDataModule
+        expected_dm_cls = LinkageDataModule
     else:
-        expected_model_cls = DeduplicationDataModule
+        expected_dm_cls = DeduplicationDataModule
 
-    with mock.patch(f"entity_embed.cli.{expected_model_cls.__name__}") as mock_datamodule:
+    with mock.patch(f"entity_embed.cli.{expected_dm_cls.__name__}") as mock_datamodule:
         cli._build_datamodule(
             row_dict=expected_row_dict,
             row_numericalizer=expected_row_numericalizer,
@@ -612,39 +613,30 @@ def test_build_datamodule(mode):
     mock_datamodule.assert_called_once_with(**expected_kwargs)
 
 
-def test_build_linkage_datamodule_without_source_raises(attr_info_json_filepath):
-    wrong_row_dict_values = []
-    for row in LABELED_ROW_DICT_VALUES:
-        wrong_row_dict_values.append(
-            {
-                "name": row["name"],
-                "price": row["price"],
-            }
-        )
+def test_build_linkage_datamodule_without_source_raises():
+    wrong_row_dict_values = copy.deepcopy(LABELED_ROW_DICT_VALUES)
+    for row in wrong_row_dict_values:
+        del row["__source"]
 
-    with tempfile.NamedTemporaryFile("w", delete=False) as row_dict_csv_file:
-        csv_writer = csv.writer(row_dict_csv_file)
-        csv_writer.writerow(wrong_row_dict_values[0].keys())
-        for row in wrong_row_dict_values:
-            csv_writer.writerow(row.values())
-
-    with pytest.raises(KeyError):
+    with pytest.raises(KeyError) as exc:
         cli._build_datamodule(
-            {
-                "attr_info_json_filepath": attr_info_json_filepath,
-                "csv_filepath": row_dict_csv_file.name,
-                "csv_encoding": "utf-8",
-                "cluster_attr": "name",
-                "batch_size": 10,
-                "eval_batch_size": 10,
-                "left": "foo",
-                "test_len": 1,
-                "valid_len": 2,
-                "train_len": 2,
-            }
+            row_dict=dict(enumerate(wrong_row_dict_values)),
+            row_numericalizer=mock.Mock(),
+            kwargs={
+                "cluster_attr": "cluster",
+                "batch_size": 16,
+                "eval_batch_size": 64,
+                "train_len": 20,
+                "valid_len": 10,
+                "test_len": 5,
+                "source_attr": "__source",
+                "left_source": "foo",
+                "num_workers": 16,
+                "multiprocessing_context": "fork",
+                "random_seed": 42,
+            },
         )
-
-    os.remove(row_dict_csv_file.name)
+        assert "KeyError: '__source'" in str(exc)
 
 
 @mock.patch("entity_embed.cli.pl.Trainer")
@@ -663,12 +655,11 @@ def test_build_trainer(
             "early_stopping_min_delta": 0.1,
             "early_stopping_patience": 20,
             "early_stopping_mode": None,
-            "gpus": 2,
             "max_epochs": 20,
             "check_val_every_n_epoch": 2,
             "tb_name": "foo",
             "tb_save_dir": "bar",
-            "model_save_filepath": "weights.ckpt",
+            "model_save_dirpath": "trained-models",
         }
     )
 
@@ -682,18 +673,20 @@ def test_build_trainer(
 
     mock_checkpoint.assert_called_once_with(
         monitor="pair_entity_ratio_at_f0",
-        verbose=True,
-        filename="weights.ckpt",
         save_top_k=1,
+        mode="min",
+        verbose=True,
+        dirpath="trained-models",
     )
 
     mock_logger.assert_called_once_with("bar", name="foo")
 
     mock_trainer.assert_called_once_with(
-        gpus=2,
+        gpus=1,
         max_epochs=20,
         check_val_every_n_epoch=2,
         callbacks=[mock_early_stopping.return_value, mock_checkpoint.return_value],
+        reload_dataloaders_every_epoch=True,
         logger=mock_logger.return_value,
     )
 
@@ -706,58 +699,53 @@ def test_build_trainer_with_only_tb_name_raises(
     mock_early_stopping,
     mock_checkpoint,
 ):
-    with pytest.raises(KeyError):
+    with pytest.raises(KeyError) as exc:
         cli._build_trainer(
             {
                 "early_stopping_monitor": "pair_entity_ratio_at_f0",
                 "early_stopping_min_delta": 0.1,
                 "early_stopping_patience": 20,
                 "early_stopping_mode": None,
-                "gpus": 2,
                 "max_epochs": 20,
                 "check_val_every_n_epoch": 2,
                 "tb_name": "foo",
                 "tb_save_dir": None,
-                "model_save_filepath": "weights.ckpt",
+                "model_save_dirpath": "trained-models",
             }
         )
-
-    mock_early_stopping.assert_called_once_with(
-        monitor="pair_entity_ratio_at_f0",
-        min_delta=0.1,
-        patience=20,
-        verbose=True,
-        mode="min",
-    )
-
-    mock_checkpoint.assert_called_once_with(
-        monitor="pair_entity_ratio_at_f0",
-        verbose=True,
-        filename="weights.ckpt",
-        save_top_k=1,
-    )
+        assert 'Please provide both "tb_name" and "tb_save_dir"' in str(exc)
 
 
-@mock.patch("entity_embed.entity_embed.EntityEmbed.__init__", return_value=None)
-def test_build_model(mock_entity_embed):
-    mock_datamodule = mock.MagicMock()
-    cli._build_model(
-        mock_datamodule,
-        {
-            "embedding_size": 125,
-            "lr": 0.2,
-            "ann_k": 10,
-            "sim_threshold_list": (0.2, 0.4, 0.6, 0.8),
-            "m": None,
-            "max_m0": None,
-            "ef_construction": 128,
-            "n_threads": 4,
-            "ef_search": -1,
-        },
-    )
-    mock_entity_embed.assert_called_once_with(
-        datamodule=mock_datamodule,
-        embedding_size=125,
+@pytest.mark.parametrize("mode", ["linkage", "deduplication"])
+def test_build_model(mode):
+    if mode == "linkage":
+        expected_model_cls = LinkageEmbed
+    else:
+        expected_model_cls = EntityEmbed
+
+    mock_row_numericalizer = mock.MagicMock()
+
+    with mock.patch(f"entity_embed.cli.{expected_model_cls.__name__}") as mock_model:
+        cli._build_model(
+            mock_row_numericalizer,
+            {
+                "embedding_size": 100,
+                "lr": 0.2,
+                "ann_k": 10,
+                "sim_threshold": (0.2, 0.4, 0.6, 0.8),
+                "m": None,
+                "max_m0": None,
+                "ef_construction": 128,
+                "n_threads": 4,
+                "ef_search": -1,
+                **({"source_attr": "__source", "left_source": "foo"} if mode == "linkage" else {}),
+            },
+        )
+
+    mock_model.assert_called_once_with(
+        row_numericalizer=mock_row_numericalizer,
+        eval_with_clusters=True,
+        embedding_size=100,
         learning_rate=0.2,
         ann_k=10,
         sim_threshold_list=(0.2, 0.4, 0.6, 0.8),
