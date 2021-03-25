@@ -111,7 +111,6 @@ class AttrConfigDictParser:
         n_channels = attr_config.get("n_channels", 8)
         embed_dropout_p = attr_config.get("embed_dropout_p", 0.2)
         use_attention = attr_config.get("use_attention", True)
-        use_mask = attr_config.get("use_mask", True)
 
         return AttrConfig(
             source_attr=source_attr,
@@ -123,7 +122,6 @@ class AttrConfigDictParser:
             n_channels=n_channels,
             embed_dropout_p=embed_dropout_p,
             use_attention=use_attention,
-            use_mask=use_mask,
         )
 
     @classmethod

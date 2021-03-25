@@ -68,34 +68,6 @@ class SemanticEmbedNet(nn.Module):
         return self.dense_net(x)
 
 
-class Attention(nn.Module):
-    """
-    PyTorch nn.Module of an Attention mechanism for weighted averging of
-    hidden states produced by a RNN. Based on mechanisms discussed in
-    "Using millions of emoji occurrences to learn any-domain representations
-    for detecting sentiment, emotion and sarcasm (EMNLP 17)"
-    (code at https://github.com/huggingface/torchMoji)
-    and
-    "AutoBlock: A Hands-off Blocking Framework for Entity Matching (WSDM 20)"
-    """
-
-    def __init__(self, embedding_size):
-        super().__init__()
-
-        self.attention_weights = torch.nn.Parameter(
-            torch.FloatTensor(embedding_size).uniform_(-0.1, 0.1)
-        )
-        self.softmax = nn.Softmax(dim=1)
-
-    def forward(self, h, x, **kwargs):
-        scores = h.matmul(self.attention_weights)
-        scores = self.softmax(scores)
-        weighted = torch.mul(x, scores.unsqueeze(-1).expand_as(x))
-        representations = weighted.sum(dim=1)
-
-        return representations
-
-
 class MaskedAttention(nn.Module):
     """
     PyTorch nn.Module of an Attention mechanism for weighted averging of
@@ -141,7 +113,7 @@ class MaskedAttention(nn.Module):
 
 
 class MultitokenAttentionEmbed(nn.Module):
-    def __init__(self, embedding_net, use_mask):
+    def __init__(self, embedding_net):
         super().__init__()
 
         self.embedding_net = embedding_net
@@ -151,10 +123,7 @@ class MultitokenAttentionEmbed(nn.Module):
             bidirectional=True,
             batch_first=True,
         )
-        if use_mask:
-            self.attention_net = MaskedAttention(embedding_size=embedding_net.embedding_size)
-        else:
-            self.attention_net = Attention(embedding_size=embedding_net.embedding_size)
+        self.attention_net = MaskedAttention(embedding_size=embedding_net.embedding_size)
 
     def forward(self, x, sequence_lengths, **kwargs):
         x_tokens = x.unbind(dim=1)
@@ -176,11 +145,10 @@ class MultitokenAttentionEmbed(nn.Module):
 
 
 class MultitokenAverageEmbed(nn.Module):
-    def __init__(self, embedding_net, use_mask):
+    def __init__(self, embedding_net):
         super().__init__()
 
         self.embedding_net = embedding_net
-        self.use_mask = use_mask
 
     def forward(self, x, sequence_lengths, **kwargs):
         max_len = x.size(1)
@@ -192,19 +160,18 @@ class MultitokenAverageEmbed(nn.Module):
         x_list = [self.embedding_net(x) for x in x_list]
         x = torch.stack(x_list, dim=1)
 
-        if self.use_mask:
-            # Compute a mask for the attention on the padded sequences
-            # See e.g. https://discuss.pytorch.org/t/self-attention-on-words-and-masking/5671/5
-            idxes = torch.arange(0, max_len, out=torch.LongTensor(max_len)).unsqueeze(0)
-            mask = Variable((idxes < torch.LongTensor(sequence_lengths).unsqueeze(1)).float())
-            if x.data.is_cuda:
-                mask = mask.cuda()
+        # Compute a mask for the attention on the padded sequences
+        # See e.g. https://discuss.pytorch.org/t/self-attention-on-words-and-masking/5671/5
+        idxes = torch.arange(0, max_len, out=torch.LongTensor(max_len)).unsqueeze(0)
+        mask = Variable((idxes < torch.LongTensor(sequence_lengths).unsqueeze(1)).float())
+        if x.data.is_cuda:
+            mask = mask.cuda()
 
-            # apply mask and renormalize
-            masked_scores = scores * mask
-            att_sums = masked_scores.sum(dim=1, keepdim=True)  # sums per sequence
-            att_sums[att_sums == 0] = 1.0  # prevents division by zero on empty sequences
-            scores = masked_scores.div(att_sums)
+        # apply mask and renormalize
+        masked_scores = scores * mask
+        att_sums = masked_scores.sum(dim=1, keepdim=True)  # sums per sequence
+        att_sums[att_sums == 0] = 1.0  # prevents division by zero on empty sequences
+        scores = masked_scores.div(att_sums)
 
         # compute average
         weighted = torch.mul(x, scores.unsqueeze(-1).expand_as(x))
@@ -269,13 +236,9 @@ class BlockerNet(nn.Module):
                 FieldType.SEMANTIC_MULTITOKEN,
             ):
                 if attr_config.use_attention:
-                    self.embedding_net_dict[attr] = MultitokenAttentionEmbed(
-                        embedding_net, use_mask=attr_config.use_mask
-                    )
+                    self.embedding_net_dict[attr] = MultitokenAttentionEmbed(embedding_net)
                 else:
-                    self.embedding_net_dict[attr] = MultitokenAverageEmbed(
-                        embedding_net, use_mask=attr_config.use_mask
-                    )
+                    self.embedding_net_dict[attr] = MultitokenAverageEmbed(embedding_net)
             elif attr_config.field_type in (
                 FieldType.STRING,
                 FieldType.SEMANTIC_STRING,

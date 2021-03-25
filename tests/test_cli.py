@@ -277,7 +277,6 @@ def test_cli_train(
         "n_channels": 8,
         "embed_dropout_p": 0.2,
         "use_attention": True,
-        "use_mask": True,
     }
     if mode == "linkage":
         expected_left_id_set = {

@@ -48,7 +48,6 @@ class AttrConfig:
     n_channels: int
     embed_dropout_p: float
     use_attention: bool
-    use_mask: bool
 
     @property
     def is_multitoken(self):

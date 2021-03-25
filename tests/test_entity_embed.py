@@ -16,7 +16,6 @@ def test_set_embedding_size_when_using_semantic_attrs(
             "field_type": "SEMANTIC_MULTITOKEN",
             "tokenizer": "entity_embed.default_tokenizer",
             "vocab": "charngram.100d",
-            "use_mask": True,
         },
     }
 
