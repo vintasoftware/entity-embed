@@ -75,7 +75,6 @@ class TestSupConLoss(unittest.TestCase):
                     curr_lossA = torch.log(numeratorA / denominatorA)
                     item_lossA += curr_lossA
                 total_lossA += -item_lossA / len(pos_pairs)
-            total_lossA *= temperature
             total_lossA /= len(item_pos_pairs)
             rtol = 1e-2 if dtype == torch.float16 else 1e-5
             self.assertTrue(torch.isclose(lossA, total_lossA, rtol=rtol))

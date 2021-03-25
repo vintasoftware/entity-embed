@@ -4,20 +4,11 @@ import os
 import pytorch_lightning as pl
 import torch
 from n2 import HnswIndex
-from pytorch_lightning.utilities.cloud_io import load as pl_load
 from pytorch_metric_learning.distances import DotProductSimilarity
 from tqdm.auto import tqdm
 
-from .data_utils.datasets import ClusterDataset, RowDataset, collate_cluster_tensor_dict
-from .data_utils.utils import (
-    cluster_dict_to_id_pairs,
-    cluster_dicts_to_row_dicts,
-    count_cluster_dict_pairs,
-    id_pairs_to_cluster_mapping_and_dict,
-    row_dict_to_cluster_dict,
-    separate_dict_left_right,
-    split_clusters,
-)
+from .data_utils import utils
+from .data_utils.datasets import ClusterDataset, RowDataset
 from .evaluation import f1_score, pair_entity_ratio, precision_and_recall
 from .helpers import build_index_build_kwargs, build_index_search_kwargs, build_loader_kwargs
 from .losses import SupConLoss
@@ -37,9 +28,8 @@ class DeduplicationDataModule(pl.LightningDataModule):
         train_cluster_len,
         valid_cluster_len,
         test_cluster_len,
-        only_plural_clusters=True,
-        pair_loader_kwargs=None,
-        row_loader_kwargs=None,
+        train_loader_kwargs=None,
+        eval_loader_kwargs=None,
         random_seed=42,
     ):
         super().__init__()
@@ -51,9 +41,8 @@ class DeduplicationDataModule(pl.LightningDataModule):
         self.train_cluster_len = train_cluster_len
         self.valid_cluster_len = valid_cluster_len
         self.test_cluster_len = test_cluster_len
-        self.only_plural_clusters = only_plural_clusters
-        self.pair_loader_kwargs = build_loader_kwargs(pair_loader_kwargs)
-        self.row_loader_kwargs = build_loader_kwargs(row_loader_kwargs)
+        self.train_loader_kwargs = build_loader_kwargs(train_loader_kwargs)
+        self.eval_loader_kwargs = build_loader_kwargs(eval_loader_kwargs)
         self.random_seed = random_seed
 
         self.valid_true_pair_set = None
@@ -63,23 +52,26 @@ class DeduplicationDataModule(pl.LightningDataModule):
         self.test_row_dict = None
 
     def setup(self, stage=None):
-        cluster_dict = row_dict_to_cluster_dict(self.row_dict, self.cluster_attr)
+        cluster_dict = utils.row_dict_to_cluster_dict(self.row_dict, self.cluster_attr)
 
-        train_cluster_dict, valid_cluster_dict, test_cluster_dict = split_clusters(
+        train_cluster_dict, valid_cluster_dict, test_cluster_dict = utils.split_clusters(
             cluster_dict,
             train_len=self.train_cluster_len,
             valid_len=self.valid_cluster_len,
             test_len=self.test_cluster_len,
             random_seed=self.random_seed,
-            only_plural_clusters=self.only_plural_clusters,
         )
-        self.valid_true_pair_set = cluster_dict_to_id_pairs(valid_cluster_dict)
-        self.test_true_pair_set = cluster_dict_to_id_pairs(test_cluster_dict)
-        logger.info("Train pair count: %s", count_cluster_dict_pairs(train_cluster_dict))
+        self.valid_true_pair_set = utils.cluster_dict_to_id_pairs(valid_cluster_dict)
+        self.test_true_pair_set = utils.cluster_dict_to_id_pairs(test_cluster_dict)
+        logger.info("Train pair count: %s", utils.count_cluster_dict_pairs(train_cluster_dict))
         logger.info("Valid pair count: %s", len(self.valid_true_pair_set))
         logger.info("Test pair count: %s", len(self.test_true_pair_set))
 
-        self.train_row_dict, self.valid_row_dict, self.test_row_dict = cluster_dicts_to_row_dicts(
+        (
+            self.train_row_dict,
+            self.valid_row_dict,
+            self.test_row_dict,
+        ) = utils.cluster_dicts_to_row_dicts(
             row_dict=self.row_dict,
             train_cluster_dict=train_cluster_dict,
             valid_cluster_dict=valid_cluster_dict,
@@ -100,15 +92,18 @@ class DeduplicationDataModule(pl.LightningDataModule):
             row_dict=self.train_row_dict,
             cluster_attr=self.cluster_attr,
             row_numericalizer=self.row_numericalizer,
+            batch_size=self.batch_size,
+            max_cluster_size_in_batch=self.batch_size // 3,
+            # Combined with reload_dataloaders_every_epoch on Trainer,
+            # this re-shuffles training batches every epoch,
+            # therefore improving contrastive learning:
+            random_seed=self.random_seed + self.trainer.current_epoch,
         )
         train_cluster_loader = torch.utils.data.DataLoader(
             train_cluster_dataset,
-            batch_size=self.batch_size,
-            collate_fn=lambda cluster_batch: collate_cluster_tensor_dict(
-                cluster_batch, self.row_numericalizer
-            ),
-            shuffle=True,
-            **self.pair_loader_kwargs,
+            batch_size=None,  # batch size is set on ClusterDataset
+            shuffle=False,  # shuffling is implemented on ClusterDataset
+            **self.train_loader_kwargs,
         )
         return train_cluster_loader
 
@@ -122,7 +117,7 @@ class DeduplicationDataModule(pl.LightningDataModule):
             valid_row_dataset,
             batch_size=None,  # batch size is set on RowDataset
             shuffle=False,
-            **self.row_loader_kwargs,
+            **self.eval_loader_kwargs,
         )
         return valid_row_loader
 
@@ -136,7 +131,7 @@ class DeduplicationDataModule(pl.LightningDataModule):
             test_row_dataset,
             batch_size=None,  # batch size is set on RowDataset
             shuffle=False,
-            **self.row_loader_kwargs,
+            **self.eval_loader_kwargs,
         )
         return test_row_loader
 
@@ -155,12 +150,11 @@ class LinkageDataModule(pl.LightningDataModule):
         train_cluster_len=None,
         valid_cluster_len=None,
         test_cluster_len=None,
-        only_plural_clusters=True,
         train_true_pair_set=None,
         valid_true_pair_set=None,
         test_true_pair_set=None,
-        pair_loader_kwargs=None,
-        row_loader_kwargs=None,
+        train_loader_kwargs=None,
+        eval_loader_kwargs=None,
         random_seed=42,
     ):
         super().__init__()
@@ -171,9 +165,8 @@ class LinkageDataModule(pl.LightningDataModule):
         self.row_numericalizer = row_numericalizer
         self.batch_size = batch_size
         self.eval_batch_size = eval_batch_size
-        self.only_plural_clusters = only_plural_clusters
-        self.pair_loader_kwargs = build_loader_kwargs(pair_loader_kwargs)
-        self.row_loader_kwargs = build_loader_kwargs(row_loader_kwargs)
+        self.train_loader_kwargs = build_loader_kwargs(train_loader_kwargs)
+        self.eval_loader_kwargs = build_loader_kwargs(eval_loader_kwargs)
         self.random_seed = random_seed
         if train_true_pair_set:
             if valid_true_pair_set is None:
@@ -192,10 +185,9 @@ class LinkageDataModule(pl.LightningDataModule):
                 raise ValueError("train_cluster_len can't be None")
             if valid_cluster_len is None:
                 raise ValueError("valid_cluster_len can't be None")
-            if test_cluster_len is None:
-                raise ValueError("test_cluster_len can't be None")
+            __, cluster_dict = utils.id_pairs_to_cluster_mapping_and_dict(true_pair_set)
             self._split_clusters(
-                true_pair_set=true_pair_set,
+                cluster_dict=cluster_dict,
                 train_cluster_len=train_cluster_len,
                 valid_cluster_len=valid_cluster_len,
                 test_cluster_len=test_cluster_len,
@@ -205,12 +197,9 @@ class LinkageDataModule(pl.LightningDataModule):
                 raise ValueError("train_cluster_len can't be None")
             if valid_cluster_len is None:
                 raise ValueError("valid_cluster_len can't be None")
-            if test_cluster_len is None:
-                raise ValueError("test_cluster_len can't be None")
-            cluster_dict = row_dict_to_cluster_dict(row_dict, cluster_attr)
-            true_pair_set = cluster_dict_to_id_pairs(cluster_dict)
+            cluster_dict = utils.row_dict_to_cluster_dict(row_dict, cluster_attr)
             self._split_clusters(
-                true_pair_set=true_pair_set,
+                cluster_dict=cluster_dict,
                 train_cluster_len=train_cluster_len,
                 valid_cluster_len=valid_cluster_len,
                 test_cluster_len=test_cluster_len,
@@ -221,24 +210,29 @@ class LinkageDataModule(pl.LightningDataModule):
         self.valid_row_dict = None
         self.test_row_dict = None
 
-    def _split_clusters(
-        self, true_pair_set, train_cluster_len, valid_cluster_len, test_cluster_len
-    ):
-        __, cluster_dict = id_pairs_to_cluster_mapping_and_dict(true_pair_set)
-        train_cluster_dict, valid_cluster_dict, test_cluster_dict = split_clusters(
+    def _split_clusters(self, cluster_dict, train_cluster_len, valid_cluster_len, test_cluster_len):
+        train_cluster_dict, valid_cluster_dict, test_cluster_dict = utils.split_clusters(
             cluster_dict,
             train_len=train_cluster_len,
             valid_len=valid_cluster_len,
             test_len=test_cluster_len,
             random_seed=self.random_seed,
-            only_plural_clusters=self.only_plural_clusters,
         )
-        self.train_true_pair_set = cluster_dict_to_id_pairs(train_cluster_dict)
-        # must intersect with true_pair_set, to validate/test using only expected true pairs
-        # (respecting left_id_set and right_id_set,
-        #  and not considering left-left or right-right pairs)
-        self.valid_true_pair_set = cluster_dict_to_id_pairs(valid_cluster_dict) & true_pair_set
-        self.test_true_pair_set = cluster_dict_to_id_pairs(test_cluster_dict) & true_pair_set
+        self.train_true_pair_set = utils.cluster_dict_to_id_pairs(
+            cluster_dict=train_cluster_dict,
+            left_id_set=self.left_id_set,
+            right_id_set=self.right_id_set,
+        )
+        self.valid_true_pair_set = utils.cluster_dict_to_id_pairs(
+            cluster_dict=valid_cluster_dict,
+            left_id_set=self.left_id_set,
+            right_id_set=self.right_id_set,
+        )
+        self.test_true_pair_set = utils.cluster_dict_to_id_pairs(
+            cluster_dict=test_cluster_dict,
+            left_id_set=self.left_id_set,
+            right_id_set=self.right_id_set,
+        )
 
     def setup(self, stage=None):
         logger.info("Train pair count: %s", len(self.train_true_pair_set))
@@ -262,15 +256,18 @@ class LinkageDataModule(pl.LightningDataModule):
             row_dict=self.train_row_dict,
             true_pair_set=self.train_true_pair_set,
             row_numericalizer=self.row_numericalizer,
+            batch_size=self.batch_size,
+            max_cluster_size_in_batch=self.batch_size // 3,
+            # Combined with reload_dataloaders_every_epoch on Trainer,
+            # this re-shuffles training batches every epoch,
+            # therefore improving contrastive learning:
+            random_seed=self.random_seed + self.trainer.current_epoch,
         )
         train_cluster_loader = torch.utils.data.DataLoader(
             train_cluster_dataset,
-            batch_size=self.batch_size,
-            collate_fn=lambda cluster_batch: collate_cluster_tensor_dict(
-                cluster_batch, self.row_numericalizer
-            ),
-            shuffle=True,
-            **self.pair_loader_kwargs,
+            batch_size=None,  # batch size is set on ClusterDataset
+            shuffle=False,  # shuffling is implemented on ClusterDataset
+            **self.train_loader_kwargs,
         )
         return train_cluster_loader
 
@@ -284,7 +281,7 @@ class LinkageDataModule(pl.LightningDataModule):
             valid_row_dataset,
             batch_size=None,  # batch size is set on RowDataset
             shuffle=False,
-            **self.row_loader_kwargs,
+            **self.eval_loader_kwargs,
         )
         return valid_row_loader
 
@@ -298,12 +295,12 @@ class LinkageDataModule(pl.LightningDataModule):
             test_row_dataset,
             batch_size=None,  # batch size is set on RowDataset
             shuffle=False,
-            **self.row_loader_kwargs,
+            **self.eval_loader_kwargs,
         )
         return test_row_loader
 
     def separate_dict_left_right(self, d):
-        return separate_dict_left_right(
+        return utils.separate_dict_left_right(
             d, left_id_set=self.left_id_set, right_id_set=self.right_id_set
         )
 
@@ -311,7 +308,7 @@ class LinkageDataModule(pl.LightningDataModule):
 class EntityEmbed(pl.LightningModule):
     def __init__(
         self,
-        datamodule,
+        row_numericalizer,
         embedding_size=300,
         loss_cls=SupConLoss,
         loss_kwargs=None,
@@ -321,31 +318,30 @@ class EntityEmbed(pl.LightningModule):
         learning_rate=0.001,
         optimizer_kwargs=None,
         ann_k=10,
-        sim_threshold_list=[0.3, 0.5, 0.7, 0.9],
+        sim_threshold_list=[0.5, 0.7, 0.9],
+        eval_with_clusters=True,
         index_build_kwargs=None,
         index_search_kwargs=None,
     ):
         super().__init__()
-        self.row_numericalizer = datamodule.row_numericalizer
-        self.attr_info_dict = self.row_numericalizer.attr_info_dict
-        actual_embedding_size = embedding_size
-        for numericalize_info in self.attr_info_dict.values():
+        self.save_hyperparameters()
+
+        self.row_numericalizer = row_numericalizer
+        for numericalize_info in self.row_numericalizer.attr_info_dict.values():
             vocab = numericalize_info.vocab
             if vocab:
                 # We can assume that there's only one vocab type across the
                 # whole attr_info_dict, so we can stop the loop once we've
                 # found a numericalize_info with a vocab
-                actual_embedding_size = vocab.vectors.size(1)
-                if actual_embedding_size != embedding_size:
-                    logging.warning(
-                        f"Overriding embedding_size={embedding_size} "
-                        f"with embedding_size={actual_embedding_size} "
-                        "since you're using semantic fields"
+                valid_embedding_size = vocab.vectors.size(1)
+                if valid_embedding_size != embedding_size:
+                    raise ValueError(
+                        f"Invalid embedding_size={embedding_size}. "
+                        f"Expected {valid_embedding_size}, due to semantic fields."
                     )
-                break
-        self.embedding_size = actual_embedding_size
+        self.embedding_size = embedding_size
         self.blocker_net = BlockerNet(
-            self.attr_info_dict,
+            attr_info_dict=self.row_numericalizer.attr_info_dict,
             embedding_size=self.embedding_size,
         )
         self.losser = loss_cls(**loss_kwargs if loss_kwargs else {"temperature": 0.1})
@@ -360,25 +356,9 @@ class EntityEmbed(pl.LightningModule):
         self.optimizer_kwargs = optimizer_kwargs if optimizer_kwargs else {}
         self.ann_k = ann_k
         self.sim_threshold_list = sim_threshold_list
+        self.eval_with_clusters = eval_with_clusters
         self.index_build_kwargs = index_build_kwargs
         self.index_search_kwargs = index_search_kwargs
-
-        self.save_hyperparameters(
-            "embedding_size",
-            "loss_cls",
-            "miner_cls",
-            "optimizer_cls",
-            "learning_rate",
-            "optimizer_kwargs",
-            "ann_k",
-            "sim_threshold_list",
-            "index_build_kwargs",
-            "index_search_kwargs",
-        )
-
-        # set self._datamodule to access valid_row_dict and valid_true_pair_set
-        # in validation_epoch_end
-        self._datamodule = datamodule
 
     def forward(self, tensor_dict, sequence_length_dict):
         return self.blocker_net(tensor_dict, sequence_length_dict)
@@ -424,17 +404,25 @@ class EntityEmbed(pl.LightningModule):
             vector_list.extend(v.data.numpy() for v in embedding_batch.cpu().unbind())
         vector_dict = dict(zip(row_dict.keys(), vector_list))
 
-        ann_index = ANNEntityIndex(embedding_size=self.blocker_net.embedding_size)
+        ann_index = ANNEntityIndex(embedding_size=self.embedding_size)
         ann_index.insert_vector_dict(vector_dict)
         ann_index.build(index_build_kwargs=self.index_build_kwargs)
 
         metric_dict = {}
         for sim_threshold in self.sim_threshold_list:
-            found_pair_set = ann_index.search_pairs(
-                k=self.ann_k,
-                sim_threshold=sim_threshold,
-                index_search_kwargs=self.index_search_kwargs,
-            )
+            if self.eval_with_clusters:
+                __, cluster_dict = ann_index.search_clusters(
+                    k=self.ann_k,
+                    sim_threshold=sim_threshold,
+                    index_search_kwargs=self.index_search_kwargs,
+                )
+                found_pair_set = utils.cluster_dict_to_id_pairs(cluster_dict)
+            else:
+                found_pair_set = ann_index.search_pairs(
+                    k=self.ann_k,
+                    sim_threshold=sim_threshold,
+                    index_search_kwargs=self.index_search_kwargs,
+                )
 
             precision, recall = precision_and_recall(found_pair_set, true_pair_set)
             metric_dict.update(
@@ -453,9 +441,9 @@ class EntityEmbed(pl.LightningModule):
     def validation_epoch_end(self, outputs):
         metric_dict = self._evaluate_with_ann(
             set_name="valid",
-            row_dict=self._datamodule.valid_row_dict,
+            row_dict=self.trainer.datamodule.valid_row_dict,
             embedding_batch_list=outputs,
-            true_pair_set=self._datamodule.valid_true_pair_set,
+            true_pair_set=self.trainer.datamodule.valid_true_pair_set,
         )
         self.log_dict(metric_dict)
 
@@ -466,9 +454,9 @@ class EntityEmbed(pl.LightningModule):
     def test_epoch_end(self, outputs):
         metric_dict = self._evaluate_with_ann(
             set_name="test",
-            row_dict=self._datamodule.test_row_dict,
+            row_dict=self.trainer.datamodule.test_row_dict,
             embedding_batch_list=outputs,
-            true_pair_set=self._datamodule.test_true_pair_set,
+            true_pair_set=self.trainer.datamodule.test_true_pair_set,
         )
         self.log_dict(metric_dict)
 
@@ -486,15 +474,8 @@ class EntityEmbed(pl.LightningModule):
         row_dict,
         batch_size,
         loader_kwargs=None,
-        device=None,
         show_progress=True,
     ):
-        if device is None:
-            if torch.cuda.is_available():
-                device = torch.device("cuda")
-            else:
-                device = torch.device("cpu")
-
         row_dataset = RowDataset(
             row_numericalizer=self.row_numericalizer, row_dict=row_dict, batch_size=batch_size
         )
@@ -507,45 +488,67 @@ class EntityEmbed(pl.LightningModule):
             else {"num_workers": os.cpu_count(), "multiprocessing_context": "fork"},
         )
 
-        blocker_net = self.blocker_net.to(device)
-        blocker_net.eval()
-        with torch.no_grad():
-            with tqdm(
-                total=len(row_loader), desc="# batch embedding", disable=not show_progress
-            ) as p_bar:
-                vector_list = []
-                for i, (tensor_dict, sequence_length_dict) in enumerate(row_loader):
-                    tensor_dict = {attr: t.to(device) for attr, t in tensor_dict.items()}
-                    embeddings = blocker_net(tensor_dict, sequence_length_dict)
-                    vector_list.extend(v.data.numpy() for v in embeddings.cpu().unbind())
-                    p_bar.update(1)
+        self.freeze()
+
+        with tqdm(
+            total=len(row_loader), desc="# batch embedding", disable=not show_progress
+        ) as p_bar:
+            vector_list = []
+            for i, (tensor_dict, sequence_length_dict) in enumerate(row_loader):
+                tensor_dict = {attr: t.to(self.device) for attr, t in tensor_dict.items()}
+                embeddings = self.blocker_net(tensor_dict, sequence_length_dict)
+                vector_list.extend(v.data.numpy() for v in embeddings.cpu().unbind())
+                p_bar.update(1)
+
+        self.unfreeze()
 
         vector_dict = dict(zip(row_dict.keys(), vector_list))
         return vector_dict
 
+    def predict_clusters(
+        self,
+        row_dict,
+        batch_size,
+        ann_k,
+        sim_threshold,
+        loader_kwargs=None,
+        index_build_kwargs=None,
+        index_search_kwargs=None,
+        show_progress=True,
+    ):
+        vector_dict = self.predict(
+            row_dict=row_dict,
+            batch_size=batch_size,
+            loader_kwargs=loader_kwargs,
+            show_progress=show_progress,
+        )
+        ann_index = ANNEntityIndex(embedding_size=self.embedding_size)
+        ann_index.insert_vector_dict(vector_dict)
+        ann_index.build(index_build_kwargs=index_build_kwargs)
+        cluster_mapping, cluster_dict = ann_index.search_clusters(
+            k=ann_k, sim_threshold=sim_threshold, index_search_kwargs=index_search_kwargs
+        )
+        return cluster_mapping, cluster_dict
+
 
 def validate_best(trainer):
-    model = trainer.get_model()
-    ckpt_path = trainer.checkpoint_callback.best_model_path
-    if trainer.accelerator_backend is not None and not trainer.use_tpu:
-        trainer.accelerator_backend.barrier()
-    ckpt = pl_load(ckpt_path, map_location=lambda storage, loc: storage)
-    model.load_state_dict(ckpt["state_dict"])
+    logger.info("Validating best model...")
+    old_model = trainer.get_model()
+    model = old_model.load_from_checkpoint(trainer.checkpoint_callback.best_model_path)
+    model.freeze()
+    model.trainer = trainer
 
-    model.blocker_net.eval()
-    model.blocker_net.zero_grad()
-    with torch.no_grad():
-        embedding_batch_list = []
-        for tensor_dict, sequence_length_dict in model._datamodule.val_dataloader():
-            tensor_dict = {attr: t.to(model.device) for attr, t in tensor_dict.items()}
-            embeddings = model.blocker_net(tensor_dict, sequence_length_dict)
-            embedding_batch_list.append(embeddings)
-        metric_dict = model._evaluate_with_ann(
-            set_name="valid",
-            row_dict=model._datamodule.valid_row_dict,
-            embedding_batch_list=embedding_batch_list,
-            true_pair_set=model._datamodule.valid_true_pair_set,
-        )
+    embedding_batch_list = []
+    for tensor_dict, sequence_length_dict in trainer.datamodule.val_dataloader():
+        tensor_dict = {attr: t.to(model.device) for attr, t in tensor_dict.items()}
+        embeddings = model.blocker_net(tensor_dict, sequence_length_dict)
+        embedding_batch_list.append(embeddings)
+    metric_dict = model._evaluate_with_ann(
+        set_name="valid",
+        row_dict=trainer.datamodule.valid_row_dict,
+        embedding_batch_list=embedding_batch_list,
+        true_pair_set=trainer.datamodule.valid_true_pair_set,
+    )
 
     return metric_dict
 
@@ -556,9 +559,11 @@ class LinkageEmbed(EntityEmbed):
         for embedding_batch in embedding_batch_list:
             vector_list.extend(v.data.numpy() for v in embedding_batch.cpu().unbind())
         vector_dict = dict(zip(row_dict.keys(), vector_list))
-        left_vector_dict, right_vector_dict = self.datamodule.separate_dict_left_right(vector_dict)
+        left_vector_dict, right_vector_dict = self.trainer.datamodule.separate_dict_left_right(
+            vector_dict
+        )
 
-        ann_index = ANNLinkageIndex(embedding_size=self.blocker_net.embedding_size)
+        ann_index = ANNLinkageIndex(embedding_size=self.embedding_size)
         ann_index.insert_vector_dict(
             left_vector_dict=left_vector_dict, right_vector_dict=right_vector_dict
         )
@@ -568,13 +573,27 @@ class LinkageEmbed(EntityEmbed):
 
         metric_dict = {}
         for sim_threshold in self.sim_threshold_list:
-            found_pair_set = ann_index.search_pairs(
-                k=self.ann_k,
-                sim_threshold=sim_threshold,
-                left_vector_dict=left_vector_dict,
-                right_vector_dict=right_vector_dict,
-                index_search_kwargs=self.index_search_kwargs,
-            )
+            if self.eval_with_clusters:
+                __, cluster_dict = ann_index.search_clusters(
+                    k=self.ann_k,
+                    sim_threshold=sim_threshold,
+                    left_vector_dict=left_vector_dict,
+                    right_vector_dict=right_vector_dict,
+                    index_search_kwargs=self.index_search_kwargs,
+                )
+                found_pair_set = utils.cluster_dict_to_id_pairs(
+                    cluster_dict,
+                    left_id_set=self.trainer.datamodule.left_id_set,
+                    right_id_set=self.trainer.datamodule.right_id_set,
+                )
+            else:
+                found_pair_set = ann_index.search_pairs(
+                    k=self.ann_k,
+                    sim_threshold=sim_threshold,
+                    left_vector_dict=left_vector_dict,
+                    right_vector_dict=right_vector_dict,
+                    index_search_kwargs=self.index_search_kwargs,
+                )
 
             precision, recall = precision_and_recall(found_pair_set, true_pair_set)
             metric_dict.update(
@@ -597,20 +616,53 @@ class LinkageEmbed(EntityEmbed):
         right_id_set,
         batch_size,
         loader_kwargs=None,
-        device=None,
         show_progress=True,
     ):
         vector_dict = super().predict(
             row_dict=row_dict,
             batch_size=batch_size,
             loader_kwargs=loader_kwargs,
-            device=device,
             show_progress=show_progress,
         )
-        left_vector_dict, right_vector_dict = separate_dict_left_right(
+        left_vector_dict, right_vector_dict = utils.separate_dict_left_right(
             vector_dict, left_id_set=left_id_set, right_id_set=right_id_set
         )
         return left_vector_dict, right_vector_dict
+
+    def predict_clusters(
+        self,
+        row_dict,
+        left_id_set,
+        right_id_set,
+        batch_size,
+        ann_k,
+        sim_threshold,
+        loader_kwargs=None,
+        index_build_kwargs=None,
+        index_search_kwargs=None,
+        show_progress=True,
+    ):
+        left_vector_dict, right_vector_dict = self.predict(
+            row_dict=row_dict,
+            left_id_set=left_id_set,
+            right_id_set=right_id_set,
+            batch_size=batch_size,
+            loader_kwargs=loader_kwargs,
+            show_progress=show_progress,
+        )
+        ann_index = ANNLinkageIndex(embedding_size=self.embedding_size)
+        ann_index.insert_vector_dict(
+            left_vector_dict=left_vector_dict, right_vector_dict=right_vector_dict
+        )
+        ann_index.build(index_build_kwargs=index_build_kwargs)
+        cluster_mapping, cluster_dict = ann_index.search_clusters(
+            k=ann_k,
+            sim_threshold=sim_threshold,
+            left_vector_dict=left_vector_dict,
+            right_vector_dict=right_vector_dict,
+            index_search_kwargs=index_search_kwargs,
+        )
+        return cluster_mapping, cluster_dict
 
 
 class ANNEntityIndex:
@@ -645,12 +697,12 @@ class ANNEntityIndex:
 
         distance_threshold = 1 - sim_threshold
 
-        actual_index_search_kwargs = build_index_search_kwargs(index_search_kwargs)
+        index_search_kwargs = build_index_search_kwargs(index_search_kwargs)
         neighbor_and_distance_list_of_list = self.approx_knn_index.batch_search_by_ids(
             item_ids=self.vector_idx_to_id.keys(),
             k=k,
             include_distances=True,
-            **actual_index_search_kwargs,
+            **index_search_kwargs,
         )
 
         logger.debug("Search on approx_knn_index done, building found_pair_set now...")
@@ -670,6 +722,13 @@ class ANNEntityIndex:
         )
 
         return found_pair_set
+
+    def search_clusters(self, k, sim_threshold, index_search_kwargs=None):
+        found_pair_set = self.search_pairs(
+            k=k, sim_threshold=sim_threshold, index_search_kwargs=index_search_kwargs
+        )
+        cluster_mapping, cluster_dict = utils.id_pairs_to_cluster_mapping_and_dict(found_pair_set)
+        return cluster_mapping, cluster_dict
 
 
 class ANNLinkageIndex:
@@ -703,6 +762,7 @@ class ANNLinkageIndex:
         if sim_threshold > 1 or sim_threshold < 0:
             raise ValueError(f"sim_threshold={sim_threshold} must be <= 1 and >= 0")
 
+        index_search_kwargs = build_index_search_kwargs(index_search_kwargs)
         distance_threshold = 1 - sim_threshold
         all_pair_set = set()
 
@@ -713,12 +773,7 @@ class ANNLinkageIndex:
             logger.debug(f"Searching on approx_knn_index of dataset_name={dataset_name}...")
 
             neighbor_and_distance_list_of_list = index.approx_knn_index.batch_search_by_vectors(
-                vs=vector_dict.values(),
-                k=k,
-                include_distances=True,
-                **index_search_kwargs
-                if index_search_kwargs
-                else {"ef_search": -1, "num_threads": os.cpu_count()},
+                vs=vector_dict.values(), k=k, include_distances=True, **index_search_kwargs
             )
 
             logger.debug(
@@ -749,3 +804,16 @@ class ANNLinkageIndex:
         )
 
         return all_pair_set
+
+    def search_clusters(
+        self, k, sim_threshold, left_vector_dict, right_vector_dict, index_search_kwargs=None
+    ):
+        found_pair_set = self.search_pairs(
+            k=k,
+            sim_threshold=sim_threshold,
+            left_vector_dict=left_vector_dict,
+            right_vector_dict=right_vector_dict,
+            index_search_kwargs=index_search_kwargs,
+        )
+        cluster_mapping, cluster_dict = utils.id_pairs_to_cluster_mapping_and_dict(found_pair_set)
+        return cluster_mapping, cluster_dict

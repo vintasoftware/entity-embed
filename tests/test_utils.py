@@ -37,20 +37,20 @@ def test_enumerator_with_start():
 
 def test_row_dict_to_cluster_dict():
     row_dict = {
-        1: {"id": 1, "name": "foo"},
-        2: {"id": 2, "name": "bar"},
-        3: {"id": 3, "name": "foo"},
-        4: {"id": 4, "name": "foo"},
-        5: {"id": 5, "name": "bar"},
-        6: {"id": 6, "name": "baz"},
+        1: {"id": 1, "cluster": 0},
+        2: {"id": 2, "cluster": 1},
+        3: {"id": 3, "cluster": 0},
+        4: {"id": 4, "cluster": 0},
+        5: {"id": 5, "cluster": 1},
+        6: {"id": 6, "cluster": 2},
     }
 
-    cluster_dict = row_dict_to_cluster_dict(row_dict=row_dict, cluster_attr="name")
+    cluster_dict = row_dict_to_cluster_dict(row_dict=row_dict, cluster_attr="cluster")
 
     assert cluster_dict == {
-        "foo": [1, 3, 4],
-        "bar": [2, 5],
-        "baz": [6],
+        0: [1, 3, 4],
+        1: [2, 5],
+        2: [6],
     }
 
 
@@ -207,43 +207,6 @@ def test_split_clusters(mock_rnd_sample):
         1: [1, 2, 3],
         4: [4, 5],
         6: [6, 7, 8, 9, 10],
-        11: [11, 18],
-        12: [12, 13, 15],
-        14: [14, 16],
-    }
-
-    train_cluster_dict, valid_cluster_dict, test_cluster_dict = split_clusters(
-        cluster_dict=cluster_dict,
-        train_len=2,
-        valid_len=2,
-        test_len=2,
-        random_seed=40,
-    )
-
-    assert mock_rnd_sample.call_count == 2
-
-    assert train_cluster_dict == {
-        1: [1, 2, 3],
-        4: [4, 5],
-    }
-
-    assert valid_cluster_dict == {
-        6: [6, 7, 8, 9, 10],
-        11: [11, 18],
-    }
-
-    assert test_cluster_dict == {
-        12: [12, 13, 15],
-        14: [14, 16],
-    }
-
-
-@mock.patch("entity_embed.data_utils.utils.random.Random.sample", wraps=fake_rnd_sample)
-def test_split_clusters_only_plural_clusters_false(mock_rnd_sample):
-    cluster_dict = {
-        1: [1, 2, 3],
-        4: [4, 5],
-        6: [6, 7, 8, 9, 10],
         11: [11],
         12: [12, 13, 15],
         14: [14, 16],
@@ -255,7 +218,6 @@ def test_split_clusters_only_plural_clusters_false(mock_rnd_sample):
         valid_len=2,
         test_len=2,
         random_seed=40,
-        only_plural_clusters=False,
     )
 
     assert mock_rnd_sample.call_count == 2
@@ -297,9 +259,7 @@ def test_split_clusters_not_all_clusters_used(mock_rnd_sample, caplog):
         test_len=2,
         random_seed=40,
     )
-    assert (
-        "(train_len + valid_len + test_len)=6 is less than len(all_cluster_id_set)=7" in caplog.text
-    )
+    assert "(train_len + valid_len + test_len)=6 is less than len(cluster_dict)=7" in caplog.text
 
     assert mock_rnd_sample.call_count == 3
 
@@ -316,43 +276,6 @@ def test_split_clusters_not_all_clusters_used(mock_rnd_sample, caplog):
 
     assert test_cluster_dict == {
         12: [12, 13, 15],
-        14: [14, 16],
-    }
-
-
-@mock.patch("entity_embed.data_utils.utils.random.Random.sample", wraps=fake_rnd_sample)
-def test_split_clusters_only_plural_clusters(mock_rnd_sample):
-    cluster_dict = {
-        1: [1, 2, 3],
-        4: [4, 5],
-        6: [6, 7, 8, 9, 10],
-        11: [11],
-        12: [12, 13, 15],
-        14: [14, 16],
-    }
-
-    train_cluster_dict, valid_cluster_dict, test_cluster_dict = split_clusters(
-        cluster_dict=cluster_dict,
-        train_len=2,
-        valid_len=2,
-        test_len=2,
-        random_seed=40,
-    )
-
-    assert mock_rnd_sample.call_count == 2
-
-    # [11] should be removed since it's a cluster with only one id
-    assert train_cluster_dict == {
-        1: [1, 2, 3],
-        4: [4, 5],
-    }
-
-    assert valid_cluster_dict == {
-        6: [6, 7, 8, 9, 10],
-        12: [12, 13, 15],
-    }
-
-    assert test_cluster_dict == {
         14: [14, 16],
     }
 

@@ -1,0 +1,114 @@
+entity_embed_train \
+    --attr_info_json_filepath example-data/rl-example-attr-info.json \
+    --labeled_input_csv_filepath example-data/rl-example-labeled.csv \
+    --unlabeled_input_csv_filepath example-data/rl-example-unlabeled.csv \
+    --csv_encoding utf-8 \
+    --cluster_attr cluster \
+    --source_attr __source \
+    --left_source amazon \
+    --embedding_size 300 \
+    --lr 0.001 \
+    --train_len 200 \
+    --valid_len 200 \
+    --test_len 200 \
+    --max_epochs 100 \
+    --early_stopping_monitor valid_f1_at_0.5 \
+    --early_stopping_min_delta 0 \
+    --early_stopping_patience 20 \
+    --early_stopping_mode max \
+    --tb_save_dir tb_logs \
+    --tb_name rl-example \
+    --check_val_every_n_epoch 1 \
+    --batch_size 20 \
+    --eval_batch_size 50 \
+    --num_workers -1 \
+    --multiprocessing_context fork \
+    --sim_threshold 0.3 \
+    --sim_threshold 0.5 \
+    --sim_threshold 0.7 \
+    --sim_threshold 0.9 \
+    --ann_k 100 \
+    --m 64 \
+    --max_m0 64 \
+    --ef_construction 150 \
+    --ef_search -1 \
+    --random_seed 42 \
+    --model_save_dirpath rl-trained-models
+
+
+entity_embed_predict \
+    --model_save_filepath "rl-trained-models/..." \
+    --ann_k 100 \
+    --ef_search -1 \
+    --ef_construction 150 \
+    --max_m0 64 \
+    --m 64 \
+    --multiprocessing_context fork \
+    --num_workers -1 \
+    --sim_threshold 0.5 \
+    --source_attr __source \
+    --random_seed 42 \
+    --left_source amazon \
+    --eval_batch_size 50 \
+    --csv_encoding utf-8 \
+    --unlabeled_input_csv_filepath example-data/rl-example-unlabeled.csv \
+    --cluster_attr cluster \
+    --output_csv_filepath example-data/rl-example-unlabeled-prediction.csv \
+    --attr_info_json_filepath example-data/rl-example-attr-info.json
+
+
+##############################
+
+entity_embed_train \
+    --attr_info_json_filepath example-data/er-example-attr-info.json \
+    --labeled_input_csv_filepath example-data/er-example-labeled.csv \
+    --unlabeled_input_csv_filepath example-data/er-example-unlabeled.csv \
+    --csv_encoding utf-8 \
+    --cluster_attr cluster \
+    --embedding_size 300 \
+    --lr 0.001 \
+    --train_len 2000 \
+    --valid_len 2000 \
+    --test_len 4000 \
+    --max_epochs 100 \
+    --early_stopping_monitor valid_f1_at_0.7 \
+    --early_stopping_min_delta 0 \
+    --early_stopping_patience 20 \
+    --early_stopping_mode max \
+    --tb_save_dir tb_logs \
+    --tb_name er-example \
+    --check_val_every_n_epoch 1 \
+    --batch_size 20 \
+    --eval_batch_size 50 \
+    --num_workers -1 \
+    --multiprocessing_context fork \
+    --sim_threshold 0.3 \
+    --sim_threshold 0.5 \
+    --sim_threshold 0.7 \
+    --sim_threshold 0.9 \
+    --ann_k 100 \
+    --m 64 \
+    --max_m0 64 \
+    --ef_construction 150 \
+    --ef_search -1 \
+    --random_seed 42 \
+    --model_save_dirpath er-trained-models
+
+
+entity_embed_predict \
+    --model_save_filepath "er-trained-models/..." \
+    --ann_k 100 \
+    --ef_search -1 \
+    --ef_construction 150 \
+    --max_m0 64 \
+    --m 64 \
+    --multiprocessing_context fork \
+    --num_workers -1 \
+    --sim_threshold 0.7 \
+    --random_seed 42 \
+    --eval_batch_size 50 \
+    --csv_encoding utf-8 \
+    --unlabeled_input_csv_filepath example-data/er-example-unlabeled.csv \
+    --cluster_attr cluster \
+    --output_csv_filepath example-data/er-example-unlabeled-prediction.csv \
+    --attr_info_json_filepath example-data/er-example-attr-info.json

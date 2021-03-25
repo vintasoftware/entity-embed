@@ -10,6 +10,9 @@ import torch
 from torchtext.vocab import Vocab
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_ALPHABET = list("0123456789abcdefghijklmnopqrstuvwxyz!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~ ")
+
 AVAILABLE_VOCABS = [
     "charngram.100d",
     "fasttext.en.300d",

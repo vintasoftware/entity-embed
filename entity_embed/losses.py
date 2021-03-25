@@ -25,7 +25,7 @@ class SupConLoss(GenericPairLoss):
             mean_log_prob_pos = (pos_mask * log_prob).sum(dim=1) / (
                 pos_mask.sum(dim=1) + c_f.small_val(mat.dtype)
             )
-            losses = self.temperature * mean_log_prob_pos
+            losses = mean_log_prob_pos
 
             return {
                 "loss": {

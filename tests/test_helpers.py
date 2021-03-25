@@ -43,8 +43,8 @@ def test_build_index_search_kwargs(mock_cpu_count):
     index_search_kwargs = build_index_search_kwargs()
     assert index_search_kwargs == {"ef_search": -1, "num_threads": 8}
 
-    index_search_kwargs = build_index_search_kwargs({"ef_search": 2, "num_threads": None})
+    index_search_kwargs = build_index_search_kwargs({"ef_search": 2, "n_threads": None})
     assert index_search_kwargs == {"ef_search": 2, "num_threads": 8}
 
-    index_search_kwargs = build_index_search_kwargs({"num_threads": 16})
+    index_search_kwargs = build_index_search_kwargs({"n_threads": 16})
     assert index_search_kwargs == {"ef_search": -1, "num_threads": 16}

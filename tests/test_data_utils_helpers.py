@@ -64,7 +64,7 @@ def test_row_numericalizer_parse_from_dict():
         },
     }
 
-    row_numericalizer = AttrInfoDictParser.from_dict(attr_info_dict, row_dict=row_dict)
+    row_numericalizer = AttrInfoDictParser.from_dict(attr_info_dict, row_list=row_dict.values())
     _validate_base_row_numericalizer(row_numericalizer)
 
 
@@ -77,25 +77,25 @@ def test_row_numericalizer_parse_from_json_file():
         }
     }
 
-    row_dict = {
-        "1": {
+    row_list = [
+        {
             "id": "1",
             "name": "foo product",
             "price": 1.00,
             "source": "bar",
         },
-        "2": {
+        {
             "id": "2",
             "name": "the foo product from world",
             "price": 1.20,
             "source": "baz",
         },
-    }
+    ]
 
     with tempfile.NamedTemporaryFile("w+") as f:
         json.dump(attr_info_dict, f)
         f.seek(0)  # Must move the pointer back to beginning since we aren't re-opening the file
-        row_numericalizer = AttrInfoDictParser.from_json(f, row_dict=row_dict)
+        row_numericalizer = AttrInfoDictParser.from_json(f, row_list=row_list)
         _validate_base_row_numericalizer(row_numericalizer)
 
 
@@ -125,20 +125,7 @@ def test_row_numericalizer_parse_raises_when_attr_info_is_empty():
     }
 
     with pytest.raises(ValueError):
-        AttrInfoDictParser.from_dict(attr_info_dict, row_dict=row_dict)
-
-
-def test_row_numericalizer_parse_raises_when_row_dict_and_max_str_len_are_none():
-    attr_info_dict = {
-        "name": {
-            "field_type": "MULTITOKEN",
-            "tokenizer": "entity_embed.default_tokenizer",
-            "max_str_len": None,
-        },
-    }
-
-    with pytest.raises(ValueError):
-        AttrInfoDictParser.from_dict(attr_info_dict)
+        AttrInfoDictParser.from_dict(attr_info_dict, row_list=row_dict.values())
 
 
 def test_attr_with_wrong_field_type_raises():
@@ -151,7 +138,7 @@ def test_attr_with_wrong_field_type_raises():
     }
 
     with pytest.raises(KeyError):
-        AttrInfoDictParser.from_dict(attr_info_dict)
+        AttrInfoDictParser.from_dict(attr_info_dict, row_list=[{"name": "foo"}])
 
 
 @mock.patch("entity_embed.data_utils.helpers.Vocab.load_vectors")
@@ -179,7 +166,7 @@ def test_row_numericalizer_parse_with_attr_with_semantic_field_type(mock_load_ve
         },
     }
 
-    row_numericalizer = AttrInfoDictParser.from_dict(attr_info_dict, row_dict=row_dict)
+    row_numericalizer = AttrInfoDictParser.from_dict(attr_info_dict, row_list=row_dict.values())
 
     mock_load_vectors.assert_called_once_with("fasttext.en.300d")
     name_attr_info = row_numericalizer.attr_info_dict["name"]
@@ -217,7 +204,7 @@ def test_attr_info_dict_with_different_vocab_types_raises(mock_load_vectors):
     }
 
     with pytest.raises(ValueError):
-        AttrInfoDictParser.from_dict(attr_info_dict, row_dict=row_dict)
+        AttrInfoDictParser.from_dict(attr_info_dict, row_list=row_dict.values())
 
     mock_load_vectors.assert_called_once_with("fasttext.en.300d")
 
@@ -247,7 +234,7 @@ def test_attr_with_semantic_field_type_without_vocab_raises():
     }
 
     with pytest.raises(ValueError):
-        AttrInfoDictParser.from_dict(attr_info_dict, row_dict=row_dict)
+        AttrInfoDictParser.from_dict(attr_info_dict, row_list=row_dict.values())
 
 
 def test_row_numericalizer_parse_multiple_attr_for_same_source_attr():
@@ -279,7 +266,7 @@ def test_row_numericalizer_parse_multiple_attr_for_same_source_attr():
         },
     }
 
-    row_numericalizer = AttrInfoDictParser.from_dict(attr_info_dict, row_dict=row_dict)
+    row_numericalizer = AttrInfoDictParser.from_dict(attr_info_dict, row_list=row_dict.values())
 
     assert isinstance(row_numericalizer, RowNumericalizer)
 
@@ -325,7 +312,7 @@ def test_row_numericalizer_parse_multiple_attr_with_source_attr_as_key():
         },
     }
 
-    row_numericalizer = AttrInfoDictParser.from_dict(attr_info_dict, row_dict=row_dict)
+    row_numericalizer = AttrInfoDictParser.from_dict(attr_info_dict, row_list=row_dict.values())
 
     assert isinstance(row_numericalizer, RowNumericalizer)
 
@@ -372,7 +359,7 @@ def test_row_numericalizer_parse_multiple_attr_without_source_attr_raises():
     }
 
     with pytest.raises(ValueError):
-        AttrInfoDictParser.from_dict(attr_info_dict, row_dict=row_dict)
+        AttrInfoDictParser.from_dict(attr_info_dict, row_list=row_dict.values())
 
 
 @mock.patch("entity_embed.data_utils.helpers.Vocab.load_vectors")
@@ -409,7 +396,7 @@ def test_row_numericalizer_parse_multiple_attr_for_same_source_attr_semantic_fie
         },
     }
 
-    row_numericalizer = AttrInfoDictParser.from_dict(attr_info_dict, row_dict=row_dict)
+    row_numericalizer = AttrInfoDictParser.from_dict(attr_info_dict, row_list=row_dict.values())
     assert isinstance(row_numericalizer, RowNumericalizer)
 
     mock_load_vectors.assert_has_calls(
@@ -468,4 +455,4 @@ def test_row_numericalizer_parse_multiple_attr_for_same_source_attr_semantic_fie
     }
 
     with pytest.raises(ValueError):
-        AttrInfoDictParser.from_dict(attr_info_dict, row_dict=row_dict)
+        AttrInfoDictParser.from_dict(attr_info_dict, row_list=row_dict.values())
