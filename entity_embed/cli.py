@@ -110,7 +110,7 @@ def _build_datamodule(row_dict, row_numericalizer, kwargs):
         datamodule_cls = DeduplicationDataModule
 
     if kwargs.get("num_workers") or kwargs.get("multiprocessing_context"):
-        for k in ["pair_loader_kwargs", "row_loader_kwargs"]:
+        for k in ["train_loader_kwargs", "eval_loader_kwargs"]:
             datamodule_args[k] = {}
             for inner_k in ["num_workers", "multiprocessing_context"]:
                 if kwargs[inner_k]:

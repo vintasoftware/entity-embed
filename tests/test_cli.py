@@ -369,10 +369,10 @@ def test_cli_train(
     if mode == "linkage":
         assert datamodule.left_id_set == expected_left_id_set
         assert datamodule.right_id_set == expected_right_id_set
-    assert datamodule.pair_loader_kwargs == {
+    assert datamodule.train_loader_kwargs == {
         k: expected_args_dict[k] for k in ["num_workers", "multiprocessing_context"]
     }
-    assert datamodule.row_loader_kwargs == {
+    assert datamodule.eval_loader_kwargs == {
         k: expected_args_dict[k] for k in ["num_workers", "multiprocessing_context"]
     }
     assert datamodule.random_seed == expected_args_dict["random_seed"]
@@ -591,11 +591,11 @@ def test_build_datamodule(mode):
             if mode == "linkage"
             else {}
         ),
-        "pair_loader_kwargs": {
+        "train_loader_kwargs": {
             "num_workers": 16,
             "multiprocessing_context": "fork",
         },
-        "row_loader_kwargs": {
+        "eval_loader_kwargs": {
             "num_workers": 16,
             "multiprocessing_context": "fork",
         },

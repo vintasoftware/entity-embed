@@ -28,8 +28,8 @@ class DeduplicationDataModule(pl.LightningDataModule):
         train_cluster_len,
         valid_cluster_len,
         test_cluster_len,
-        pair_loader_kwargs=None,
-        row_loader_kwargs=None,
+        train_loader_kwargs=None,
+        eval_loader_kwargs=None,
         random_seed=42,
     ):
         super().__init__()
@@ -41,8 +41,8 @@ class DeduplicationDataModule(pl.LightningDataModule):
         self.train_cluster_len = train_cluster_len
         self.valid_cluster_len = valid_cluster_len
         self.test_cluster_len = test_cluster_len
-        self.pair_loader_kwargs = build_loader_kwargs(pair_loader_kwargs)
-        self.row_loader_kwargs = build_loader_kwargs(row_loader_kwargs)
+        self.train_loader_kwargs = build_loader_kwargs(train_loader_kwargs)
+        self.eval_loader_kwargs = build_loader_kwargs(eval_loader_kwargs)
         self.random_seed = random_seed
 
         self.valid_true_pair_set = None
@@ -103,7 +103,7 @@ class DeduplicationDataModule(pl.LightningDataModule):
             train_cluster_dataset,
             batch_size=None,  # batch size is set on ClusterDataset
             shuffle=False,  # shuffling is implemented on ClusterDataset
-            **self.pair_loader_kwargs,
+            **self.train_loader_kwargs,
         )
         return train_cluster_loader
 
@@ -117,7 +117,7 @@ class DeduplicationDataModule(pl.LightningDataModule):
             valid_row_dataset,
             batch_size=None,  # batch size is set on RowDataset
             shuffle=False,
-            **self.row_loader_kwargs,
+            **self.eval_loader_kwargs,
         )
         return valid_row_loader
 
@@ -131,7 +131,7 @@ class DeduplicationDataModule(pl.LightningDataModule):
             test_row_dataset,
             batch_size=None,  # batch size is set on RowDataset
             shuffle=False,
-            **self.row_loader_kwargs,
+            **self.eval_loader_kwargs,
         )
         return test_row_loader
 
@@ -153,8 +153,8 @@ class LinkageDataModule(pl.LightningDataModule):
         train_true_pair_set=None,
         valid_true_pair_set=None,
         test_true_pair_set=None,
-        pair_loader_kwargs=None,
-        row_loader_kwargs=None,
+        train_loader_kwargs=None,
+        eval_loader_kwargs=None,
         random_seed=42,
     ):
         super().__init__()
@@ -165,8 +165,8 @@ class LinkageDataModule(pl.LightningDataModule):
         self.row_numericalizer = row_numericalizer
         self.batch_size = batch_size
         self.eval_batch_size = eval_batch_size
-        self.pair_loader_kwargs = build_loader_kwargs(pair_loader_kwargs)
-        self.row_loader_kwargs = build_loader_kwargs(row_loader_kwargs)
+        self.train_loader_kwargs = build_loader_kwargs(train_loader_kwargs)
+        self.eval_loader_kwargs = build_loader_kwargs(eval_loader_kwargs)
         self.random_seed = random_seed
         if train_true_pair_set:
             if valid_true_pair_set is None:
@@ -267,7 +267,7 @@ class LinkageDataModule(pl.LightningDataModule):
             train_cluster_dataset,
             batch_size=None,  # batch size is set on ClusterDataset
             shuffle=False,  # shuffling is implemented on ClusterDataset
-            **self.pair_loader_kwargs,
+            **self.train_loader_kwargs,
         )
         return train_cluster_loader
 
@@ -281,7 +281,7 @@ class LinkageDataModule(pl.LightningDataModule):
             valid_row_dataset,
             batch_size=None,  # batch size is set on RowDataset
             shuffle=False,
-            **self.row_loader_kwargs,
+            **self.eval_loader_kwargs,
         )
         return valid_row_loader
 
@@ -295,7 +295,7 @@ class LinkageDataModule(pl.LightningDataModule):
             test_row_dataset,
             batch_size=None,  # batch size is set on RowDataset
             shuffle=False,
-            **self.row_loader_kwargs,
+            **self.eval_loader_kwargs,
         )
         return test_row_loader
 
