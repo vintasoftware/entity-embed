@@ -161,5 +161,12 @@ release-backup-*/
 # Notebooks Benchmark Data
 /notebooks/data/
 
+# Generated Example Data
+/example-data/
+
+# Example trained models
+/er-trained-models/
+/rl-trained-models/
+
 # PyTorch Lightning logs
 /lightning_logs/
