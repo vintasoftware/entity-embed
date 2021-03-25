@@ -1,20 +1,18 @@
 import csv
+import json
 import logging
 import os
 import random
-import statistics
 
 import click
 import numpy as np
 import pytorch_lightning as pl
 import torch
-from pytorch_lightning.callbacks import ModelCheckpoint
-from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 from pytorch_lightning.loggers import TensorBoardLogger
 
 from . import DeduplicationDataModule, EntityEmbed, LinkageDataModule, LinkageEmbed, validate_best
-from .data_utils import utils
 from .data_utils.attr_config_parser import AttrConfigDictParser
+from .early_stopping import EarlyStoppingMinEpochs, ModelCheckpointMinEpochs
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -39,39 +37,30 @@ def _set_random_seeds(kwargs):
 
 def _build_row_dict(csv_filepath, kwargs):
     csv_encoding = kwargs["csv_encoding"]
-    cluster_attr = kwargs["cluster_attr"]
+    cluster_attr = kwargs.get("cluster_attr")
     row_dict = {}
 
     with open(csv_filepath, "r", newline="", encoding=csv_encoding) as row_dict_csv_file:
-        for id_, row in enumerate(csv.DictReader(row_dict_csv_file)):
+        for row in csv.DictReader(row_dict_csv_file):
             if cluster_attr in row:
                 # force cluster_attr to be an int, if there's a cluster_attr
                 row[cluster_attr] = int(row[cluster_attr])
-            row_dict[id_] = row
+            # force id attr to be an int
+            row["id"] = int(row["id"])
+            row_dict[row["id"]] = row
 
     logger.info(f"Finished reading {csv_filepath}")
     return row_dict
 
 
 def _build_row_numericalizer(row_list, kwargs):
-    attr_config_json_filepath = kwargs["attr_config_json_filepath"]
+    attr_config_json = kwargs["attr_config_json"]
 
-    with open(attr_config_json_filepath, "r") as attr_config_json_file:
+    with open(attr_config_json, "r") as attr_config_json_file:
         row_numericalizer = AttrConfigDictParser.from_json(attr_config_json_file, row_list=row_list)
 
-    logger.info(f"Finished reading {attr_config_json_filepath}")
+    logger.info(f"Finished reading {attr_config_json}")
     return row_numericalizer
-
-
-def _build_left_right_id_sets(row_dict, source_attr, left_source):
-    left_id_set = set()
-    right_id_set = set()
-    for id, row in row_dict.items():
-        if row[source_attr] == left_source:
-            left_id_set.add(id)
-        else:
-            right_id_set.add(id)
-    return left_id_set, right_id_set
 
 
 def _is_record_linkage(kwargs):
@@ -86,25 +75,25 @@ def _is_record_linkage(kwargs):
         return bool(left_source)
 
 
-def _build_datamodule(row_dict, row_numericalizer, kwargs):
+def _build_datamodule(train_row_dict, valid_row_dict, test_row_dict, row_numericalizer, kwargs):
     datamodule_args = {
-        "row_dict": row_dict,
+        "train_row_dict": train_row_dict,
+        "valid_row_dict": valid_row_dict,
+        "test_row_dict": test_row_dict,
         "cluster_attr": kwargs["cluster_attr"],
         "row_numericalizer": row_numericalizer,
         "batch_size": kwargs["batch_size"],
         "eval_batch_size": kwargs["eval_batch_size"],
-        "train_cluster_len": kwargs["train_len"],
-        "valid_cluster_len": kwargs["valid_len"],
-        "test_cluster_len": kwargs["test_len"],
     }
 
     if _is_record_linkage(kwargs):
-        left_id_set, right_id_set = _build_left_right_id_sets(
-            row_dict, kwargs["source_attr"], kwargs["left_source"]
-        )
-        datamodule_args["left_id_set"] = left_id_set
-        datamodule_args["right_id_set"] = right_id_set
         datamodule_cls = LinkageDataModule
+        datamodule_args.update(
+            {
+                "source_attr": kwargs["source_attr"],
+                "left_source": kwargs["left_source"],
+            }
+        )
     else:
         datamodule_cls = DeduplicationDataModule
 
@@ -123,12 +112,18 @@ def _build_datamodule(row_dict, row_numericalizer, kwargs):
 
 
 def _build_model(row_numericalizer, kwargs):
+    model_args = {"row_numericalizer": row_numericalizer, "eval_with_clusters": True}
+
     if _is_record_linkage(kwargs):
         model_cls = LinkageEmbed
+        model_args.update(
+            {
+                "source_attr": kwargs["source_attr"],
+                "left_source": kwargs["left_source"],
+            }
+        )
     else:
         model_cls = EntityEmbed
-
-    model_args = {"row_numericalizer": row_numericalizer, "eval_with_clusters": True}
 
     if kwargs["embedding_size"]:
         model_args["embedding_size"] = kwargs["embedding_size"]
@@ -158,12 +153,14 @@ def _build_model(row_numericalizer, kwargs):
 
 
 def _build_trainer(kwargs):
+    min_epochs = kwargs["min_epochs"]
     monitor = kwargs["early_stopping_monitor"]
     min_delta = kwargs["early_stopping_min_delta"]
     patience = kwargs["early_stopping_patience"]
     mode = kwargs["early_stopping_mode"] or ("min" if "pair_entity_ratio_at" in monitor else "max")
 
-    early_stop_callback = EarlyStopping(
+    early_stop_callback = EarlyStoppingMinEpochs(
+        min_epochs=min_epochs,
         monitor=monitor,
         min_delta=min_delta,
         patience=patience,
@@ -171,16 +168,18 @@ def _build_trainer(kwargs):
         mode=mode,
     )
 
-    checkpoint_callback = ModelCheckpoint(
+    checkpoint_callback = ModelCheckpointMinEpochs(
+        min_epochs=min_epochs,
         monitor=monitor,
         save_top_k=1,
         mode=mode,
         verbose=True,
-        dirpath=kwargs["model_save_dirpath"],
+        dirpath=kwargs["model_save_dir"],
     )
 
     trainer_args = {
         "gpus": 1,
+        "min_epochs": min_epochs,
         "max_epochs": kwargs["max_epochs"],
         "check_val_every_n_epoch": kwargs["check_val_every_n_epoch"],
         "callbacks": [early_stop_callback, checkpoint_callback],
@@ -203,20 +202,32 @@ def _build_trainer(kwargs):
 
 @click.command()
 @click.option(
-    "--attr_config_json_filepath",
+    "--attr_config_json",
     type=str,
     required=True,
     help="Path of the JSON configuration file "
     "that defines how columns will be processed by the neural network",
 )
 @click.option(
-    "--labeled_input_csv_filepath",
+    "--train_csv",
     type=str,
     required=True,
-    help="Path of the LABELED input dataset CSV file",
+    help="Path of the TRAIN input dataset CSV file",
 )
 @click.option(
-    "--unlabeled_input_csv_filepath",
+    "--valid_csv",
+    type=str,
+    required=True,
+    help="Path of the VALID input dataset CSV file",
+)
+@click.option(
+    "--test_csv",
+    type=str,
+    required=True,
+    help="Path of the TEST input dataset CSV file",
+)
+@click.option(
+    "--unlabeled_csv",
     type=str,
     required=True,
     help="Path of the UNLABELED input dataset CSV file",
@@ -249,30 +260,13 @@ def _build_trainer(kwargs):
     "--embedding_size", type=int, default=300, help="Embedding Dimensionality, for example: 300"
 )
 @click.option("--lr", type=float, default=0.001, help="Learning Rate for training")
-@click.option(
-    "--train_len",
-    type=int,
-    required=True,
-    help="Number of CLUSTERS from the dataset to use for training",
-)
-@click.option(
-    "--valid_len",
-    type=int,
-    required=True,
-    help="Number of CLUSTERS from the dataset to use for validation",
-)
-@click.option(
-    "--test_len",
-    type=int,
-    help="Number of CLUSTERS from the dataset to use for testing. "
-    "It not specified, will use the remaining clusters",
-)
-@click.option("--max_epochs", type=int, required=True, help="Max number of epochs to run")
+@click.option("--min_epochs", type=int, default=5, help="Min number of epochs to run")
+@click.option("--max_epochs", type=int, default=100, help="Max number of epochs to run")
 @click.option(
     "--early_stopping_monitor",
     type=str,
-    required=True,
-    help="Metric to be monitored for early stoping. E.g. `valid_f1_at_0.7`. "
+    default="valid_recall_at_0.3",
+    help="Metric to be monitored for early stoping. E.g. `valid_recall_at_0.3`. "
     "The float on `at_X` must be one of `sim_threshold`",
 )
 @click.option(
@@ -284,12 +278,13 @@ def _build_trainer(kwargs):
 @click.option(
     "--early_stopping_patience",
     type=int,
-    required=True,
+    default=20,
     help="Number of validation runs with no improvement after which training will be stopped",
 )
 @click.option(
     "--early_stopping_mode",
     type=str,
+    default="max",
     help="Mode for early stopping. Values are `max` or `min`. "
     "Based on `early_stopping_monitor` metric",
 )
@@ -339,7 +334,7 @@ def _build_trainer(kwargs):
 @click.option("--ef_search", type=int, help="Parameter for the ANN. See N2 docs: n2.readthedocs.io")
 @click.option("--random_seed", type=int, help="Random seed to help with reproducibility")
 @click.option(
-    "--model_save_dirpath",
+    "--model_save_dir",
     type=str,
     help="Directory path where to save the best validation model checkpoint"
     " using PyTorch Lightning",
@@ -352,17 +347,24 @@ def train(**kwargs):
     """
     _fix_workers_kwargs(kwargs)
     _set_random_seeds(kwargs)
-    row_dict_labeled = _build_row_dict(
-        csv_filepath=kwargs["labeled_input_csv_filepath"], kwargs=kwargs
-    )
-    row_dict_unlabeled = _build_row_dict(
-        csv_filepath=kwargs["unlabeled_input_csv_filepath"], kwargs=kwargs
-    )
-    row_list_all = list(row_dict_labeled.values()) + list(row_dict_unlabeled.values())
+    train_row_dict = _build_row_dict(csv_filepath=kwargs["train_csv"], kwargs=kwargs)
+    valid_row_dict = _build_row_dict(csv_filepath=kwargs["valid_csv"], kwargs=kwargs)
+    test_row_dict = _build_row_dict(csv_filepath=kwargs["test_csv"], kwargs=kwargs)
+    unlabeled_row_dict = _build_row_dict(csv_filepath=kwargs["unlabeled_csv"], kwargs=kwargs)
+    row_list_all = [
+        *train_row_dict.values(),
+        *valid_row_dict.values(),
+        *test_row_dict.values(),
+        *unlabeled_row_dict.values(),
+    ]
     row_numericalizer = _build_row_numericalizer(row_list=row_list_all, kwargs=kwargs)
-    del row_list_all, row_dict_unlabeled
+    del row_list_all, unlabeled_row_dict
     datamodule = _build_datamodule(
-        row_dict=row_dict_labeled, row_numericalizer=row_numericalizer, kwargs=kwargs
+        train_row_dict=train_row_dict,
+        valid_row_dict=valid_row_dict,
+        test_row_dict=test_row_dict,
+        row_numericalizer=row_numericalizer,
+        kwargs=kwargs,
     )
     model = _build_model(row_numericalizer=row_numericalizer, kwargs=kwargs)
 
@@ -389,13 +391,12 @@ def _load_model(kwargs):
     return model_cls.load_from_checkpoint(kwargs["model_save_filepath"], datamodule=None)
 
 
-def _assign_clusters(row_dict, model, kwargs):
+def _predict_pairs(row_dict, model, kwargs):
     eval_batch_size = kwargs["eval_batch_size"]
     num_workers = kwargs["num_workers"]
     multiprocessing_context = kwargs["multiprocessing_context"]
     ann_k = kwargs["ann_k"]
     sim_threshold = kwargs["sim_threshold"]
-    cluster_attr = kwargs["cluster_attr"]
 
     index_build_kwargs = {}
     for k in ["m", "max_m0", "ef_construction", "n_threads"]:
@@ -408,13 +409,8 @@ def _assign_clusters(row_dict, model, kwargs):
             index_search_kwargs[k] = kwargs[k]
 
     if _is_record_linkage(kwargs):
-        left_id_set, right_id_set = _build_left_right_id_sets(
-            row_dict, kwargs["source_attr"], kwargs["left_source"]
-        )
-        cluster_mapping, cluster_dict = model.predict_clusters(
+        found_pair_set = model.predict_pairs(
             row_dict=row_dict,
-            left_id_set=left_id_set,
-            right_id_set=right_id_set,
             batch_size=eval_batch_size,
             ann_k=ann_k,
             sim_threshold=sim_threshold,
@@ -426,7 +422,7 @@ def _assign_clusters(row_dict, model, kwargs):
             index_search_kwargs=index_search_kwargs,
         )
     else:
-        cluster_mapping, cluster_dict = model.predict_clusters(
+        found_pair_set = model.predict_pairs(
             row_dict=row_dict,
             batch_size=eval_batch_size,
             ann_k=ann_k,
@@ -438,30 +434,12 @@ def _assign_clusters(row_dict, model, kwargs):
             index_build_kwargs=index_build_kwargs,
             index_search_kwargs=index_search_kwargs,
         )
-
-    utils.assign_clusters(
-        row_dict=row_dict, cluster_attr=cluster_attr, cluster_mapping=cluster_mapping
-    )
-    return cluster_mapping, cluster_dict
+    return list(found_pair_set)
 
 
-def _log_cluster_size_stats(cluster_dict):
-    cluster_size_list = sorted(len(cluster) for cluster in cluster_dict.values())
-    quantiles = statistics.quantiles(cluster_size_list, n=10)
-    logger.info(f"Cluster size quantiles: {quantiles}")
-    logger.info(f"Top 5 cluster sizes: {cluster_size_list[-5:]}")
-
-
-def _write_csv(row_dict, kwargs):
-    with open(kwargs["output_csv_filepath"], "w", newline="", encoding=kwargs["csv_encoding"]) as f:
-        fieldnames = next(iter(row_dict.values())).keys()
-        # move cluster_attr to start of fieldnames
-        fieldnames = [kwargs["cluster_attr"]] + [
-            f for f in fieldnames if f != kwargs["cluster_attr"]
-        ]
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        writer.writeheader()
-        writer.writerows(row_dict.values())
+def _write_json(found_pairs, kwargs):
+    with open(kwargs["output_json"], "w", encoding="utf-8") as f:
+        json.dump(found_pairs, f, indent=4)
 
 
 @click.command()
@@ -471,14 +449,14 @@ def _write_csv(row_dict, kwargs):
     help="Path where the model checkpoint was saved",
 )
 @click.option(
-    "--attr_config_json_filepath",
+    "--attr_config_json",
     type=str,
     required=True,
     help="Path of the JSON configuration file "
     "that defines how columns will be processed by the neural network",
 )
 @click.option(
-    "--unlabeled_input_csv_filepath",
+    "--unlabeled_csv",
     type=str,
     required=True,
     help="Path of the unlabeled input dataset CSV file",
@@ -522,12 +500,14 @@ def _write_csv(row_dict, kwargs):
     "--sim_threshold",
     type=float,
     multiple=False,
+    default=[0.3, 0.5, 0.7],
     help="A SINGLE cosine similarity threshold to use when finding duplicates. "
     "Any ANN neighbors with cosine similarity BELOW this threshold is ignored",
 )
 @click.option(
     "--ann_k",
     type=int,
+    default=100,
     help="When finding duplicates, use this number as the K for the Approximate Nearest Neighbors",
 )
 @click.option("--m", type=int, help="Parameter for the ANN. See N2 docs: n2.readthedocs.io")
@@ -538,32 +518,24 @@ def _write_csv(row_dict, kwargs):
 @click.option("--ef_search", type=int, help="Parameter for the ANN. See N2 docs: n2.readthedocs.io")
 @click.option("--random_seed", type=int, help="Random seed to help with reproducibility")
 @click.option(
-    "--output_csv_filepath",
+    "--output_json",
     type=str,
     required=True,
     help="Path of the output CSV file that will contain the `cluster_attr` with the found values. "
     "The CSV will be equal to the dataset CSV but with the additional `cluster_attr` column",
-)
-@click.option(
-    "--cluster_attr",
-    type=str,
-    required=True,
-    help="Column of the CSV dataset that will contain the cluster assignment. "
-    "Equivalent to the label in tabular classification",
 )
 def predict(**kwargs):
     _fix_workers_kwargs(kwargs)
     _set_random_seeds(kwargs)
     model = _load_model(kwargs)
     row_dict = _build_row_dict(
-        csv_filepath=kwargs["unlabeled_input_csv_filepath"],
+        csv_filepath=kwargs["unlabeled_csv"],
         kwargs=kwargs,
     )
-    __, cluster_dict = _assign_clusters(row_dict=row_dict, model=model, kwargs=kwargs)
-    _log_cluster_size_stats(cluster_dict)
-    _write_csv(row_dict=row_dict, kwargs=kwargs)
+    found_pairs = _predict_pairs(row_dict=row_dict, model=model, kwargs=kwargs)
+    _write_json(found_pairs=found_pairs, kwargs=kwargs)
 
-    logger.info(f"File is now labeled at column {kwargs['cluster_attr']}:")
-    logger.info(kwargs["output_csv_filepath"])
+    logger.info(f"Found {len(found_pairs)} candidate pairs, writing to JSON file at:")
+    logger.info(kwargs["output_json"])
 
     return 0

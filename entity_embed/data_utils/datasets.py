@@ -1,3 +1,4 @@
+import itertools
 import logging
 import random
 
@@ -42,7 +43,6 @@ class ClusterDataset(Dataset):
         self.row_dict = row_dict
         self.row_numericalizer = row_numericalizer
         self.batch_size = batch_size
-        self.rnd = random.Random(random_seed)
         self.cluster_list = cluster_dict.values()
         self.singleton_id_list = [cluster[0] for cluster in self.cluster_list if len(cluster) == 1]
         self.cluster_mapping = cluster_mapping
@@ -66,32 +66,6 @@ class ClusterDataset(Dataset):
         cluster_mapping = {
             id_: cluster_id for cluster_id, cluster in cluster_dict.items() for id_ in cluster
         }
-        return ClusterDataset(
-            row_dict=row_dict,
-            row_numericalizer=row_numericalizer,
-            cluster_dict=cluster_dict,
-            cluster_mapping=cluster_mapping,
-            batch_size=batch_size,
-            max_cluster_size_in_batch=max_cluster_size_in_batch,
-            random_seed=random_seed,
-        )
-
-    @classmethod
-    def from_pairs(
-        cls,
-        row_dict,
-        true_pair_set,
-        row_numericalizer,
-        batch_size,
-        max_cluster_size_in_batch,
-        random_seed,
-    ):
-        cluster_mapping, cluster_dict = utils.id_pairs_to_cluster_mapping_and_dict(
-            id_pairs=true_pair_set
-        )
-        # Note: since this cluster_dict is produced from true_pair_set,
-        # it won't have any singletons. That's fine for Record Linkage,
-        # but for Entity Resolution it can be useful to train with singletons.
         return ClusterDataset(
             row_dict=row_dict,
             row_numericalizer=row_numericalizer,
@@ -176,3 +150,49 @@ class RowDataset(Dataset):
 
     def __len__(self):
         return len(self.row_batch_list)
+
+
+class PairDataset(Dataset):
+    def __init__(
+        self, row_dict, pos_pair_set, neg_pair_set, row_numericalizer, batch_size, random_seed
+    ):
+        target = ([1.0] * len(pos_pair_set)) + ([0.0] * len(neg_pair_set))
+        pair_list = [
+            (id_left, id_right, is_match)
+            for (id_left, id_right), is_match in zip(
+                itertools.chain(pos_pair_set, neg_pair_set), target
+            )
+        ]
+
+        self.row_dict = row_dict
+        self.row_numericalizer = row_numericalizer
+
+        if random_seed is not None:
+            self.rnd = random.Random(random_seed)
+            self.rnd.shuffle(pair_list)
+
+        self.pair_batch_list = list(more_itertools.chunked(pair_list, batch_size))
+
+    def __getitem__(self, idx):
+        id_batch_left, id_batch_right, target_batch = list(zip(*self.pair_batch_list[idx]))
+        row_batch_left = [self.row_dict[id_] for id_ in id_batch_left]
+        row_batch_right = [self.row_dict[id_] for id_ in id_batch_right]
+
+        tensor_dict_left, sequence_length_dict_left = _collate_tensor_dict(
+            row_batch=row_batch_left,
+            row_numericalizer=self.row_numericalizer,
+        )
+        tensor_dict_right, sequence_length_dict_right = _collate_tensor_dict(
+            row_batch=row_batch_right,
+            row_numericalizer=self.row_numericalizer,
+        )
+        return (
+            tensor_dict_left,
+            sequence_length_dict_left,
+            tensor_dict_right,
+            sequence_length_dict_right,
+            default_collate(target_batch),
+        )
+
+    def __len__(self):
+        return len(self.pair_batch_list)

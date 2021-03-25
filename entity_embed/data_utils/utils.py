@@ -2,7 +2,6 @@ import itertools
 import logging
 import random
 from collections import Counter, defaultdict
-from importlib import import_module
 
 from ordered_set import OrderedSet
 
@@ -13,6 +12,19 @@ logger = logging.getLogger(__name__)
 
 def Enumerator(start=0, initial=()):
     return defaultdict(itertools.count(start).__next__, initial)
+
+
+def row_dict_to_left_right_id_set(row_dict, source_attr, left_source):
+    left_id_set = set()
+    right_id_set = set()
+
+    for id_, row in row_dict.items():
+        if row[source_attr] == left_source:
+            left_id_set.add(id_)
+        else:
+            right_id_set.add(id_)
+
+    return left_id_set, right_id_set
 
 
 def row_dict_to_cluster_dict(row_dict, cluster_attr):
@@ -26,10 +38,10 @@ def row_dict_to_cluster_dict(row_dict, cluster_attr):
             )
         cluster_dict[cluster_id].append(id_)
 
-    # must use sorted to always have smaller id on left of pair tuple
+    # sort to always have smaller id on left of pair tuple
     for c in cluster_dict.values():
         c.sort()
-    return cluster_dict
+    return dict(cluster_dict)  # convert to dict to avoid defaultdict
 
 
 def cluster_dict_to_id_pairs(cluster_dict, left_id_set=None, right_id_set=None):
@@ -37,7 +49,7 @@ def cluster_dict_to_id_pairs(cluster_dict, left_id_set=None, right_id_set=None):
         return set(
             pair
             for cluster_id_list in cluster_dict.values()
-            # must use sorted to always have smaller id on left of pair tuple
+            # sort to always have smaller id on left of pair tuple
             for pair in itertools.combinations(sorted(cluster_id_list), 2)
         )
     else:
@@ -61,24 +73,13 @@ def count_cluster_dict_pairs(cluster_dict):
     )
 
 
-def split_clusters(cluster_dict, train_len, valid_len, test_len, random_seed):
+def _split_cluster_dict(cluster_dict, train_len, valid_len, random_seed):
     rnd = random.Random(random_seed)
-
-    if test_len:
-        if train_len + valid_len + test_len < len(cluster_dict):
-            logger.warning(
-                f"(train_len + valid_len + test_len)={train_len + valid_len + test_len} "
-                f"is less than len(cluster_dict)={len(cluster_dict)}"
-            )
-    else:
-        test_len = len(cluster_dict) - train_len - valid_len
 
     train_cluster_id_set = OrderedSet(rnd.sample(cluster_dict.keys(), train_len))
     all_minus_train_cluster_id_set = cluster_dict.keys() - train_cluster_id_set
     valid_cluster_id_set = OrderedSet(rnd.sample(all_minus_train_cluster_id_set, valid_len))
     test_cluster_id_set = all_minus_train_cluster_id_set - valid_cluster_id_set
-    if test_len < len(test_cluster_id_set):
-        test_cluster_id_set = OrderedSet(rnd.sample(test_cluster_id_set, test_len))
 
     train_cluster_dict = {
         cluster_id: cluster_dict[cluster_id] for cluster_id in train_cluster_id_set
@@ -87,30 +88,90 @@ def split_clusters(cluster_dict, train_len, valid_len, test_len, random_seed):
         cluster_id: cluster_dict[cluster_id] for cluster_id in valid_cluster_id_set
     }
     test_cluster_dict = {cluster_id: cluster_dict[cluster_id] for cluster_id in test_cluster_id_set}
+
     return train_cluster_dict, valid_cluster_dict, test_cluster_dict
 
 
-def cluster_dict_to_filtered_row_dict(row_dict, cluster_dict):
-    return {
-        id_: row_dict[id_] for cluster_id_list in cluster_dict.values() for id_ in cluster_id_list
+def split_clusters(cluster_dict, train_proportion, valid_proportion, random_seed):
+    singleton_cluster_dict = {
+        cluster_id: cluster for cluster_id, cluster in cluster_dict.items() if len(cluster) == 1
     }
+    plural_cluster_dict = {
+        cluster_id: cluster for cluster_id, cluster in cluster_dict.items() if len(cluster) > 1
+    }
+    singleton_len = len(singleton_cluster_dict)
+    plural_len = len(plural_cluster_dict)
+
+    train_singleton_len = int(train_proportion * singleton_len)
+    valid_singleton_len = int(valid_proportion * singleton_len)
+
+    train_plural_len = int(train_proportion * plural_len)
+    valid_plural_len = int(valid_proportion * plural_len)
+
+    (
+        train_singleton_cluster_dict,
+        valid_singleton_cluster_dict,
+        test_singleton_cluster_dict,
+    ) = _split_cluster_dict(
+        cluster_dict=singleton_cluster_dict,
+        train_len=train_singleton_len,
+        valid_len=valid_singleton_len,
+        random_seed=random_seed,
+    )
+    (
+        train_plural_cluster_dict,
+        valid_plural_cluster_dict,
+        test_plural_cluster_dict,
+    ) = _split_cluster_dict(
+        cluster_dict=plural_cluster_dict,
+        train_len=train_plural_len,
+        valid_len=valid_plural_len,
+        random_seed=random_seed,
+    )
+
+    logger.info(
+        "Singleton cluster sizes (train, valid, test):"
+        + str(
+            (
+                len(train_singleton_cluster_dict),
+                len(valid_singleton_cluster_dict),
+                len(test_singleton_cluster_dict),
+            )
+        )
+    )
+    logger.info(
+        "Plural cluster sizes (train, valid, test):"
+        + str(
+            (
+                len(train_plural_cluster_dict),
+                len(valid_plural_cluster_dict),
+                len(test_plural_cluster_dict),
+            )
+        )
+    )
+
+    train_cluster_dict = {**train_singleton_cluster_dict, **train_plural_cluster_dict}
+    valid_cluster_dict = {**valid_singleton_cluster_dict, **valid_plural_cluster_dict}
+    test_cluster_dict = {**test_singleton_cluster_dict, **test_plural_cluster_dict}
+
+    return train_cluster_dict, valid_cluster_dict, test_cluster_dict
 
 
-def cluster_dicts_to_row_dicts(row_dict, train_cluster_dict, valid_cluster_dict, test_cluster_dict):
-    train_row_dict = cluster_dict_to_filtered_row_dict(row_dict, train_cluster_dict)
-    valid_row_dict = cluster_dict_to_filtered_row_dict(row_dict, valid_cluster_dict)
-    test_row_dict = cluster_dict_to_filtered_row_dict(row_dict, test_cluster_dict)
-    return train_row_dict, valid_row_dict, test_row_dict
+def _filtered_row_dict_from_cluster_dict(row_dict, cluster_dict):
+    return {id_: row_dict[id_] for cluster in cluster_dict.values() for id_ in cluster}
 
 
-def dict_filtered_from_id_set(d, id_set):
-    return {id_: row for id_, row in d.items() if id_ in id_set}
-
-
-def separate_dict_left_right(d, left_id_set, right_id_set):
+def split_row_dict_on_clusters(
+    row_dict, cluster_attr, train_proportion, valid_proportion, random_seed
+):
+    cluster_dict = row_dict_to_cluster_dict(row_dict, cluster_attr)
+    train_cluster_dict, valid_cluster_dict, test_cluster_dict = split_clusters(
+        cluster_dict, train_proportion, valid_proportion, random_seed
+    )
     return (
-        dict_filtered_from_id_set(d, left_id_set),
-        dict_filtered_from_id_set(d, right_id_set),
+        _filtered_row_dict_from_cluster_dict(row_dict, train_cluster_dict),
+        _filtered_row_dict_from_cluster_dict(row_dict, valid_cluster_dict),
+        _filtered_row_dict_from_cluster_dict(row_dict, test_cluster_dict),
     )
 
 
@@ -146,30 +207,37 @@ def compute_vocab_counter(attr_val_gen, tokenizer):
     return vocab_counter
 
 
-def id_pairs_to_cluster_mapping_and_dict(id_pairs):
+def id_pairs_to_cluster_mapping_and_dict(id_pairs, row_dict):
     uf = UnionFind()
     uf.union_pairs(id_pairs)
     cluster_dict = uf.component_dict()
-    # must use sorted to always have smaller id on left of pair tuple
+
+    # restructure cluster_dict to have sequential cluster ids
+    cluster_dict = dict(enumerate(cluster_dict.values()))
+
+    # sort to always have smaller id on left of pair tuple
     for c in cluster_dict.values():
         c.sort()
-    # must be called after component_dict, because of find calls
-    cluster_mapping = uf.parents
+
+    # now build cluster_mapping using the new cluster ids
+    cluster_mapping = {
+        id_: cluster_id for cluster_id, cluster in cluster_dict.items() for id_ in cluster
+    }
+
+    # add singleton clusters
+    current_singleton_cluster_id = max(cluster_dict.keys()) + 1
+    for id_ in row_dict.keys() - cluster_mapping.keys():
+        cluster_mapping[id_] = current_singleton_cluster_id
+        cluster_dict[current_singleton_cluster_id] = [id_]
+        current_singleton_cluster_id += 1
+
     return cluster_mapping, cluster_dict
 
 
 def assign_clusters(row_dict, cluster_attr, cluster_mapping):
-    current_singleton_cluster_id = max(cluster_mapping.values()) + 1
-
     for id_, row in row_dict.items():
-        try:
-            row[cluster_attr] = cluster_mapping[id_]
-        except KeyError:
-            row[cluster_attr] = current_singleton_cluster_id
-            current_singleton_cluster_id += 1
+        row[cluster_attr] = cluster_mapping[id_]
 
 
-def import_function(function_dotted_path):
-    module_dotted_path, function_name = function_dotted_path.rsplit(".", 1)
-    module = import_module(module_dotted_path)
-    return getattr(module, function_name)
+def subdict(d, keys):
+    return {k: d[k] for k in keys}

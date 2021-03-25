@@ -5,13 +5,10 @@ import pytest
 from entity_embed.data_utils.utils import (
     Enumerator,
     cluster_dict_to_id_pairs,
-    cluster_dicts_to_row_dicts,
     compute_max_str_len,
     compute_vocab_counter,
-    count_cluster_dict_pairs,
     id_pairs_to_cluster_mapping_and_dict,
     row_dict_to_cluster_dict,
-    separate_dict_left_right,
     split_clusters,
 )
 
@@ -52,55 +49,6 @@ def test_row_dict_to_cluster_dict():
         1: [2, 5],
         2: [6],
     }
-
-
-def test_cluster_dicts_to_row_dicts():
-    test_range = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 16]
-
-    row_dict = {x: {"id": str(x)} for x in test_range}
-
-    train_cluster_dict = {
-        1: [1, 2, 3],
-        4: [4, 6],
-    }
-
-    valid_cluster_dict = {
-        5: [5, 7],
-        8: [8, 9, 10],
-    }
-
-    test_cluster_dict = {
-        11: [11, 12],
-        13: [13, 14, 16],
-    }
-
-    train_row_dict, valid_row_dict, test_row_dict = cluster_dicts_to_row_dicts(
-        row_dict=row_dict,
-        train_cluster_dict=train_cluster_dict,
-        valid_cluster_dict=valid_cluster_dict,
-        test_cluster_dict=test_cluster_dict,
-    )
-
-    assert train_row_dict == {x: {"id": str(x)} for x in [1, 2, 3, 4, 6]}
-    assert valid_row_dict == {x: {"id": str(x)} for x in [5, 7, 8, 9, 10]}
-    assert test_row_dict == {x: {"id": str(x)} for x in [11, 12, 13, 14, 16]}
-
-
-def test_separate_dict_left_right():
-    test_range = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 16]
-
-    row_dict = {x: {"id": str(x)} for x in test_range}
-
-    left_id_set = {1, 2, 5, 6, 7, 9, 10, 11}
-    right_id_set = {3, 4, 8, 12, 13, 14, 16}
-    left_dict, right_dict = separate_dict_left_right(
-        d=row_dict,
-        left_id_set=left_id_set,
-        right_id_set=right_id_set,
-    )
-
-    assert left_dict == {x: {"id": str(x)} for x in left_id_set}
-    assert right_dict == {x: {"id": str(x)} for x in right_id_set}
 
 
 @pytest.fixture
@@ -182,7 +130,8 @@ def test_id_pairs_to_cluster_mapping_and_dict():
         (7, 9),
         (9, 10),
     }
-    cluster_mapping, cluster_dict = id_pairs_to_cluster_mapping_and_dict(id_pairs)
+    row_dict = {id_: {"name": str(id_)} for id_ in range(1, 13)}
+    cluster_mapping, cluster_dict = id_pairs_to_cluster_mapping_and_dict(id_pairs, row_dict)
 
     # 1, 2, 3 are part of the same cluster
     assert len(set(v for k, v in cluster_mapping.items() if k in [1, 2, 3])) == 1
@@ -193,8 +142,9 @@ def test_id_pairs_to_cluster_mapping_and_dict():
     # 6, 7, 8, 9, 10 are part of the same cluster
     assert len(set(v for k, v in cluster_mapping.items() if k in [6, 7, 8, 9, 10])) == 1
 
+    # check clusters and singletons
     clusters_list = sorted(c for c in cluster_dict.values())
-    assert clusters_list == [[1, 2, 3], [4, 5], [6, 7, 8, 9, 10]]
+    assert clusters_list == [[1, 2, 3], [4, 5], [6, 7, 8, 9, 10], [11], [12]]
 
 
 def fake_rnd_sample(population, sample_len):

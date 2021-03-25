@@ -3,15 +3,15 @@ import os
 
 import pytorch_lightning as pl
 import torch
+import torch.nn as nn
 from pytorch_metric_learning.distances import DotProductSimilarity
 from pytorch_metric_learning.losses import SupConLoss
 from tqdm.auto import tqdm
 
-from .data_utils import utils
 from .data_utils.datasets import RowDataset
 from .evaluation import f1_score, pair_entity_ratio, precision_and_recall
 from .indexes import ANNEntityIndex, ANNLinkageIndex
-from .models import BlockerNet
+from .models import BlockerNet, MatcherNet
 
 logger = logging.getLogger(__name__)
 
@@ -29,10 +29,10 @@ class _BaseEmbed(pl.LightningModule):
         learning_rate=0.001,
         optimizer_kwargs=None,
         ann_k=10,
-        sim_threshold_list=[0.5, 0.7, 0.9],
-        eval_with_clusters=False,
+        sim_threshold_list=[0.3, 0.5, 0.7],
         index_build_kwargs=None,
         index_search_kwargs=None,
+        **kwargs,
     ):
         super().__init__()
         self.save_hyperparameters()
@@ -55,7 +55,7 @@ class _BaseEmbed(pl.LightningModule):
             attr_config_dict=self.row_numericalizer.attr_config_dict,
             embedding_size=self.embedding_size,
         )
-        self.losser = loss_cls(**loss_kwargs if loss_kwargs else {"temperature": 0.1})
+        self.loss_fn = loss_cls(**loss_kwargs if loss_kwargs else {"temperature": 0.1})
         if miner_cls:
             self.miner = miner_cls(
                 **miner_kwargs if miner_kwargs else {"distance": DotProductSimilarity()}
@@ -67,7 +67,6 @@ class _BaseEmbed(pl.LightningModule):
         self.optimizer_kwargs = optimizer_kwargs if optimizer_kwargs else {}
         self.ann_k = ann_k
         self.sim_threshold_list = sim_threshold_list
-        self.eval_with_clusters = eval_with_clusters
         self.index_build_kwargs = index_build_kwargs
         self.index_search_kwargs = index_search_kwargs
 
@@ -90,7 +89,7 @@ class _BaseEmbed(pl.LightningModule):
             self._warn_if_empty_indices_tuple(indices_tuple, batch_idx)
         else:
             indices_tuple = None
-        loss = self.losser(embeddings, labels, indices_tuple=indices_tuple)
+        loss = self.loss_fn(embeddings, labels, indices_tuple=indices_tuple)
 
         self.log("train_loss", loss)
         return loss
@@ -114,7 +113,7 @@ class _BaseEmbed(pl.LightningModule):
             set_name="valid",
             row_dict=self.trainer.datamodule.valid_row_dict,
             embedding_batch_list=outputs,
-            true_pair_set=self.trainer.datamodule.valid_true_pair_set,
+            pos_pair_set=self.trainer.datamodule.valid_pos_pair_set,
         )
         self.log_dict(metric_dict)
 
@@ -127,7 +126,7 @@ class _BaseEmbed(pl.LightningModule):
             set_name="test",
             row_dict=self.trainer.datamodule.test_row_dict,
             embedding_batch_list=outputs,
-            true_pair_set=self.trainer.datamodule.test_true_pair_set,
+            pos_pair_set=self.trainer.datamodule.test_pos_pair_set,
         )
         self.log_dict(metric_dict)
 
@@ -140,7 +139,7 @@ class _BaseEmbed(pl.LightningModule):
     def get_signature_weights(self):
         return self.blocker_net.get_signature_weights()
 
-    def _evaluate_with_ann(self, set_name, row_dict, embedding_batch_list, true_pair_set):
+    def _evaluate_with_ann(self, set_name, row_dict, embedding_batch_list, pos_pair_set):
         raise NotImplementedError
 
     def predict(
@@ -181,7 +180,7 @@ class _BaseEmbed(pl.LightningModule):
 
 
 class EntityEmbed(_BaseEmbed):
-    def _evaluate_with_ann(self, set_name, row_dict, embedding_batch_list, true_pair_set):
+    def _evaluate_with_ann(self, set_name, row_dict, embedding_batch_list, pos_pair_set):
         vector_list = []
         for embedding_batch in embedding_batch_list:
             vector_list.extend(v.data.numpy() for v in embedding_batch.cpu().unbind())
@@ -193,21 +192,13 @@ class EntityEmbed(_BaseEmbed):
 
         metric_dict = {}
         for sim_threshold in self.sim_threshold_list:
-            if self.eval_with_clusters:
-                __, cluster_dict = ann_index.search_clusters(
-                    k=self.ann_k,
-                    sim_threshold=sim_threshold,
-                    index_search_kwargs=self.index_search_kwargs,
-                )
-                found_pair_set = utils.cluster_dict_to_id_pairs(cluster_dict)
-            else:
-                found_pair_set = ann_index.search_pairs(
-                    k=self.ann_k,
-                    sim_threshold=sim_threshold,
-                    index_search_kwargs=self.index_search_kwargs,
-                )
+            found_pair_set = ann_index.search_pairs(
+                k=self.ann_k,
+                sim_threshold=sim_threshold,
+                index_search_kwargs=self.index_search_kwargs,
+            )
 
-            precision, recall = precision_and_recall(found_pair_set, true_pair_set)
+            precision, recall = precision_and_recall(found_pair_set, pos_pair_set)
             metric_dict.update(
                 {
                     f"{set_name}_precision_at_{sim_threshold}": precision,
@@ -221,7 +212,7 @@ class EntityEmbed(_BaseEmbed):
         metric_dict = dict(sorted(metric_dict.items(), key=lambda kv: kv[0]))
         return metric_dict
 
-    def predict_clusters(
+    def predict_pairs(
         self,
         row_dict,
         batch_size,
@@ -241,21 +232,41 @@ class EntityEmbed(_BaseEmbed):
         ann_index = ANNEntityIndex(embedding_size=self.embedding_size)
         ann_index.insert_vector_dict(vector_dict)
         ann_index.build(index_build_kwargs=index_build_kwargs)
-        cluster_mapping, cluster_dict = ann_index.search_clusters(
+        found_pair_set = ann_index.search_pairs(
             k=ann_k, sim_threshold=sim_threshold, index_search_kwargs=index_search_kwargs
         )
-        return cluster_mapping, cluster_dict
+        return found_pair_set
 
 
 class LinkageEmbed(_BaseEmbed):
-    def _evaluate_with_ann(self, set_name, row_dict, embedding_batch_list, true_pair_set):
+    def __init__(
+        self,
+        row_numericalizer,
+        source_attr,
+        left_source,
+        **kwargs,
+    ):
+        self.source_attr = source_attr
+        self.left_source = left_source
+
+        super().__init__(
+            row_numericalizer=row_numericalizer,
+            source_attr=source_attr,
+            left_source=left_source,
+            **kwargs,
+        )
+
+    def _evaluate_with_ann(self, set_name, row_dict, embedding_batch_list, pos_pair_set):
         vector_list = []
         for embedding_batch in embedding_batch_list:
             vector_list.extend(v.data.numpy() for v in embedding_batch.cpu().unbind())
-        vector_dict = dict(zip(row_dict.keys(), vector_list))
-        left_vector_dict, right_vector_dict = self.trainer.datamodule.separate_dict_left_right(
-            vector_dict
-        )
+        left_vector_dict = {}
+        right_vector_dict = {}
+        for (id_, row), vector in zip(row_dict.items(), vector_list):
+            if row[self.source_attr] == self.left_source:
+                left_vector_dict[id_] = vector
+            else:
+                right_vector_dict[id_] = vector
 
         ann_index = ANNLinkageIndex(embedding_size=self.embedding_size)
         ann_index.insert_vector_dict(
@@ -267,29 +278,16 @@ class LinkageEmbed(_BaseEmbed):
 
         metric_dict = {}
         for sim_threshold in self.sim_threshold_list:
-            if self.eval_with_clusters:
-                __, cluster_dict = ann_index.search_clusters(
-                    k=self.ann_k,
-                    sim_threshold=sim_threshold,
-                    left_vector_dict=left_vector_dict,
-                    right_vector_dict=right_vector_dict,
-                    index_search_kwargs=self.index_search_kwargs,
-                )
-                found_pair_set = utils.cluster_dict_to_id_pairs(
-                    cluster_dict,
-                    left_id_set=self.trainer.datamodule.left_id_set,
-                    right_id_set=self.trainer.datamodule.right_id_set,
-                )
-            else:
-                found_pair_set = ann_index.search_pairs(
-                    k=self.ann_k,
-                    sim_threshold=sim_threshold,
-                    left_vector_dict=left_vector_dict,
-                    right_vector_dict=right_vector_dict,
-                    index_search_kwargs=self.index_search_kwargs,
-                )
+            found_pair_set = ann_index.search_pairs(
+                k=self.ann_k,
+                sim_threshold=sim_threshold,
+                left_vector_dict=left_vector_dict,
+                right_vector_dict=right_vector_dict,
+                left_source=self.left_source,
+                index_search_kwargs=self.index_search_kwargs,
+            )
 
-            precision, recall = precision_and_recall(found_pair_set, true_pair_set)
+            precision, recall = precision_and_recall(found_pair_set, pos_pair_set)
             metric_dict.update(
                 {
                     f"{set_name}_precision_at_{sim_threshold}": precision,
@@ -306,8 +304,6 @@ class LinkageEmbed(_BaseEmbed):
     def predict(
         self,
         row_dict,
-        left_id_set,
-        right_id_set,
         batch_size,
         loader_kwargs=None,
         show_progress=True,
@@ -318,16 +314,18 @@ class LinkageEmbed(_BaseEmbed):
             loader_kwargs=loader_kwargs,
             show_progress=show_progress,
         )
-        left_vector_dict, right_vector_dict = utils.separate_dict_left_right(
-            vector_dict, left_id_set=left_id_set, right_id_set=right_id_set
-        )
+        left_vector_dict = {}
+        right_vector_dict = {}
+        for (id_, row), vector in zip(row_dict.items(), vector_dict.values()):
+            if row[self.source_attr] == self.left_source:
+                left_vector_dict[id_] = vector
+            else:
+                right_vector_dict[id_] = vector
         return left_vector_dict, right_vector_dict
 
-    def predict_clusters(
+    def predict_pairs(
         self,
         row_dict,
-        left_id_set,
-        right_id_set,
         batch_size,
         ann_k,
         sim_threshold,
@@ -338,8 +336,6 @@ class LinkageEmbed(_BaseEmbed):
     ):
         left_vector_dict, right_vector_dict = self.predict(
             row_dict=row_dict,
-            left_id_set=left_id_set,
-            right_id_set=right_id_set,
             batch_size=batch_size,
             loader_kwargs=loader_kwargs,
             show_progress=show_progress,
@@ -349,14 +345,15 @@ class LinkageEmbed(_BaseEmbed):
             left_vector_dict=left_vector_dict, right_vector_dict=right_vector_dict
         )
         ann_index.build(index_build_kwargs=index_build_kwargs)
-        cluster_mapping, cluster_dict = ann_index.search_clusters(
+        found_pair_set = ann_index.search_pairs(
             k=ann_k,
             sim_threshold=sim_threshold,
             left_vector_dict=left_vector_dict,
             right_vector_dict=right_vector_dict,
+            left_source=self.left_source,
             index_search_kwargs=index_search_kwargs,
         )
-        return cluster_mapping, cluster_dict
+        return found_pair_set
 
 
 def validate_best(trainer):
@@ -375,7 +372,144 @@ def validate_best(trainer):
         set_name="valid",
         row_dict=trainer.datamodule.valid_row_dict,
         embedding_batch_list=embedding_batch_list,
-        true_pair_set=trainer.datamodule.valid_true_pair_set,
+        pos_pair_set=trainer.datamodule.valid_pos_pair_set,
     )
 
     return metric_dict
+
+
+class Matcher(pl.LightningModule):
+    def __init__(
+        self,
+        row_numericalizer,
+        embedding_size=300,
+        optimizer_cls=torch.optim.Adam,
+        optimizer_kwargs=None,
+        learning_rate=0.001,
+        final_dropout_p=0.0,
+        sim_threshold_list=[0.3, 0.4, 0.5],
+    ):
+        super().__init__()
+        # self.save_hyperparameters()
+
+        self.row_numericalizer = row_numericalizer
+        for attr_config in self.row_numericalizer.attr_config_dict.values():
+            vocab = attr_config.vocab
+            if vocab:
+                # We can assume that there's only one vocab type across the
+                # whole attr_config_dict, so we can stop the loop once we've
+                # found a attr_config with a vocab
+                valid_embedding_size = vocab.vectors.size(1)
+                if valid_embedding_size != embedding_size:
+                    raise ValueError(
+                        f"Invalid embedding_size={embedding_size}. "
+                        f"Expected {valid_embedding_size}, due to semantic fields."
+                    )
+        self.embedding_size = embedding_size
+        self.matcher_net = MatcherNet(
+            attr_config_dict=self.row_numericalizer.attr_config_dict,
+            embedding_size=self.embedding_size,
+            final_dropout_p=final_dropout_p,
+        )
+        self.loss_fn = nn.BCEWithLogitsLoss()
+        self.optimizer_cls = optimizer_cls
+        self.learning_rate = learning_rate
+        self.optimizer_kwargs = optimizer_kwargs if optimizer_kwargs else {}
+        self.sim_threshold_list = sim_threshold_list
+
+    def forward(self, tensor_dict, sequence_length_dict):
+        logits = self.matcher_net(tensor_dict, sequence_length_dict)
+        proba = logits.sigmoid()
+        return proba
+
+    def training_step(self, batch, batch_idx):
+        (
+            tensor_dict_left,
+            sequence_length_dict_left,
+            tensor_dict_right,
+            sequence_length_dict_right,
+            target,
+        ) = batch
+        logits = self.matcher_net(
+            tensor_dict_left=tensor_dict_left,
+            sequence_length_dict_left=sequence_length_dict_left,
+            tensor_dict_right=tensor_dict_right,
+            sequence_length_dict_right=sequence_length_dict_right,
+        )
+        loss = self.loss_fn(logits, target)
+
+        self.log("train_loss", loss)
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        (
+            tensor_dict_left,
+            sequence_length_dict_left,
+            tensor_dict_right,
+            sequence_length_dict_right,
+            target,
+        ) = batch
+        logits = self.matcher_net(
+            tensor_dict_left=tensor_dict_left,
+            sequence_length_dict_left=sequence_length_dict_left,
+            tensor_dict_right=tensor_dict_right,
+            sequence_length_dict_right=sequence_length_dict_right,
+        )
+        return logits, target
+
+    def _evaluate(self, set_name, outputs):
+        logits = torch.cat([logits for logits, target in outputs])
+        proba = logits.sigmoid()
+        target = torch.cat([target for logits, target in outputs])
+        target = target.bool()
+        metric_dict = {}
+
+        for sim_threshold in self.sim_threshold_list:
+            pred = proba >= sim_threshold
+            true_pos = (pred & target).sum().float()
+            false_pos = (pred & (~target)).sum().float()
+            false_neg = ((~pred) & target).sum().float()
+            precision = true_pos / (true_pos + false_pos + 1e-12)
+            recall = true_pos / (true_pos + false_neg + 1e-12)
+            f1 = (2 * precision * recall) / (precision + recall + 1e-12)
+
+            metric_dict.update(
+                {
+                    f"{set_name}_precision_at_{sim_threshold}": precision,
+                    f"{set_name}_recall_at_{sim_threshold}": recall,
+                    f"{set_name}_f1_at_{sim_threshold}": f1,
+                }
+            )
+
+        metric_dict = dict(sorted(metric_dict.items(), key=lambda kv: kv[0]))
+        return metric_dict
+
+    def validation_epoch_end(self, outputs):
+        metric_dict = self._evaluate(set_name="valid", outputs=outputs)
+        self.log_dict(metric_dict)
+
+    def test_step(self, batch, batch_idx):
+        (
+            tensor_dict_left,
+            sequence_length_dict_left,
+            tensor_dict_right,
+            sequence_length_dict_right,
+            target,
+        ) = batch
+        logits = self.matcher_net(
+            tensor_dict_left=tensor_dict_left,
+            sequence_length_dict_left=sequence_length_dict_left,
+            tensor_dict_right=tensor_dict_right,
+            sequence_length_dict_right=sequence_length_dict_right,
+        )
+        return logits, target
+
+    def test_epoch_end(self, outputs):
+        metric_dict = self._evaluate(set_name="test", outputs=outputs)
+        self.log_dict(metric_dict)
+
+    def configure_optimizers(self):
+        optimizer = self.optimizer_cls(
+            self.parameters(), lr=self.learning_rate, **self.optimizer_kwargs
+        )
+        return optimizer

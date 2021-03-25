@@ -2,7 +2,6 @@ import logging
 
 from n2 import HnswIndex
 
-from .data_utils import utils
 from .helpers import build_index_build_kwargs, build_index_search_kwargs
 
 logger = logging.getLogger(__name__)
@@ -66,13 +65,6 @@ class ANNEntityIndex:
 
         return found_pair_set
 
-    def search_clusters(self, k, sim_threshold, index_search_kwargs=None):
-        found_pair_set = self.search_pairs(
-            k=k, sim_threshold=sim_threshold, index_search_kwargs=index_search_kwargs
-        )
-        cluster_mapping, cluster_dict = utils.id_pairs_to_cluster_mapping_and_dict(found_pair_set)
-        return cluster_mapping, cluster_dict
-
 
 class ANNLinkageIndex:
     def __init__(self, embedding_size):
@@ -96,9 +88,8 @@ class ANNLinkageIndex:
         sim_threshold,
         left_vector_dict,
         right_vector_dict,
+        left_source,
         index_search_kwargs=None,
-        left_dataset_name="left",
-        right_dataset_name="right",
     ):
         if not self.left_index.is_built or not self.right_index.is_built:
             raise ValueError("Please call build first")
@@ -110,8 +101,8 @@ class ANNLinkageIndex:
         all_pair_set = set()
 
         for dataset_name, index, vector_dict, other_index in [
-            (left_dataset_name, self.left_index, right_vector_dict, self.right_index),
-            (right_dataset_name, self.right_index, left_vector_dict, self.left_index),
+            (left_source, self.left_index, right_vector_dict, self.right_index),
+            (None, self.right_index, left_vector_dict, self.left_index),
         ]:
             logger.debug(f"Searching on approx_knn_index of dataset_name={dataset_name}...")
 
@@ -129,7 +120,7 @@ class ANNLinkageIndex:
                 for j, distance in neighbor_distance_list:
                     if distance <= distance_threshold:  # do NOT check for i != j here
                         id_ = index.vector_idx_to_id[j]
-                        if dataset_name == left_dataset_name:
+                        if dataset_name and dataset_name == left_source:
                             left_id, right_id = (id_, other_id)
                         else:
                             left_id, right_id = (other_id, id_)
@@ -147,16 +138,3 @@ class ANNLinkageIndex:
         )
 
         return all_pair_set
-
-    def search_clusters(
-        self, k, sim_threshold, left_vector_dict, right_vector_dict, index_search_kwargs=None
-    ):
-        found_pair_set = self.search_pairs(
-            k=k,
-            sim_threshold=sim_threshold,
-            left_vector_dict=left_vector_dict,
-            right_vector_dict=right_vector_dict,
-            index_search_kwargs=index_search_kwargs,
-        )
-        cluster_mapping, cluster_dict = utils.id_pairs_to_cluster_mapping_and_dict(found_pair_set)
-        return cluster_mapping, cluster_dict

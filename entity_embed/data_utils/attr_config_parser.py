@@ -1,5 +1,6 @@
 import json
 import logging
+from importlib import import_module
 
 from torchtext.vocab import Vocab
 
@@ -14,9 +15,15 @@ from .numericalizer import (
     SemanticStringNumericalizer,
     StringNumericalizer,
 )
-from .utils import compute_max_str_len, compute_vocab_counter, import_function
+from .utils import compute_max_str_len, compute_vocab_counter
 
 logger = logging.getLogger(__name__)
+
+
+def _import_function(function_dotted_path):
+    module_dotted_path, function_name = function_dotted_path.rsplit(".", 1)
+    module = import_module(module_dotted_path)
+    return getattr(module, function_name)
 
 
 class AttrConfigDictParser:
@@ -53,7 +60,7 @@ class AttrConfigDictParser:
     @classmethod
     def _parse_attr_config(cls, attr, attr_config, row_list):
         field_type = FieldType[attr_config["field_type"]]
-        tokenizer = import_function(attr_config.get("tokenizer", "entity_embed.default_tokenizer"))
+        tokenizer = _import_function(attr_config.get("tokenizer", "entity_embed.default_tokenizer"))
         alphabet = attr_config.get("alphabet", DEFAULT_ALPHABET)
         max_str_len = attr_config.get("max_str_len")
         vocab = None

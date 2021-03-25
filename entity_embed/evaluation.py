@@ -2,14 +2,20 @@ def pair_entity_ratio(found_pair_set_len, entity_count):
     return found_pair_set_len / entity_count
 
 
-def precision_and_recall(found_pair_set, true_pair_set):
-    true_positives = found_pair_set & true_pair_set
-    false_positives = found_pair_set - true_pair_set
+def precision_and_recall(found_pair_set, pos_pair_set, neg_pair_set=None):
+    # if a neg_pair_set is provided,
+    # consider the "universe" to be only the what's inside pos_pair_set and neg_pair_set,
+    # because this means a previous blocking was applied
+    if neg_pair_set is not None:
+        found_pair_set = found_pair_set & (pos_pair_set | neg_pair_set)
+
+    true_positives = found_pair_set & pos_pair_set
+    false_positives = found_pair_set - pos_pair_set
     if true_positives:
         precision = len(true_positives) / (len(true_positives) + len(false_positives))
     else:
         precision = 0.0
-    recall = len(true_positives) / len(true_pair_set)
+    recall = len(true_positives) / len(pos_pair_set)
     return precision, recall
 
 

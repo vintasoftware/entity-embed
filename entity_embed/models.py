@@ -200,11 +200,11 @@ class TupleSignature(nn.Module):
             return F.normalize(list(attr_embedding_dict.values())[0], dim=1)
 
 
-class BlockerNet(nn.Module):
+class EmbeddingNet(nn.Module):
     def __init__(
         self,
         attr_config_dict,
-        embedding_size=300,
+        embedding_size,
     ):
         super().__init__()
         self.attr_config_dict = attr_config_dict
@@ -245,8 +245,6 @@ class BlockerNet(nn.Module):
             ):
                 self.embedding_net_dict[attr] = embedding_net
 
-        self.tuple_signature = TupleSignature(attr_config_dict)
-
     def forward(self, tensor_dict, sequence_length_dict):
         attr_embedding_dict = {}
 
@@ -256,6 +254,27 @@ class BlockerNet(nn.Module):
             )
             attr_embedding_dict[attr] = attr_embedding
 
+        return attr_embedding_dict
+
+
+class BlockerNet(nn.Module):
+    def __init__(
+        self,
+        attr_config_dict,
+        embedding_size=300,
+    ):
+        super().__init__()
+        self.attr_config_dict = attr_config_dict
+        self.embedding_size = embedding_size
+        self.embedding_net = EmbeddingNet(
+            attr_config_dict=attr_config_dict, embedding_size=embedding_size
+        )
+        self.tuple_signature = TupleSignature(attr_config_dict)
+
+    def forward(self, tensor_dict, sequence_length_dict):
+        attr_embedding_dict = self.embedding_net(
+            tensor_dict=tensor_dict, sequence_length_dict=sequence_length_dict
+        )
         return self.tuple_signature(attr_embedding_dict)
 
     def fix_signature_weights(self):
@@ -294,3 +313,49 @@ class BlockerNet(nn.Module):
                     self.tuple_signature.state_dict()["weights"],
                 )
             }
+
+
+class MatcherNet(nn.Module):
+    def __init__(self, attr_config_dict, embedding_size=300, final_dropout_p=0.0):
+        super().__init__()
+        self.attr_config_dict = attr_config_dict
+        self.embedding_size = embedding_size
+        self.embedding_net = EmbeddingNet(
+            attr_config_dict=attr_config_dict, embedding_size=embedding_size
+        )
+        self.hidden_size = self.embedding_size * len(self.attr_config_dict)
+        if final_dropout_p:
+            self.dropout = nn.Dropout(p=final_dropout_p)
+        else:
+            self.dropout = None
+        self.dense = nn.Linear(self.hidden_size, 1)
+
+    def _forward_one_side(
+        self,
+        tensor_dict,
+        sequence_length_dict,
+    ):
+        attr_embedding_dict = self.embedding_net(
+            tensor_dict=tensor_dict, sequence_length_dict=sequence_length_dict
+        )
+        embed = torch.cat(tuple(attr_embedding_dict.values()), dim=1)
+        if self.dropout:
+            return self.dropout(embed)
+        else:
+            return embed
+
+    def forward(
+        self,
+        tensor_dict_left,
+        sequence_length_dict_left,
+        tensor_dict_right,
+        sequence_length_dict_right,
+    ):
+        embed_left = self._forward_one_side(
+            tensor_dict=tensor_dict_left, sequence_length_dict=sequence_length_dict_left
+        )
+        embed_right = self._forward_one_side(
+            tensor_dict=tensor_dict_right, sequence_length_dict=sequence_length_dict_right
+        )
+        abs_diff = torch.abs(embed_left - embed_right)
+        return self.dense(abs_diff).view(-1)
