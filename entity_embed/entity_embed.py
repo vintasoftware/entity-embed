@@ -5,13 +5,13 @@ import pytorch_lightning as pl
 import torch
 from n2 import HnswIndex
 from pytorch_metric_learning.distances import DotProductSimilarity
+from pytorch_metric_learning.losses import SupConLoss
 from tqdm.auto import tqdm
 
 from .data_utils import utils
 from .data_utils.datasets import ClusterDataset, RowDataset
 from .evaluation import f1_score, pair_entity_ratio, precision_and_recall
 from .helpers import build_index_build_kwargs, build_index_search_kwargs, build_loader_kwargs
-from .losses import SupConLoss
 from .models import BlockerNet
 
 logger = logging.getLogger(__name__)
