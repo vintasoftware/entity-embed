@@ -7,14 +7,8 @@ import entity_embed
 import mock
 import pytest
 from click.testing import CliRunner
-from entity_embed import cli
+from entity_embed import DeduplicationDataModule, EntityEmbed, LinkageDataModule, LinkageEmbed, cli
 from entity_embed.data_utils.numericalizer import FieldType
-from entity_embed.entity_embed import (
-    DeduplicationDataModule,
-    EntityEmbed,
-    LinkageDataModule,
-    LinkageEmbed,
-)
 
 
 @pytest.fixture

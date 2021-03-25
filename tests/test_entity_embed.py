@@ -1,7 +1,7 @@
 import mock
 import pytest
+from entity_embed import EntityEmbed
 from entity_embed.data_utils.helpers import AttrInfoDictParser
-from entity_embed.entity_embed import EntityEmbed
 from torch import tensor
 
 

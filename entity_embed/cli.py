@@ -12,10 +12,9 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 from pytorch_lightning.loggers import TensorBoardLogger
 
-from . import validate_best
+from . import DeduplicationDataModule, EntityEmbed, LinkageDataModule, LinkageEmbed, validate_best
 from .data_utils import utils
 from .data_utils.helpers import AttrInfoDictParser
-from .entity_embed import DeduplicationDataModule, EntityEmbed, LinkageDataModule, LinkageEmbed
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

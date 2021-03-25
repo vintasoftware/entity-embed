@@ -7,8 +7,8 @@ from abc import ABC
 from typing import List
 from urllib.error import HTTPError
 
+from ..data_modules import LinkageDataModule
 from ..data_utils import utils
-from ..entity_embed import LinkageDataModule
 
 logger = logging.getLogger(__name__)
 
