@@ -12,9 +12,9 @@ from entity_embed.data_utils.numericalizer import FieldType
 
 
 @pytest.fixture
-def attr_info_json_filepath(tmp_path):
-    filepath = tmp_path / "attr_info.json"
-    attr_info_dict = {
+def attr_config_json_filepath(tmp_path):
+    filepath = tmp_path / "attr_config.json"
+    attr_config_dict = {
         "name": {
             "field_type": "MULTITOKEN",
             "tokenizer": "entity_embed.default_tokenizer",
@@ -23,7 +23,7 @@ def attr_info_json_filepath(tmp_path):
     }
 
     with open(filepath, "w") as f:
-        json.dump(attr_info_dict, f)
+        json.dump(attr_config_dict, f)
 
     yield filepath
 
@@ -146,7 +146,7 @@ def test_cli_train(
     mock_trainer,
     mock_validate_best,
     mode,
-    attr_info_json_filepath,
+    attr_config_json_filepath,
     labeled_input_csv_filepath,
     unlabeled_input_csv_filepath,
     caplog,
@@ -156,8 +156,8 @@ def test_cli_train(
         result = runner.invoke(
             cli.train,
             [
-                "--attr_info_json_filepath",
-                attr_info_json_filepath,
+                "--attr_config_json_filepath",
+                attr_config_json_filepath,
                 "--labeled_input_csv_filepath",
                 labeled_input_csv_filepath,
                 "--unlabeled_input_csv_filepath",
@@ -234,7 +234,7 @@ def test_cli_train(
     assert result.exit_code == 0, result.stdout_bytes.decode("utf-8")
 
     expected_args_dict = {
-        "attr_info_json_filepath": attr_info_json_filepath,
+        "attr_config_json_filepath": attr_config_json_filepath,
         "labeled_input_csv_filepath": labeled_input_csv_filepath,
         "unlabeled_input_csv_filepath": unlabeled_input_csv_filepath,
         "csv_encoding": "utf-8",
@@ -267,7 +267,7 @@ def test_cli_train(
         "model_save_dirpath": "trained-models",
         "n_threads": 16,  # assigned
     }
-    expected_attr_info_name_dict = {
+    expected_attr_config_name_dict = {
         "source_attr": "name",
         "field_type": FieldType.MULTITOKEN,
         "tokenizer": entity_embed.data_utils.numericalizer.default_tokenizer,
@@ -337,8 +337,8 @@ def test_cli_train(
     else:
         assert isinstance(model, EntityEmbed)
     assert all(
-        getattr(model.row_numericalizer.attr_info_dict["name"], k) == expected
-        for k, expected in expected_attr_info_name_dict.items()
+        getattr(model.row_numericalizer.attr_config_dict["name"], k) == expected
+        for k, expected in expected_attr_config_name_dict.items()
     )
     assert model.eval_with_clusters
     assert model.embedding_size == expected_args_dict["embedding_size"]
@@ -355,8 +355,8 @@ def test_cli_train(
     # datamodule asserts
     assert datamodule.row_dict == dict(enumerate(LABELED_ROW_DICT_VALUES))
     assert all(
-        getattr(model.row_numericalizer.attr_info_dict["name"], k) == expected
-        for k, expected in expected_attr_info_name_dict.items()
+        getattr(model.row_numericalizer.attr_config_dict["name"], k) == expected
+        for k, expected in expected_attr_config_name_dict.items()
     )
     assert datamodule.batch_size == expected_args_dict["batch_size"]
     assert datamodule.eval_batch_size == expected_args_dict["eval_batch_size"]
@@ -398,7 +398,7 @@ def test_cli_predict(
     mock_torch_random_seed,
     mock_cpu_count,
     mode,
-    attr_info_json_filepath,
+    attr_config_json_filepath,
     unlabeled_input_csv_filepath,
     caplog,
     tmp_path,
@@ -424,8 +424,8 @@ def test_cli_predict(
             [
                 "--model_save_filepath",
                 "trained-model.ckpt",
-                "--attr_info_json_filepath",
-                attr_info_json_filepath,
+                "--attr_config_json_filepath",
+                attr_config_json_filepath,
                 "--unlabeled_input_csv_filepath",
                 unlabeled_input_csv_filepath,
                 "--csv_encoding",
@@ -471,7 +471,7 @@ def test_cli_predict(
 
     expected_args_dict = {
         "model_save_filepath": "trained-model.ckpt",
-        "attr_info_json_filepath": attr_info_json_filepath,
+        "attr_config_json_filepath": attr_config_json_filepath,
         "unlabeled_input_csv_filepath": unlabeled_input_csv_filepath,
         "csv_encoding": "utf-8",
         **({"source_attr": "__source", "left_source": "foo"} if mode == "linkage" else {}),

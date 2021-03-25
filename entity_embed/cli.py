@@ -14,7 +14,7 @@ from pytorch_lightning.loggers import TensorBoardLogger
 
 from . import DeduplicationDataModule, EntityEmbed, LinkageDataModule, LinkageEmbed, validate_best
 from .data_utils import utils
-from .data_utils.helpers import AttrInfoDictParser
+from .data_utils.attr_config_parser import AttrConfigDictParser
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -54,12 +54,12 @@ def _build_row_dict(csv_filepath, kwargs):
 
 
 def _build_row_numericalizer(row_list, kwargs):
-    attr_info_json_filepath = kwargs["attr_info_json_filepath"]
+    attr_config_json_filepath = kwargs["attr_config_json_filepath"]
 
-    with open(attr_info_json_filepath, "r") as attr_info_json_file:
-        row_numericalizer = AttrInfoDictParser.from_json(attr_info_json_file, row_list=row_list)
+    with open(attr_config_json_filepath, "r") as attr_config_json_file:
+        row_numericalizer = AttrConfigDictParser.from_json(attr_config_json_file, row_list=row_list)
 
-    logger.info(f"Finished reading {attr_info_json_filepath}")
+    logger.info(f"Finished reading {attr_config_json_filepath}")
     return row_numericalizer
 
 
@@ -203,7 +203,7 @@ def _build_trainer(kwargs):
 
 @click.command()
 @click.option(
-    "--attr_info_json_filepath",
+    "--attr_config_json_filepath",
     type=str,
     required=True,
     help="Path of the JSON configuration file "
@@ -471,7 +471,7 @@ def _write_csv(row_dict, kwargs):
     help="Path where the model checkpoint was saved",
 )
 @click.option(
-    "--attr_info_json_filepath",
+    "--attr_config_json_filepath",
     type=str,
     required=True,
     help="Path of the JSON configuration file "

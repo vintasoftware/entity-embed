@@ -30,7 +30,7 @@ class _BaseEmbed(pl.LightningModule):
         optimizer_kwargs=None,
         ann_k=10,
         sim_threshold_list=[0.5, 0.7, 0.9],
-        eval_with_clusters=True,
+        eval_with_clusters=False,
         index_build_kwargs=None,
         index_search_kwargs=None,
     ):
@@ -38,12 +38,12 @@ class _BaseEmbed(pl.LightningModule):
         self.save_hyperparameters()
 
         self.row_numericalizer = row_numericalizer
-        for numericalize_info in self.row_numericalizer.attr_info_dict.values():
-            vocab = numericalize_info.vocab
+        for attr_config in self.row_numericalizer.attr_config_dict.values():
+            vocab = attr_config.vocab
             if vocab:
                 # We can assume that there's only one vocab type across the
-                # whole attr_info_dict, so we can stop the loop once we've
-                # found a numericalize_info with a vocab
+                # whole attr_config_dict, so we can stop the loop once we've
+                # found a attr_config with a vocab
                 valid_embedding_size = vocab.vectors.size(1)
                 if valid_embedding_size != embedding_size:
                     raise ValueError(
@@ -52,7 +52,7 @@ class _BaseEmbed(pl.LightningModule):
                     )
         self.embedding_size = embedding_size
         self.blocker_net = BlockerNet(
-            attr_info_dict=self.row_numericalizer.attr_info_dict,
+            attr_config_dict=self.row_numericalizer.attr_config_dict,
             embedding_size=self.embedding_size,
         )
         self.losser = loss_cls(**loss_kwargs if loss_kwargs else {"temperature": 0.1})

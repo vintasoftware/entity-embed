@@ -1,5 +1,5 @@
 entity_embed_train \
-    --attr_info_json_filepath example-data/rl-example-attr-info.json \
+    --attr_config_json_filepath example-data/rl-example-attr-config.json \
     --labeled_input_csv_filepath example-data/rl-example-labeled.csv \
     --unlabeled_input_csv_filepath example-data/rl-example-unlabeled.csv \
     --csv_encoding utf-8 \
@@ -54,13 +54,13 @@ entity_embed_predict \
     --unlabeled_input_csv_filepath example-data/rl-example-unlabeled.csv \
     --cluster_attr cluster \
     --output_csv_filepath example-data/rl-example-unlabeled-prediction.csv \
-    --attr_info_json_filepath example-data/rl-example-attr-info.json
+    --attr_config_json_filepath example-data/rl-example-attr-config.json
 
 
 ##############################
 
 entity_embed_train \
-    --attr_info_json_filepath example-data/er-example-attr-info.json \
+    --attr_config_json_filepath example-data/er-example-attr-config.json \
     --labeled_input_csv_filepath example-data/er-example-labeled.csv \
     --unlabeled_input_csv_filepath example-data/er-example-unlabeled.csv \
     --csv_encoding utf-8 \
@@ -111,4 +111,4 @@ entity_embed_predict \
     --unlabeled_input_csv_filepath example-data/er-example-unlabeled.csv \
     --cluster_attr cluster \
     --output_csv_filepath example-data/er-example-unlabeled-prediction.csv \
-    --attr_info_json_filepath example-data/er-example-attr-info.json
+    --attr_config_json_filepath example-data/er-example-attr-config.json

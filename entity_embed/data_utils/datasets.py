@@ -12,16 +12,16 @@ logger = logging.getLogger(__name__)
 
 
 def _collate_tensor_dict(row_batch, row_numericalizer):
-    tensor_dict = {attr: [] for attr in row_numericalizer.attr_info_dict.keys()}
-    sequence_length_dict = {attr: [] for attr in row_numericalizer.attr_info_dict.keys()}
+    tensor_dict = {attr: [] for attr in row_numericalizer.attr_config_dict.keys()}
+    sequence_length_dict = {attr: [] for attr in row_numericalizer.attr_config_dict.keys()}
     for row in row_batch:
         row_tensor_dict, row_sequence_length_dict = row_numericalizer.build_tensor_dict(row)
-        for attr in row_numericalizer.attr_info_dict.keys():
+        for attr in row_numericalizer.attr_config_dict.keys():
             tensor_dict[attr].append(row_tensor_dict[attr])
             sequence_length_dict[attr].append(row_sequence_length_dict[attr])
 
-    for attr, numericalize_info in row_numericalizer.attr_info_dict.items():
-        if numericalize_info.is_multitoken:
+    for attr, attr_config in row_numericalizer.attr_config_dict.items():
+        if attr_config.is_multitoken:
             tensor_dict[attr] = nn.utils.rnn.pad_sequence(tensor_dict[attr], batch_first=True)
         else:
             tensor_dict[attr] = default_collate(tensor_dict[attr])

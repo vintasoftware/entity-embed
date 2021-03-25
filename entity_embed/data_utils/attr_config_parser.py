@@ -6,9 +6,9 @@ from torchtext.vocab import Vocab
 from .numericalizer import (
     AVAILABLE_VOCABS,
     DEFAULT_ALPHABET,
+    AttrConfig,
     FieldType,
     MultitokenNumericalizer,
-    NumericalizeInfo,
     RowNumericalizer,
     SemanticMultitokenNumericalizer,
     SemanticStringNumericalizer,
@@ -19,57 +19,52 @@ from .utils import compute_max_str_len, compute_vocab_counter, import_function
 logger = logging.getLogger(__name__)
 
 
-class AttrInfoDictParser:
+class AttrConfigDictParser:
     @classmethod
-    def from_json(cls, attr_info_json_file_obj, row_list):
-        attr_info_dict = json.load(attr_info_json_file_obj)
-        return cls.from_dict(attr_info_dict, row_list=row_list)
+    def from_json(cls, attr_config_json_file_obj, row_list):
+        attr_config_dict = json.load(attr_config_json_file_obj)
+        return cls.from_dict(attr_config_dict, row_list=row_list)
 
     @classmethod
-    def from_dict(cls, attr_info_dict, row_list):
-        attr_info_dict = dict(attr_info_dict)  # make a copy
+    def from_dict(cls, attr_config_dict, row_list):
+        parsed_attr_config_dict = {}
         attr_to_numericalizer = {}
-        attr_info_dict_vocab = None
-        for attr, numericalize_info_dict in list(attr_info_dict.items()):
-            if not numericalize_info_dict:
-                raise ValueError(
-                    f'Please set the value of "{attr}" in attr_info_dict, {numericalize_info_dict}'
-                )
-            # Validate if all vocabs used are the same
-            numericalize_info_dict_vocab = numericalize_info_dict.get("vocab")
-            if numericalize_info_dict_vocab:
-                if not attr_info_dict_vocab:
-                    attr_info_dict_vocab = numericalize_info_dict_vocab
-                elif attr_info_dict_vocab != numericalize_info_dict_vocab:
+        found_vocab = None
+        for attr, attr_config in list(attr_config_dict.items()):
+            if not attr_config:
+                raise ValueError(f'Please set the value of "{attr}" in attr_config_dict')
+            # Validate if all vocabs used are the same,
+            # to ensure embedding sizes match
+            current_vocab = attr_config.get("vocab")
+            if current_vocab:
+                if not found_vocab:
+                    found_vocab = current_vocab
+                elif found_vocab != current_vocab:
                     raise ValueError(
-                        "Found more than one vocab on attr_info_dict, please "
-                        "use a single vocab for the whole attr_info_dict, "
-                        f'"{attr_info_dict_vocab}" != "{numericalize_info_dict_vocab}"'
+                        "Found more than one vocab on attr_config_dict, please "
+                        "use a single vocab for the whole attr_config_dict, "
+                        f'"{found_vocab}" != "{current_vocab}"'
                     )
-            numericalize_info = cls._parse_numericalize_info_dict(
-                attr, numericalize_info_dict, row_list=row_list
-            )
-            attr_info_dict[attr] = numericalize_info
-            attr_to_numericalizer[attr] = cls._build_attr_numericalizer(attr, numericalize_info)
-        return RowNumericalizer(attr_info_dict, attr_to_numericalizer)
+            attr_config = cls._parse_attr_config(attr, attr_config, row_list=row_list)
+            parsed_attr_config_dict[attr] = attr_config
+            attr_to_numericalizer[attr] = cls._build_attr_numericalizer(attr, attr_config)
+        return RowNumericalizer(parsed_attr_config_dict, attr_to_numericalizer)
 
     @classmethod
-    def _parse_numericalize_info_dict(cls, attr, numericalize_info_dict, row_list):
-        field_type = FieldType[numericalize_info_dict["field_type"]]
-        tokenizer = import_function(
-            numericalize_info_dict.get("tokenizer", "entity_embed.default_tokenizer")
-        )
-        alphabet = numericalize_info_dict.get("alphabet", DEFAULT_ALPHABET)
-        max_str_len = numericalize_info_dict.get("max_str_len")
+    def _parse_attr_config(cls, attr, attr_config, row_list):
+        field_type = FieldType[attr_config["field_type"]]
+        tokenizer = import_function(attr_config.get("tokenizer", "entity_embed.default_tokenizer"))
+        alphabet = attr_config.get("alphabet", DEFAULT_ALPHABET)
+        max_str_len = attr_config.get("max_str_len")
         vocab = None
 
-        # Check if there's a source_attr defined on the numericalize_info_dict,
-        # useful when we want to have multiple NumericalizeInfo for the same attr
-        source_attr = numericalize_info_dict.get("source_attr", attr)
+        # Check if there's a source_attr defined on the attr_config,
+        # useful when we want to have multiple AttrConfig for the same attr
+        source_attr = attr_config.get("source_attr", attr)
 
         # Compute vocab if necessary
         if field_type in (FieldType.SEMANTIC_STRING, FieldType.SEMANTIC_MULTITOKEN):
-            vocab_type = numericalize_info_dict.get("vocab")
+            vocab_type = attr_config.get("vocab")
             if vocab_type is None:
                 raise ValueError(
                     "Please set a torchtext pretrained vocab to use. "
@@ -85,7 +80,7 @@ class AttrInfoDictParser:
                     f"Cannot compute vocab_counter for attr={source_attr}. "
                     f"Please make sure that attr={attr} is a key in every "
                     "row of row_list or define source_attr in "
-                    "numericalize_info_dict if you wish to use a override "
+                    "attr_config if you wish to use a override "
                     "an attr name."
                 )
             vocab = Vocab(vocab_counter)
@@ -106,19 +101,19 @@ class AttrInfoDictParser:
                     f"Cannot compute max_str_len for attr={source_attr}. "
                     f"Please make sure that attr={attr} is a key in every "
                     "row of row_list or define source_attr in "
-                    "numericalize_info_dict if you wish to use a override "
+                    "attr_config if you wish to use a override "
                     "an attr name."
                 )
             if max_str_len is None:
                 logger.info(f"For attr={attr}, using actual_max_str_len={actual_max_str_len}")
                 max_str_len = actual_max_str_len
 
-        n_channels = numericalize_info_dict.get("n_channels", 8)
-        embed_dropout_p = numericalize_info_dict.get("embed_dropout_p", 0.2)
-        use_attention = numericalize_info_dict.get("use_attention", True)
-        use_mask = numericalize_info_dict.get("use_mask", True)
+        n_channels = attr_config.get("n_channels", 8)
+        embed_dropout_p = attr_config.get("embed_dropout_p", 0.2)
+        use_attention = attr_config.get("use_attention", True)
+        use_mask = attr_config.get("use_mask", True)
 
-        return NumericalizeInfo(
+        return AttrConfig(
             source_attr=source_attr,
             field_type=field_type,
             tokenizer=tokenizer,
@@ -132,8 +127,8 @@ class AttrInfoDictParser:
         )
 
     @classmethod
-    def _build_attr_numericalizer(cls, attr, numericalize_info: NumericalizeInfo):
-        field_type = numericalize_info.field_type
+    def _build_attr_numericalizer(cls, attr, attr_config: AttrConfig):
+        field_type = attr_config.field_type
 
         field_type_to_numericalizer_cls = {
             FieldType.STRING: StringNumericalizer,
@@ -145,4 +140,4 @@ class AttrInfoDictParser:
         if numericalizer_cls is None:
             raise ValueError(f"Unexpected field_type={field_type}")  # pragma: no cover
 
-        return numericalizer_cls(attr=attr, numericalize_info=numericalize_info)
+        return numericalizer_cls(attr=attr, attr_config=attr_config)

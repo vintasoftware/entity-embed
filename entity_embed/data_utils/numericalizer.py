@@ -38,7 +38,7 @@ class FieldType(Enum):
 
 
 @dataclass
-class NumericalizeInfo:
+class AttrConfig:
     source_attr: str
     field_type: FieldType
     tokenizer: Callable[[str], List[str]]
@@ -81,10 +81,10 @@ def default_tokenizer(val):
 class StringNumericalizer:
     is_multitoken = False
 
-    def __init__(self, attr, numericalize_info):
+    def __init__(self, attr, attr_config):
         self.attr = attr
-        self.alphabet = numericalize_info.alphabet
-        self.max_str_len = numericalize_info.max_str_len
+        self.alphabet = attr_config.alphabet
+        self.max_str_len = attr_config.max_str_len
         self.char_to_ord = {c: i for i, c in enumerate(self.alphabet)}
 
     def _ord_encode(self, val):
@@ -112,9 +112,9 @@ class StringNumericalizer:
 class SemanticStringNumericalizer:
     is_multitoken = False
 
-    def __init__(self, attr, numericalize_info):
+    def __init__(self, attr, attr_config):
         self.attr = attr
-        self.vocab = numericalize_info.vocab
+        self.vocab = attr_config.vocab
 
     def build_tensor(self, val):
         # encoded_arr is a lookup_tensor like in
@@ -126,12 +126,10 @@ class SemanticStringNumericalizer:
 class MultitokenNumericalizer:
     is_multitoken = True
 
-    def __init__(self, attr, numericalize_info):
+    def __init__(self, attr, attr_config):
         self.attr = attr
-        self.tokenizer = numericalize_info.tokenizer
-        self.string_numericalizer = StringNumericalizer(
-            attr=attr, numericalize_info=numericalize_info
-        )
+        self.tokenizer = attr_config.tokenizer
+        self.string_numericalizer = StringNumericalizer(attr=attr, attr_config=attr_config)
 
     def build_tensor(self, val):
         val_tokens = self.tokenizer(val)
@@ -149,21 +147,19 @@ class MultitokenNumericalizer:
 
 
 class SemanticMultitokenNumericalizer(MultitokenNumericalizer):
-    def __init__(self, attr, numericalize_info):
+    def __init__(self, attr, attr_config):
         self.attr = attr
-        self.tokenizer = numericalize_info.tokenizer
-        self.string_numericalizer = SemanticStringNumericalizer(
-            attr=attr, numericalize_info=numericalize_info
-        )
+        self.tokenizer = attr_config.tokenizer
+        self.string_numericalizer = SemanticStringNumericalizer(attr=attr, attr_config=attr_config)
 
 
 class RowNumericalizer:
     def __init__(
         self,
-        attr_info_dict,
+        attr_config_dict,
         attr_to_numericalizer,
     ):
-        self.attr_info_dict = attr_info_dict
+        self.attr_config_dict = attr_config_dict
         self.attr_to_numericalizer = attr_to_numericalizer
 
     def build_tensor_dict(self, row):
@@ -171,9 +167,9 @@ class RowNumericalizer:
         sequence_length_dict = {}
 
         for attr, numericalizer in self.attr_to_numericalizer.items():
-            # Get the source_attr from the NumericalizeInfo object for the
+            # Get the source_attr from the AttrConfig object for the
             # cases where the attr is different from the row's key
-            source_attr = self.attr_info_dict[attr].source_attr
+            source_attr = self.attr_config_dict[attr].source_attr
             if numericalizer.is_multitoken:
                 t, sequence_length = numericalizer.build_tensor(row[source_attr])
             else:
@@ -185,4 +181,4 @@ class RowNumericalizer:
         return tensor_dict, sequence_length_dict
 
     def __repr__(self):
-        return f"<RowNumericalizer with attr_info_dict={self.attr_info_dict}>"
+        return f"<RowNumericalizer with attr_config_dict={self.attr_config_dict}>"

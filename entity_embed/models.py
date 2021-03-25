@@ -15,12 +15,12 @@ class StringEmbedCNN(nn.Module):
     The tensor shape expected here is produced by StringNumericalizer.
     """
 
-    def __init__(self, numericalize_info, embedding_size):
+    def __init__(self, attr_config, embedding_size):
         super().__init__()
 
-        self.alphabet_len = len(numericalize_info.alphabet)
-        self.max_str_len = numericalize_info.max_str_len
-        self.n_channels = numericalize_info.n_channels
+        self.alphabet_len = len(attr_config.alphabet)
+        self.max_str_len = attr_config.max_str_len
+        self.n_channels = attr_config.n_channels
         self.embedding_size = embedding_size
 
         self.conv1 = nn.Conv1d(
@@ -37,8 +37,8 @@ class StringEmbedCNN(nn.Module):
             raise ValueError("Too small alphabet, self.flat_size == 0")
 
         dense_layers = [nn.Linear(self.flat_size, self.embedding_size)]
-        if numericalize_info.embed_dropout_p:
-            dense_layers.append(nn.Dropout(p=numericalize_info.embed_dropout_p))
+        if attr_config.embed_dropout_p:
+            dense_layers.append(nn.Dropout(p=attr_config.embed_dropout_p))
         self.dense_net = nn.Sequential(*dense_layers)
 
     def forward(self, x, **kwargs):
@@ -55,13 +55,13 @@ class StringEmbedCNN(nn.Module):
 
 
 class SemanticEmbedNet(nn.Module):
-    def __init__(self, numericalize_info, embedding_size):
+    def __init__(self, attr_config, embedding_size):
         super().__init__()
 
         self.embedding_size = embedding_size
         self.dense_net = nn.Sequential(
-            nn.Embedding.from_pretrained(numericalize_info.vocab.vectors),
-            nn.Dropout(p=numericalize_info.embed_dropout_p),
+            nn.Embedding.from_pretrained(attr_config.vocab.vectors),
+            nn.Dropout(p=attr_config.embed_dropout_p),
         )
 
     def forward(self, x, **kwargs):
@@ -214,10 +214,12 @@ class MultitokenAverageEmbed(nn.Module):
 
 
 class TupleSignature(nn.Module):
-    def __init__(self, attr_info_dict):
+    def __init__(self, attr_config_dict):
         super().__init__()
-        if len(attr_info_dict) > 1:
-            self.weights = nn.Parameter(torch.full((len(attr_info_dict),), 1 / len(attr_info_dict)))
+        if len(attr_config_dict) > 1:
+            self.weights = nn.Parameter(
+                torch.full((len(attr_config_dict),), 1 / len(attr_config_dict))
+            )
         else:
             self.weights = None
 
@@ -234,55 +236,53 @@ class TupleSignature(nn.Module):
 class BlockerNet(nn.Module):
     def __init__(
         self,
-        attr_info_dict,
+        attr_config_dict,
         embedding_size=300,
     ):
         super().__init__()
-        self.attr_info_dict = attr_info_dict
+        self.attr_config_dict = attr_config_dict
         self.embedding_size = embedding_size
         self.embedding_net_dict = nn.ModuleDict()
 
-        for attr, numericalize_info in attr_info_dict.items():
-            if numericalize_info.field_type in (
+        for attr, attr_config in attr_config_dict.items():
+            if attr_config.field_type in (
                 FieldType.STRING,
                 FieldType.MULTITOKEN,
             ):
                 embedding_net = StringEmbedCNN(
-                    numericalize_info=numericalize_info,
+                    attr_config=attr_config,
                     embedding_size=embedding_size,
                 )
-            elif numericalize_info.field_type in (
+            elif attr_config.field_type in (
                 FieldType.SEMANTIC_STRING,
                 FieldType.SEMANTIC_MULTITOKEN,
             ):
                 embedding_net = SemanticEmbedNet(
-                    numericalize_info=numericalize_info,
+                    attr_config=attr_config,
                     embedding_size=embedding_size,
                 )
             else:
-                raise ValueError(
-                    f"Unexpected numericalize_info.field_type={numericalize_info.field_type}"
-                )
+                raise ValueError(f"Unexpected attr_config.field_type={attr_config.field_type}")
 
-            if numericalize_info.field_type in (
+            if attr_config.field_type in (
                 FieldType.MULTITOKEN,
                 FieldType.SEMANTIC_MULTITOKEN,
             ):
-                if numericalize_info.use_attention:
+                if attr_config.use_attention:
                     self.embedding_net_dict[attr] = MultitokenAttentionEmbed(
-                        embedding_net, use_mask=numericalize_info.use_mask
+                        embedding_net, use_mask=attr_config.use_mask
                     )
                 else:
                     self.embedding_net_dict[attr] = MultitokenAverageEmbed(
-                        embedding_net, use_mask=numericalize_info.use_mask
+                        embedding_net, use_mask=attr_config.use_mask
                     )
-            elif numericalize_info.field_type in (
+            elif attr_config.field_type in (
                 FieldType.STRING,
                 FieldType.SEMANTIC_STRING,
             ):
                 self.embedding_net_dict[attr] = embedding_net
 
-        self.tuple_signature = TupleSignature(attr_info_dict)
+        self.tuple_signature = TupleSignature(attr_config_dict)
 
     def forward(self, tensor_dict, sequence_length_dict):
         attr_embedding_dict = {}
@@ -322,12 +322,12 @@ class BlockerNet(nn.Module):
     def get_signature_weights(self):
         with torch.no_grad():
             if self.tuple_signature.weights is None:
-                return {list(self.attr_info_dict.keys())[0]: 1.0}
+                return {list(self.attr_config_dict.keys())[0]: 1.0}
 
             return {
                 attr: float(weight)
                 for attr, weight in zip(
-                    self.attr_info_dict.keys(),
+                    self.attr_config_dict.keys(),
                     self.tuple_signature.state_dict()["weights"],
                 )
             }
