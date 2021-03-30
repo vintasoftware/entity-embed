@@ -48,7 +48,7 @@ See [CHANGELOG.md](/CHANGELOG.md).
 
 ## Credits
 
-This project is maintained by [Vinta Software](https://www.vintasoftware.com/).
+This project is maintained by [open-source contributors](/AUTHORS.rst) and [Vinta Software](https://www.vintasoftware.com/).
 
 This package was created with [Cookiecutter](https://github.com/audreyr/cookiecutter) and the [`audreyr/cookiecutter-pypackage`](https://github.com/audreyr/cookiecutter-pypackage) project template.
 
@@ -70,7 +70,7 @@ BibTeX entry:
   author = {Juvenal, Flávio and Vieira, Renato},
   url = {https://github.com/vintasoftware/entity-embed},
   version = {0.0.1},
-  date = {2021-03-15},
+  date = {2021-03-30},
   year = {2021}
 }
 ```
