@@ -28,11 +28,10 @@ def _fix_workers_kwargs(kwargs):
 
 
 def _set_random_seeds(kwargs):
-    if kwargs.get("random_seed") is not None:
-        random_seed = kwargs["random_seed"]
-        torch.manual_seed(random_seed)
-        np.random.seed(random_seed)
-        random.seed(random_seed)
+    random_seed = kwargs["random_seed"]
+    torch.manual_seed(random_seed)
+    np.random.seed(random_seed)
+    random.seed(random_seed)
 
 
 def _build_row_dict(csv_filepath, kwargs):
@@ -112,7 +111,7 @@ def _build_datamodule(train_row_dict, valid_row_dict, test_row_dict, row_numeric
 
 
 def _build_model(row_numericalizer, kwargs):
-    model_args = {"row_numericalizer": row_numericalizer, "eval_with_clusters": True}
+    model_args = {"row_numericalizer": row_numericalizer}
 
     if _is_record_linkage(kwargs):
         model_cls = LinkageEmbed
@@ -332,7 +331,9 @@ def _build_trainer(kwargs):
     "--ef_construction", type=int, help="Parameter for the ANN. See N2 docs: n2.readthedocs.io"
 )
 @click.option("--ef_search", type=int, help="Parameter for the ANN. See N2 docs: n2.readthedocs.io")
-@click.option("--random_seed", type=int, help="Random seed to help with reproducibility")
+@click.option(
+    "--random_seed", type=int, default=42, help="Random seed to help with reproducibility"
+)
 @click.option(
     "--model_save_dir",
     type=str,
@@ -516,7 +517,9 @@ def _write_json(found_pairs, kwargs):
     "--ef_construction", type=int, help="Parameter for the ANN. See N2 docs: n2.readthedocs.io"
 )
 @click.option("--ef_search", type=int, help="Parameter for the ANN. See N2 docs: n2.readthedocs.io")
-@click.option("--random_seed", type=int, help="Random seed to help with reproducibility")
+@click.option(
+    "--random_seed", type=int, default=42, help="Random seed to help with reproducibility"
+)
 @click.option(
     "--output_json",
     type=str,

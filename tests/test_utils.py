@@ -1,6 +1,3 @@
-import logging
-
-import mock
 import pytest
 from entity_embed.data_utils.utils import (
     Enumerator,
@@ -151,82 +148,44 @@ def fake_rnd_sample(population, sample_len):
     return list(population)[:sample_len]
 
 
-@mock.patch("entity_embed.data_utils.utils.random.Random.sample", wraps=fake_rnd_sample)
-def test_split_clusters(mock_rnd_sample):
+def test_split_clusters():
     cluster_dict = {
         1: [1, 2, 3],
         4: [4, 5],
         6: [6, 7, 8, 9, 10],
-        11: [11],
-        12: [12, 13, 15],
-        14: [14, 16],
+        11: [11, 12],
+        13: [13, 14, 15],
+        16: [16, 17],
+        18: [18, 19, 20],
+        21: [21, 22],
+        23: [23],
+        24: [24],
+        25: [25],
+        26: [26],
     }
 
     train_cluster_dict, valid_cluster_dict, test_cluster_dict = split_clusters(
         cluster_dict=cluster_dict,
-        train_len=2,
-        valid_len=2,
-        test_len=2,
+        train_proportion=0.5,
+        valid_proportion=0.25,
         random_seed=40,
     )
 
-    assert mock_rnd_sample.call_count == 2
-
     assert train_cluster_dict == {
+        21: [21, 22],
+        13: [13, 14, 15],
+        18: [18, 19, 20],
         1: [1, 2, 3],
-        4: [4, 5],
+        25: [25],
+        26: [26],
     }
 
-    # [11] stays since we allow non-plural clusters
-    assert valid_cluster_dict == {
-        6: [6, 7, 8, 9, 10],
-        11: [11],
-    }
+    assert valid_cluster_dict == {6: [6, 7, 8, 9, 10], 16: [16, 17], 23: [23]}
 
     assert test_cluster_dict == {
-        12: [12, 13, 15],
-        14: [14, 16],
-    }
-
-
-@mock.patch("entity_embed.data_utils.utils.random.Random.sample", wraps=fake_rnd_sample)
-def test_split_clusters_not_all_clusters_used(mock_rnd_sample, caplog):
-    cluster_dict = {
-        1: [1, 2, 3],
         4: [4, 5],
-        6: [6, 7, 8, 9, 10],
-        11: [11, 18],
-        12: [12, 13, 15],
-        14: [14, 16],
-        20: [20, 21, 22],
-    }
-
-    caplog.set_level(logging.WARNING)
-    train_cluster_dict, valid_cluster_dict, test_cluster_dict = split_clusters(
-        cluster_dict=cluster_dict,
-        train_len=2,
-        valid_len=2,
-        test_len=2,
-        random_seed=40,
-    )
-    assert "(train_len + valid_len + test_len)=6 is less than len(cluster_dict)=7" in caplog.text
-
-    assert mock_rnd_sample.call_count == 3
-
-    # [20, 21, 22] should be left out of the returned dicts
-    assert train_cluster_dict == {
-        1: [1, 2, 3],
-        4: [4, 5],
-    }
-
-    assert valid_cluster_dict == {
-        6: [6, 7, 8, 9, 10],
-        11: [11, 18],
-    }
-
-    assert test_cluster_dict == {
-        12: [12, 13, 15],
-        14: [14, 16],
+        11: [11, 12],
+        24: [24],
     }
 
 
@@ -261,18 +220,3 @@ def test_cluster_dict_to_id_pairs():
         (13, 15),
         (14, 16),
     }
-
-
-def test_count_cluster_dict_pairs():
-    cluster_dict = {
-        1: [1, 2, 3],
-        4: [4, 5],
-        6: [6, 7, 8, 9, 10],
-        11: [11, 18],
-        12: [12, 13, 15],
-        14: [14, 16],
-    }
-
-    count = count_cluster_dict_pairs(cluster_dict)
-    # sum((n*(n - 1))//2) => 3 + 1 + 10 + 1 + 3 + 1
-    assert count == 19
