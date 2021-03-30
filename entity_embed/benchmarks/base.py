@@ -7,7 +7,7 @@ from abc import ABC
 from typing import List
 from urllib.error import HTTPError
 
-from ..data_modules import DEFAULT_LEFT_SOURCE, DEFAULT_SOURCE_ATTR, PairwiseDataModule
+from ..data_modules import DEFAULT_LEFT_SOURCE, DEFAULT_SOURCE_ATTR, LinkageDataModule
 from ..data_utils import utils
 
 logger = logging.getLogger(__name__)
@@ -30,6 +30,7 @@ class DeepmatcherBenchmark(ABC):
         self.source_attr = DEFAULT_SOURCE_ATTR
         self.left_source = DEFAULT_LEFT_SOURCE
         self.right_source = "right"
+        self.cluster_attr = "cluster"
 
         self._download()
         self._extract_zip()
@@ -44,6 +45,29 @@ class DeepmatcherBenchmark(ABC):
         self.test_pos_pair_set, self.test_neg_pair_set = self._read_pair_sets(
             pair_csv_path=self.test_csv_path
         )
+
+        cluster_mapping, __ = utils.id_pairs_to_cluster_mapping_and_dict(
+            id_pairs=self.train_pos_pair_set | self.valid_pos_pair_set | self.test_pos_pair_set,
+            row_dict=self.row_dict,
+        )
+        utils.assign_clusters(
+            row_dict=self.row_dict, cluster_attr=self.cluster_attr, cluster_mapping=cluster_mapping
+        )
+        self.train_row_dict = {
+            id_: self.row_dict[id_]
+            for pair in self.train_pos_pair_set | self.train_neg_pair_set
+            for id_ in pair
+        }
+        self.valid_row_dict = {
+            id_: self.row_dict[id_]
+            for pair in self.valid_pos_pair_set | self.valid_neg_pair_set
+            for id_ in pair
+        }
+        self.test_row_dict = {
+            id_: self.row_dict[id_]
+            for pair in self.test_pos_pair_set | self.test_neg_pair_set
+            for id_ in pair
+        }
 
     @property
     def local_dir_path(self) -> str:
@@ -113,18 +137,18 @@ class DeepmatcherBenchmark(ABC):
         return pos_pair_set, neg_pair_set
 
     def build_datamodule(self, row_numericalizer, batch_size, eval_batch_size, random_seed):
-        return PairwiseDataModule(
-            row_dict=self.row_dict,
+        return LinkageDataModule(
+            train_row_dict=self.train_row_dict,
+            valid_row_dict=self.valid_row_dict,
+            test_row_dict=self.test_row_dict,
+            source_attr=self.source_attr,
+            left_source=self.left_source,
+            cluster_attr=self.cluster_attr,
             row_numericalizer=row_numericalizer,
             batch_size=batch_size,
             eval_batch_size=eval_batch_size,
-            train_pos_pair_set=self.train_pos_pair_set,
-            valid_pos_pair_set=self.valid_pos_pair_set,
-            test_pos_pair_set=self.test_pos_pair_set,
-            train_neg_pair_set=self.train_neg_pair_set,
-            valid_neg_pair_set=self.valid_neg_pair_set,
-            test_neg_pair_set=self.test_neg_pair_set,
             random_seed=random_seed,
+            check_for_common_rows=False,
         )
 
     def __repr__(self):

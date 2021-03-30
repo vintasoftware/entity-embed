@@ -3,7 +3,6 @@ import os
 
 import pytorch_lightning as pl
 import torch
-import torch.nn as nn
 from pytorch_metric_learning.distances import DotProductSimilarity
 from pytorch_metric_learning.losses import SupConLoss
 from tqdm.auto import tqdm
@@ -11,7 +10,7 @@ from tqdm.auto import tqdm
 from .data_utils.datasets import RowDataset
 from .evaluation import f1_score, pair_entity_ratio, precision_and_recall
 from .indexes import ANNEntityIndex, ANNLinkageIndex
-from .models import BlockerNet, MatcherNet
+from .models import BlockerNet
 
 logger = logging.getLogger(__name__)
 
@@ -376,140 +375,3 @@ def validate_best(trainer):
     )
 
     return metric_dict
-
-
-class Matcher(pl.LightningModule):
-    def __init__(
-        self,
-        row_numericalizer,
-        embedding_size=300,
-        optimizer_cls=torch.optim.Adam,
-        optimizer_kwargs=None,
-        learning_rate=0.001,
-        final_dropout_p=0.0,
-        sim_threshold_list=[0.3, 0.4, 0.5],
-    ):
-        super().__init__()
-        # self.save_hyperparameters()
-
-        self.row_numericalizer = row_numericalizer
-        for attr_config in self.row_numericalizer.attr_config_dict.values():
-            vocab = attr_config.vocab
-            if vocab:
-                # We can assume that there's only one vocab type across the
-                # whole attr_config_dict, so we can stop the loop once we've
-                # found a attr_config with a vocab
-                valid_embedding_size = vocab.vectors.size(1)
-                if valid_embedding_size != embedding_size:
-                    raise ValueError(
-                        f"Invalid embedding_size={embedding_size}. "
-                        f"Expected {valid_embedding_size}, due to semantic fields."
-                    )
-        self.embedding_size = embedding_size
-        self.matcher_net = MatcherNet(
-            attr_config_dict=self.row_numericalizer.attr_config_dict,
-            embedding_size=self.embedding_size,
-            final_dropout_p=final_dropout_p,
-        )
-        self.loss_fn = nn.BCEWithLogitsLoss()
-        self.optimizer_cls = optimizer_cls
-        self.learning_rate = learning_rate
-        self.optimizer_kwargs = optimizer_kwargs if optimizer_kwargs else {}
-        self.sim_threshold_list = sim_threshold_list
-
-    def forward(self, tensor_dict, sequence_length_dict):
-        logits = self.matcher_net(tensor_dict, sequence_length_dict)
-        proba = logits.sigmoid()
-        return proba
-
-    def training_step(self, batch, batch_idx):
-        (
-            tensor_dict_left,
-            sequence_length_dict_left,
-            tensor_dict_right,
-            sequence_length_dict_right,
-            target,
-        ) = batch
-        logits = self.matcher_net(
-            tensor_dict_left=tensor_dict_left,
-            sequence_length_dict_left=sequence_length_dict_left,
-            tensor_dict_right=tensor_dict_right,
-            sequence_length_dict_right=sequence_length_dict_right,
-        )
-        loss = self.loss_fn(logits, target)
-
-        self.log("train_loss", loss)
-        return loss
-
-    def validation_step(self, batch, batch_idx):
-        (
-            tensor_dict_left,
-            sequence_length_dict_left,
-            tensor_dict_right,
-            sequence_length_dict_right,
-            target,
-        ) = batch
-        logits = self.matcher_net(
-            tensor_dict_left=tensor_dict_left,
-            sequence_length_dict_left=sequence_length_dict_left,
-            tensor_dict_right=tensor_dict_right,
-            sequence_length_dict_right=sequence_length_dict_right,
-        )
-        return logits, target
-
-    def _evaluate(self, set_name, outputs):
-        logits = torch.cat([logits for logits, target in outputs])
-        proba = logits.sigmoid()
-        target = torch.cat([target for logits, target in outputs])
-        target = target.bool()
-        metric_dict = {}
-
-        for sim_threshold in self.sim_threshold_list:
-            pred = proba >= sim_threshold
-            true_pos = (pred & target).sum().float()
-            false_pos = (pred & (~target)).sum().float()
-            false_neg = ((~pred) & target).sum().float()
-            precision = true_pos / (true_pos + false_pos + 1e-12)
-            recall = true_pos / (true_pos + false_neg + 1e-12)
-            f1 = (2 * precision * recall) / (precision + recall + 1e-12)
-
-            metric_dict.update(
-                {
-                    f"{set_name}_precision_at_{sim_threshold}": precision,
-                    f"{set_name}_recall_at_{sim_threshold}": recall,
-                    f"{set_name}_f1_at_{sim_threshold}": f1,
-                }
-            )
-
-        metric_dict = dict(sorted(metric_dict.items(), key=lambda kv: kv[0]))
-        return metric_dict
-
-    def validation_epoch_end(self, outputs):
-        metric_dict = self._evaluate(set_name="valid", outputs=outputs)
-        self.log_dict(metric_dict)
-
-    def test_step(self, batch, batch_idx):
-        (
-            tensor_dict_left,
-            sequence_length_dict_left,
-            tensor_dict_right,
-            sequence_length_dict_right,
-            target,
-        ) = batch
-        logits = self.matcher_net(
-            tensor_dict_left=tensor_dict_left,
-            sequence_length_dict_left=sequence_length_dict_left,
-            tensor_dict_right=tensor_dict_right,
-            sequence_length_dict_right=sequence_length_dict_right,
-        )
-        return logits, target
-
-    def test_epoch_end(self, outputs):
-        metric_dict = self._evaluate(set_name="test", outputs=outputs)
-        self.log_dict(metric_dict)
-
-    def configure_optimizers(self):
-        optimizer = self.optimizer_cls(
-            self.parameters(), lr=self.learning_rate, **self.optimizer_kwargs
-        )
-        return optimizer

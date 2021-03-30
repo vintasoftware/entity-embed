@@ -4,7 +4,7 @@ import pytorch_lightning as pl
 import torch
 
 from .data_utils import utils
-from .data_utils.datasets import ClusterDataset, PairDataset, RowDataset
+from .data_utils.datasets import ClusterDataset, RowDataset
 from .helpers import build_loader_kwargs
 
 logger = logging.getLogger(__name__)
@@ -295,93 +295,3 @@ class LinkageDataModule(pl.LightningDataModule):
             **self.eval_loader_kwargs,
         )
         return test_row_loader
-
-
-class PairwiseDataModule(pl.LightningDataModule):
-    def __init__(
-        self,
-        row_dict,
-        row_numericalizer,
-        batch_size,
-        eval_batch_size,
-        train_pos_pair_set,
-        valid_pos_pair_set,
-        test_pos_pair_set,
-        train_neg_pair_set,
-        valid_neg_pair_set,
-        test_neg_pair_set,
-        train_loader_kwargs=None,
-        eval_loader_kwargs=None,
-        random_seed=42,
-    ):
-        super().__init__()
-
-        self.row_numericalizer = row_numericalizer
-        self.batch_size = batch_size
-        self.eval_batch_size = eval_batch_size
-        self.train_loader_kwargs = build_loader_kwargs(train_loader_kwargs)
-        self.eval_loader_kwargs = build_loader_kwargs(eval_loader_kwargs)
-        self.random_seed = random_seed
-        self.row_dict = row_dict
-
-        self.train_pos_pair_set = train_pos_pair_set
-        self.valid_pos_pair_set = valid_pos_pair_set
-        self.test_pos_pair_set = test_pos_pair_set
-        self.train_neg_pair_set = train_neg_pair_set
-        self.valid_neg_pair_set = valid_neg_pair_set
-        self.test_neg_pair_set = test_neg_pair_set
-
-    def train_dataloader(self):
-        train_cluster_dataset = PairDataset(
-            row_dict=self.row_dict,
-            pos_pair_set=self.train_pos_pair_set,
-            neg_pair_set=self.train_neg_pair_set,
-            row_numericalizer=self.row_numericalizer,
-            batch_size=self.batch_size,
-            # Combined with reload_dataloaders_every_epoch on Trainer,
-            # this re-shuffles training batches every epoch:
-            random_seed=self.random_seed + self.trainer.current_epoch
-            if self.trainer
-            else self.random_seed,
-        )
-        train_cluster_loader = torch.utils.data.DataLoader(
-            train_cluster_dataset,
-            batch_size=None,  # batch size is set on PairDataset
-            shuffle=False,  # shuffling is implemented on PairDataset
-            **self.train_loader_kwargs,
-        )
-        return train_cluster_loader
-
-    def val_dataloader(self):
-        valid_cluster_dataset = PairDataset(
-            row_dict=self.row_dict,
-            pos_pair_set=self.valid_pos_pair_set,
-            neg_pair_set=self.valid_neg_pair_set,
-            row_numericalizer=self.row_numericalizer,
-            batch_size=self.batch_size,
-            random_seed=None,
-        )
-        valid_cluster_loader = torch.utils.data.DataLoader(
-            valid_cluster_dataset,
-            batch_size=None,  # batch size is set on PairDataset
-            shuffle=False,
-            **self.eval_loader_kwargs,
-        )
-        return valid_cluster_loader
-
-    def test_dataloader(self):
-        test_cluster_dataset = PairDataset(
-            row_dict=self.row_dict,
-            pos_pair_set=self.test_pos_pair_set,
-            neg_pair_set=self.test_neg_pair_set,
-            row_numericalizer=self.row_numericalizer,
-            batch_size=self.batch_size,
-            random_seed=None,
-        )
-        test_cluster_loader = torch.utils.data.DataLoader(
-            test_cluster_dataset,
-            batch_size=None,  # batch size is set on PairDataset
-            shuffle=False,
-            **self.eval_loader_kwargs,
-        )
-        return test_cluster_loader
