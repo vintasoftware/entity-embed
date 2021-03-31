@@ -7,12 +7,12 @@ on:
 jobs:
   test:
     timeout-minutes: 10
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.platform }}
     strategy:
       matrix:
         os: [macos-latest, ubuntu-latest]
-        pytorch-version: [1.7.1, 1.8.1]
         python-version: [3.6, 3.7, 3.8, 3.9]
+        pytorch-version: [1.7.1, 1.8.1]
 
     steps:
     - name: Checkout code
@@ -33,6 +33,7 @@ jobs:
     - name: Run tests with tox
       env:
         PLATFORM: ${{ matrix.platform }}
+        PYTORCH: ${{ matrix.pytorch-version }}
         TEST_DEVICE: "cpu"
       run: |
         pip install torch==${{ matrix.pytorch-version }} --force-reinstall
