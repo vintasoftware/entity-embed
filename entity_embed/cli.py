@@ -6,13 +6,10 @@ import random
 
 import click
 import numpy as np
-import pytorch_lightning as pl
 import torch
-from pytorch_lightning.loggers import TensorBoardLogger
 
 from . import DeduplicationDataModule, EntityEmbed, LinkageDataModule, LinkageEmbed
 from .data_utils.attr_config_parser import AttrConfigDictParser
-from .early_stopping import EarlyStoppingMinEpochs, ModelCheckpointMinEpochs
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -151,52 +148,25 @@ def _build_model(row_numericalizer, kwargs):
     return model_cls(**model_args)
 
 
-def _build_trainer(kwargs):
-    min_epochs = kwargs["min_epochs"]
-    monitor = kwargs["early_stopping_monitor"]
-    min_delta = kwargs["early_stopping_min_delta"]
-    patience = kwargs["early_stopping_patience"]
-    mode = kwargs["early_stopping_mode"] or ("min" if "pair_entity_ratio_at" in monitor else "max")
-
-    early_stop_callback = EarlyStoppingMinEpochs(
-        min_epochs=min_epochs,
-        monitor=monitor,
-        min_delta=min_delta,
-        patience=patience,
-        verbose=True,
-        mode=mode,
+def _fit_model(model, datamodule, kwargs):
+    monitor = kwargs["early_stop_monitor"]
+    mode = kwargs["early_stop_mode"] or ("min" if "pair_entity_ratio_at" in monitor else "max")
+    return model.fit(
+        datamodule,
+        min_epochs=kwargs["min_epochs"],
+        max_epochs=kwargs["max_epochs"],
+        check_val_every_n_epoch=kwargs["check_val_every_n_epoch"],
+        early_stop_monitor=monitor,
+        early_stop_min_delta=kwargs["early_stop_min_delta"],
+        early_stop_patience=kwargs["early_stop_patience"],
+        early_stop_mode=mode,
+        early_stop_verbose=True,
+        model_save_top_k=1,
+        model_save_dir=kwargs["model_save_dir"],
+        model_save_verbose=True,
+        tb_save_dir=kwargs["tb_save_dir"],
+        tb_name=kwargs["tb_name"],
     )
-
-    checkpoint_callback = ModelCheckpointMinEpochs(
-        min_epochs=min_epochs,
-        monitor=monitor,
-        save_top_k=1,
-        mode=mode,
-        verbose=True,
-        dirpath=kwargs["model_save_dir"],
-    )
-
-    trainer_args = {
-        "gpus": 1,
-        "min_epochs": min_epochs,
-        "max_epochs": kwargs["max_epochs"],
-        "check_val_every_n_epoch": kwargs["check_val_every_n_epoch"],
-        "callbacks": [early_stop_callback, checkpoint_callback],
-        "reload_dataloaders_every_epoch": True,  # for shuffling ClusterDataset every epoch
-    }
-
-    if kwargs["tb_name"] and kwargs["tb_save_dir"]:
-        trainer_args["logger"] = TensorBoardLogger(
-            kwargs["tb_save_dir"],
-            name=kwargs["tb_name"],
-        )
-    elif kwargs["tb_name"] or kwargs["tb_save_dir"]:
-        raise KeyError(
-            'Please provide both "tb_name" and "tb_save_dir" to enable '
-            "TensorBoardLogger or omit both to disable it"
-        )
-
-    return pl.Trainer(**trainer_args)
 
 
 @click.command()
@@ -262,30 +232,30 @@ def _build_trainer(kwargs):
 @click.option("--min_epochs", type=int, default=5, help="Min number of epochs to run")
 @click.option("--max_epochs", type=int, default=100, help="Max number of epochs to run")
 @click.option(
-    "--early_stopping_monitor",
+    "--early_stop_monitor",
     type=str,
     default="valid_recall_at_0.3",
     help="Metric to be monitored for early stoping. E.g. `valid_recall_at_0.3`. "
     "The float on `at_X` must be one of `sim_threshold`",
 )
 @click.option(
-    "--early_stopping_min_delta",
+    "--early_stop_min_delta",
     type=float,
     default=0.0,
     help="Minimum change in the monitored metric to qualify as an improvement",
 )
 @click.option(
-    "--early_stopping_patience",
+    "--early_stop_patience",
     type=int,
     default=20,
     help="Number of validation runs with no improvement after which training will be stopped",
 )
 @click.option(
-    "--early_stopping_mode",
+    "--early_stop_mode",
     type=str,
     default="max",
     help="Mode for early stopping. Values are `max` or `min`. "
-    "Based on `early_stopping_monitor` metric",
+    "Based on `early_stop_monitor` metric",
 )
 @click.option("--tb_save_dir", type=str, help="TensorBoard save directory")
 @click.option("--tb_name", type=str, help="TensorBoard experiment name")
@@ -368,15 +338,13 @@ def train(**kwargs):
         kwargs=kwargs,
     )
     model = _build_model(row_numericalizer=row_numericalizer, kwargs=kwargs)
-
-    trainer = _build_trainer(kwargs)
-    trainer.fit(model, datamodule)
-    del model, datamodule
-    valid_metrics = validate_best(trainer)
+    trainer = _fit_model(model, datamodule, kwargs)
+    logger.info("Validating best model:")
+    valid_metrics = model.validate(datamodule)
     logger.info(valid_metrics)
-    test_metrics = trainer.test(ckpt_path="best", verbose=False)
+    logger.info("Testing best model:")
+    test_metrics = model.test(datamodule)
     logger.info(test_metrics)
-
     logger.info("Saved best model at path:")
     logger.info(trainer.checkpoint_callback.best_model_path)
 

@@ -18,7 +18,7 @@ def attr_config_json(tmp_path):
             "field_type": "MULTITOKEN",
             "tokenizer": "entity_embed.default_tokenizer",
             "max_str_len": None,
-        }
+        },
     }
 
     with open(filepath, "w") as f:
@@ -154,8 +154,6 @@ def unlabeled_csv(tmp_path):
 
 
 @pytest.mark.parametrize("mode", ["linkage", "deduplication"])
-@mock.patch("entity_embed.cli.validate_best")
-@mock.patch("pytorch_lightning.Trainer")
 @mock.patch("os.cpu_count", return_value=16)
 @mock.patch("torch.manual_seed")
 @mock.patch("numpy.random.seed")
@@ -165,8 +163,6 @@ def test_cli_train(
     mock_np_random_seed,
     mock_torch_random_seed,
     mock_cpu_count,
-    mock_trainer,
-    mock_validate_best,
     mode,
     attr_config_json,
     train_csv,
@@ -175,7 +171,14 @@ def test_cli_train(
     unlabeled_csv,
     caplog,
 ):
-    with caplog.at_level(logging.INFO):
+    if mode == "linkage":
+        expected_model_cls = LinkageEmbed
+    else:
+        expected_model_cls = EntityEmbed
+
+    with mock.patch(
+        f"entity_embed.cli.{expected_model_cls.__name__}"
+    ) as mock_model, caplog.at_level(logging.INFO):
         runner = CliRunner()
         result = runner.invoke(
             cli.train,
@@ -212,13 +215,13 @@ def test_cli_train(
                 1,
                 "--max_epochs",
                 50,
-                "--early_stopping_monitor",
+                "--early_stop_monitor",
                 "valid_recall_at_0.5",
-                "--early_stopping_min_delta",
+                "--early_stop_min_delta",
                 0.01,
-                "--early_stopping_patience",
+                "--early_stop_patience",
                 10,
-                "--early_stopping_mode",
+                "--early_stop_mode",
                 "max",
                 "--tb_save_dir",
                 "tb_logs",
@@ -268,12 +271,12 @@ def test_cli_train(
         **({"source_attr": "__source", "left_source": "foo"} if mode == "linkage" else {}),
         "embedding_size": 500,
         "lr": 0.005,
-        "min_epochs": 50,
+        "min_epochs": 1,
         "max_epochs": 50,
-        "early_stopping_monitor": "valid_recall_at_0.5",
-        "early_stopping_min_delta": 0.01,
-        "early_stopping_patience": 10,
-        "early_stopping_mode": "max",
+        "early_stop_monitor": "valid_recall_at_0.5",
+        "early_stop_min_delta": 0.01,
+        "early_stop_patience": 10,
+        "early_stop_mode": "max",
         "tb_save_dir": "tb_logs",
         "tb_name": "test_experiment",
         "check_val_every_n_epoch": 2,
@@ -309,72 +312,53 @@ def test_cli_train(
     mock_np_random_seed.assert_called_once_with(expected_args_dict["random_seed"])
     mock_torch_random_seed.assert_called_once_with(expected_args_dict["random_seed"])
 
-    # trainer asserts
-    __, trainer_kwargs = mock_trainer.call_args
-    early_stopping_cb, model_ckpt_cb = trainer_kwargs["callbacks"]
-    tb_logger = trainer_kwargs["logger"]
-
-    for early_stopping_attr, early_stopping_kwarg in [
-        ("monitor", "early_stopping_monitor"),
-        ("min_delta", "early_stopping_min_delta"),
-        ("patience", "early_stopping_patience"),
-        ("mode", "early_stopping_mode"),
-    ]:
-        assert (
-            getattr(early_stopping_cb, early_stopping_attr)
-            == expected_args_dict[early_stopping_kwarg]
-        )
-    assert early_stopping_cb.verbose
-
-    for model_ckpt_attr, model_ckpt_kwarg in [
-        ("monitor", "early_stopping_monitor"),
-        ("mode", "early_stopping_mode"),
-    ]:
-        assert getattr(model_ckpt_cb, model_ckpt_attr) == expected_args_dict[model_ckpt_kwarg]
-    assert model_ckpt_cb.dirpath.endswith(expected_args_dict["model_save_dir"])
-    assert model_ckpt_cb.save_top_k == 1
-    assert model_ckpt_cb.verbose
-
-    for tb_logger_attr, tb_logger_kwarg in [("save_dir", "tb_save_dir"), ("name", "tb_name")]:
-        assert getattr(tb_logger, tb_logger_attr) == expected_args_dict[tb_logger_kwarg]
-
-    for trainer_kwarg in ["max_epochs", "check_val_every_n_epoch"]:
-        assert trainer_kwargs[trainer_kwarg] == expected_args_dict[trainer_kwarg]
-    assert trainer_kwargs["gpus"] == 1
-    assert trainer_kwargs["reload_dataloaders_every_epoch"]
-
-    # fit assert
-    mock_trainer.return_value.fit.assert_called_once()
-    (model, datamodule), __ = mock_trainer.return_value.fit.call_args
-
     # model asserts
-    if mode == "linkage":
-        assert isinstance(model, LinkageEmbed)
-    else:
-        assert isinstance(model, EntityEmbed)
+    mock_model.assert_called_once_with(
+        **{
+            "row_numericalizer": mock.ANY,  # row_numericalizer, will get below and assert
+            **({"source_attr": "__source", "left_source": "foo"} if mode == "linkage" else {}),
+            "embedding_size": expected_args_dict["embedding_size"],
+            "learning_rate": expected_args_dict["lr"],
+            "ann_k": expected_args_dict["ann_k"],
+            "sim_threshold_list": expected_args_dict["sim_threshold"],
+            "index_build_kwargs": {
+                k: expected_args_dict[k] for k in ["m", "max_m0", "ef_construction", "n_threads"]
+            },
+            "index_search_kwargs": {k: expected_args_dict[k] for k in ["ef_search", "n_threads"]},
+        }
+    )
+    row_numericalizer = mock_model.call_args[1]["row_numericalizer"]
+
+    # row_numericalizer asserts
     assert all(
-        getattr(model.row_numericalizer.attr_config_dict["name"], k) == expected
+        getattr(row_numericalizer.attr_config_dict["name"], k) == expected
         for k, expected in expected_attr_config_name_dict.items()
     )
-    assert model.embedding_size == expected_args_dict["embedding_size"]
-    assert model.learning_rate == expected_args_dict["lr"]
-    assert model.ann_k == expected_args_dict["ann_k"]
-    assert model.sim_threshold_list == expected_args_dict["sim_threshold"]
-    assert model.index_build_kwargs == {
-        k: expected_args_dict[k] for k in ["m", "max_m0", "ef_construction", "n_threads"]
-    }
-    assert model.index_search_kwargs == {
-        k: expected_args_dict[k] for k in ["ef_search", "n_threads"]
-    }
+
+    # fit asserts
+    mock_model.return_value.fit.assert_called_once_with(
+        mock.ANY,  # datamodule, will get below and assert
+        min_epochs=expected_args_dict["min_epochs"],
+        max_epochs=expected_args_dict["max_epochs"],
+        check_val_every_n_epoch=expected_args_dict["check_val_every_n_epoch"],
+        early_stop_monitor=expected_args_dict["early_stop_monitor"],
+        early_stop_min_delta=expected_args_dict["early_stop_min_delta"],
+        early_stop_patience=expected_args_dict["early_stop_patience"],
+        early_stop_mode=expected_args_dict["early_stop_mode"],
+        early_stop_verbose=True,
+        model_save_top_k=1,
+        model_save_dir=expected_args_dict["model_save_dir"],
+        model_save_verbose=True,
+        tb_save_dir=expected_args_dict["tb_save_dir"],
+        tb_name=expected_args_dict["tb_name"],
+    )
+    datamodule = mock_model.return_value.fit.call_args[0][0]
 
     # datamodule asserts
     assert datamodule.train_row_dict == {row["id"]: row for row in LABELED_ROW_DICT_VALUES[:5]}
     assert datamodule.valid_row_dict == {row["id"]: row for row in LABELED_ROW_DICT_VALUES[5:8]}
     assert datamodule.test_row_dict == {row["id"]: row for row in LABELED_ROW_DICT_VALUES[8:]}
-    assert all(
-        getattr(model.row_numericalizer.attr_config_dict["name"], k) == expected
-        for k, expected in expected_attr_config_name_dict.items()
-    )
+    assert datamodule.row_numericalizer == row_numericalizer
     assert datamodule.batch_size == expected_args_dict["batch_size"]
     assert datamodule.eval_batch_size == expected_args_dict["eval_batch_size"]
     assert datamodule.train_loader_kwargs == {
@@ -386,15 +370,17 @@ def test_cli_train(
     assert datamodule.random_seed == expected_args_dict["random_seed"]
 
     # validate and test asserts
-    mock_validate_best.assert_called_once_with(mock_trainer.return_value)
-    mock_trainer.return_value.test.assert_called_once_with(ckpt_path="best", verbose=False)
+    mock_model.return_value.validate.assert_called_once_with(datamodule)
+    mock_model.return_value.test.assert_called_once_with(datamodule)
 
     # assert outputs
-    assert str(mock_validate_best.return_value) in caplog.records[-4].message
-    assert str(mock_trainer.return_value.test.return_value) in caplog.records[-3].message
+    assert "Validating best model:" in caplog.records[-6].message
+    assert str(mock_model.return_value.validate.return_value) in caplog.records[-5].message
+    assert "Testing best model:" in caplog.records[-4].message
+    assert str(mock_model.return_value.test.return_value) in caplog.records[-3].message
     assert "Saved best model at path:" in caplog.records[-2].message
     assert (
-        str(mock_trainer.return_value.checkpoint_callback.best_model_path)
+        str(mock_model.return_value.fit.return_value.checkpoint_callback.best_model_path)
         in caplog.records[-1].message
     )
 
@@ -610,88 +596,6 @@ def test_build_linkage_datamodule_without_source_attr_or_left_source_raises(miss
             kwargs=kwargs,
         )
     assert 'must provide BOTH "source_attr" and "left_source"' in str(exc)
-
-
-@mock.patch("entity_embed.cli.pl.Trainer")
-@mock.patch("entity_embed.cli.TensorBoardLogger")
-@mock.patch("entity_embed.cli.ModelCheckpointMinEpochs")
-@mock.patch("entity_embed.cli.EarlyStoppingMinEpochs")
-def test_build_trainer(
-    mock_early_stopping,
-    mock_checkpoint,
-    mock_logger,
-    mock_trainer,
-):
-    trainer = cli._build_trainer(
-        {
-            "early_stopping_monitor": "pair_entity_ratio_at_f0",
-            "early_stopping_min_delta": 0.1,
-            "early_stopping_patience": 20,
-            "early_stopping_mode": None,
-            "min_epochs": 5,
-            "max_epochs": 20,
-            "check_val_every_n_epoch": 2,
-            "tb_name": "foo",
-            "tb_save_dir": "bar",
-            "model_save_dir": "trained-models",
-        }
-    )
-
-    mock_early_stopping.assert_called_once_with(
-        min_epochs=5,
-        monitor="pair_entity_ratio_at_f0",
-        min_delta=0.1,
-        patience=20,
-        verbose=True,
-        mode="min",
-    )
-
-    mock_checkpoint.assert_called_once_with(
-        min_epochs=5,
-        monitor="pair_entity_ratio_at_f0",
-        save_top_k=1,
-        mode="min",
-        verbose=True,
-        dirpath="trained-models",
-    )
-
-    mock_logger.assert_called_once_with("bar", name="foo")
-
-    mock_trainer.assert_called_once_with(
-        gpus=1,
-        min_epochs=5,
-        max_epochs=20,
-        check_val_every_n_epoch=2,
-        callbacks=[mock_early_stopping.return_value, mock_checkpoint.return_value],
-        reload_dataloaders_every_epoch=True,
-        logger=mock_logger.return_value,
-    )
-
-    assert trainer == mock_trainer.return_value
-
-
-@mock.patch("entity_embed.cli.ModelCheckpointMinEpochs")
-@mock.patch("entity_embed.cli.EarlyStoppingMinEpochs")
-def test_build_trainer_with_only_tb_name_raises(
-    mock_early_stopping,
-    mock_checkpoint,
-):
-    with pytest.raises(KeyError) as exc:
-        cli._build_trainer(
-            {
-                "early_stopping_monitor": "pair_entity_ratio_at_f0",
-                "early_stopping_min_delta": 0.1,
-                "early_stopping_patience": 20,
-                "early_stopping_mode": None,
-                "min_epochs": 5,
-                "max_epochs": 20,
-                "check_val_every_n_epoch": 2,
-                "tb_name": "foo",
-                "tb_save_dir": None,
-                "model_save_dir": "trained-models",
-            }
-        )
-    assert 'Please provide both "tb_name" and "tb_save_dir"' in str(exc)
 
 
 @pytest.mark.parametrize("mode", ["linkage", "deduplication"])

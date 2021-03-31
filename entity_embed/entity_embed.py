@@ -194,7 +194,7 @@ class _BaseEmbed(pl.LightningModule):
                 name=tb_name,
             )
         elif tb_name or tb_save_dir:
-            raise KeyError(
+            raise ValueError(
                 'Please provide both "tb_name" and "tb_save_dir" to enable '
                 "TensorBoardLogger or omit both to disable it"
             )
