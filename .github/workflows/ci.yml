@@ -26,17 +26,26 @@ jobs:
       with:
         path: ${{ env.pythonLocation }}
         key: ${{ env.pythonLocation }}-${{ hashFiles('**/requirements.txt', '**/requirements-dev.txt') }}
-    - name: Install tox
-      run: pip install tox==3.21.3
+    - name: Install tox and tox-gh-actions
+      run: pip install tox==3.21.3 tox-gh-actions==2.4.0
+    - name: Lint using flake8
+      run: tox -e flake8
     - name: Run tests with tox
       env:
+        PLATFORM: ${{ matrix.platform }}
         TEST_DEVICE: "cpu"
       run: |
         pip install torch==${{ matrix.pytorch-version }} --force-reinstall
-        tox -e py
-    - name: "Upload coverage to Codecov"
+        tox
+    - name: Upload coverage.xml
+      if: ${{ matrix.platform == 'ubuntu-latest' && matrix.python-version == '3.9' }}
+      uses: actions/upload-artifact@v2
+      with:
+        name: tox-gh-actions-coverage
+        path: coverage.xml
+        if-no-files-found: error
+    - name: Upload coverage.xml to codecov
+      if: ${{ matrix.platform == 'ubuntu-latest' && matrix.python-version == '3.9' }}
       uses: codecov/codecov-action@v1
       with:
         fail_ci_if_error: true
-    - name: Lint using flake8
-      run: tox -e flake8
