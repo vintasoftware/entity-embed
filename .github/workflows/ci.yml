@@ -11,6 +11,7 @@ jobs:
     strategy:
       matrix:
         os: [macos-latest, ubuntu-latest]
+        pytorch-version: [1.7.1, 1.8.1]
         python-version: [3.6, 3.7, 3.8, 3.9]
 
     steps:
@@ -30,6 +31,8 @@ jobs:
     - name: Run tests with tox
       env:
         TEST_DEVICE: "cpu"
-      run: tox -e py
+      run: |
+        pip install torch==${{ matrix.pytorch-version }} --force-reinstall
+        tox -e py
     - name: Lint using flake8
       run: tox -e flake8
