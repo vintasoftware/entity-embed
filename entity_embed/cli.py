@@ -10,7 +10,7 @@ import pytorch_lightning as pl
 import torch
 from pytorch_lightning.loggers import TensorBoardLogger
 
-from . import DeduplicationDataModule, EntityEmbed, LinkageDataModule, LinkageEmbed, validate_best
+from . import DeduplicationDataModule, EntityEmbed, LinkageDataModule, LinkageEmbed
 from .data_utils.attr_config_parser import AttrConfigDictParser
 from .early_stopping import EarlyStoppingMinEpochs, ModelCheckpointMinEpochs
 
