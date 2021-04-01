@@ -6,10 +6,12 @@ This guide will teach you how to train Entity Embed's deep neural network, use i
 
 It's also possible to run Entity Embed from the command line, check the :ref:`Command Line Interface <cli>` guide.
 
+.. _deduplication:
+
 Deduplication
 -------------
 
-Let's learn first how to perform Deduplication on Entity Embed. After that, we can learn the specifics on how to perform :ref:`Record Linkage`. Deduplication means finding duplicates within a single dataset. Record Linkage means finding matching rows across two datasets.
+Let's learn first how to perform Deduplication on Entity Embed. After that, we can learn the specifics on how to perform :ref:`Record Linkage <record_linkage>`. Deduplication means finding duplicates within a single dataset. Record Linkage means finding matching rows across two datasets.
 
 Preparing the data
 ~~~~~~~~~~~~~~~~~~
@@ -102,7 +104,10 @@ With the ``field_config_dict``, we can get a ``row_numericalizer`` . This object
 
     from entity_embed import FieldConfigDictParser
 
-    row_numericalizer = FieldConfigDictParser.from_dict(field_config_dict, row_list=row_dict.values())
+    row_numericalizer = FieldConfigDictParser.from_dict(
+        field_config_dict,
+        row_list=row_dict.values(),
+    )
 
 .. warning::
     Note the ``field_config_dict`` receives a ``row_list`` . Here we're passing ``row_list=row_dict.values()``, meaning we're passing all train, valid, and test data. **If you have unlabeled data, you should include it too in** ``row_list`` . It's important to build the ``row_numericalizer`` with ALL available data, labeled or not. This ensures numericalization will know the true ``max_str_len`` of the fields of your data, and the true vocabulary of tokens to generalize well.
@@ -163,7 +168,7 @@ We also set ``tb_name`` and ``tb_save_dir`` to use Tensorboard. Run ``tensorboar
 
 And we can check which fields are most important for the final embedding::
 
-    model.get_signature_weights()
+    model.get_pool_weights()
 
 Again with the best validation model, we can check the performance on the test set::
 
@@ -201,10 +206,12 @@ With the index built, we can now search on it and find the candidate duplicate p
 
 You must filter the ``found_pair_set`` to find the best matching pairs. One option is to use pairwise classifiers like the ones from `Python Record Linkage Toolkit <https://recordlinkage.readthedocs.io/en/latest/index.html>`_ .
 
+.. _record_linkage:
+
 Record Linkage
 --------------
 
-The steps to perform Record Linkage are similar to the ones for :ref:`Deduplication`, but you must provide additional parameters and use different classes. Below we highlight only the differences:
+The steps to perform Record Linkage are similar to the ones for :ref:`Deduplication <deduplication>`, but you must provide additional parameters and use different classes. Below we highlight only the differences:
 
 Preparing the data
 ~~~~~~~~~~~~~~~~~~
@@ -308,3 +315,8 @@ Check these Jupyter Notebooks for step-by-step examples:
 
 - Deduplication, when you have a single dirty dataset with duplicates: `notebooks/Deduplication-Example.ipynb <https://github.com/vintasoftware/entity-embed/blob/main/notebooks/Deduplication-Example.ipynb>`_
 - Record Linkage, when you have multiple clean datasets you need to link: `notebooks/Record-Linkage-Example.ipynb <https://github.com/vintasoftware/entity-embed/blob/main/notebooks/Record-Linkage-Example.ipynb>`_
+
+More info
+---------
+
+Please check more details on the supported :ref:`Field Types <field_types>` and on the :ref:`Neural Network Architecture <nn_architecture>` Entity Embed uses.

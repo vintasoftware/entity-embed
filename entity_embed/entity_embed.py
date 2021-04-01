@@ -96,11 +96,11 @@ class _BaseEmbed(pl.LightningModule):
         return loss
 
     def on_train_batch_end(self, outputs, batch, batch_idx, dataloader_idx):
-        self.blocker_net.fix_signature_weights()
+        self.blocker_net.fix_pool_weights()
         self.log_dict(
             {
-                f"signature_{field}": weight
-                for field, weight in self.blocker_net.get_signature_weights().items()
+                f"pool_{field}": weight
+                for field, weight in self.blocker_net.get_pool_weights().items()
             }
         )
 
@@ -137,8 +137,8 @@ class _BaseEmbed(pl.LightningModule):
         )
         return optimizer
 
-    def get_signature_weights(self):
-        return self.blocker_net.get_signature_weights()
+    def get_pool_weights(self):
+        return self.blocker_net.get_pool_weights()
 
     def fit(
         self,

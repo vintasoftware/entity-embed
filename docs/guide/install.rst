@@ -26,4 +26,4 @@ Libraries
 - `PyTorch Lightning <https://pytorch-lightning.readthedocs.io/en/latest/>`_: >= 1.1.6
 - `N2 <https://github.com/kakao/n2/>`_: >= 0.1.7
 
-And others, see requirements.txt.
+And others, see ``requirements.txt`` .

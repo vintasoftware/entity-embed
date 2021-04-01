@@ -77,9 +77,6 @@ class MaskedAttention(nn.Module):
     (code at https://github.com/huggingface/torchMoji)
     and
     "AutoBlock: A Hands-off Blocking Framework for Entity Matching (WSDM 20)".
-
-    Different from the other Attention class, this one uses a mask
-    to handle variable length inputs on the same batch.
     """
 
     def __init__(self, embedding_size):
@@ -113,21 +110,21 @@ class MaskedAttention(nn.Module):
 
 
 class MultitokenAttentionEmbed(nn.Module):
-    def __init__(self, embedding_net):
+    def __init__(self, embed_net):
         super().__init__()
 
-        self.embedding_net = embedding_net
+        self.embed_net = embed_net
         self.gru = nn.GRU(
-            input_size=embedding_net.embedding_size,
-            hidden_size=embedding_net.embedding_size // 2,  # due to bidirectional, must divide by 2
+            input_size=embed_net.embedding_size,
+            hidden_size=embed_net.embedding_size // 2,  # due to bidirectional, must divide by 2
             bidirectional=True,
             batch_first=True,
         )
-        self.attention_net = MaskedAttention(embedding_size=embedding_net.embedding_size)
+        self.attention_net = MaskedAttention(embedding_size=embed_net.embedding_size)
 
     def forward(self, x, sequence_lengths, **kwargs):
         x_tokens = x.unbind(dim=1)
-        x_tokens = [self.embedding_net(x) for x in x_tokens]
+        x_tokens = [self.embed_net(x) for x in x_tokens]
         x = torch.stack(x_tokens, dim=1)
 
         # Pytorch can't handle zero length sequences,
@@ -144,11 +141,11 @@ class MultitokenAttentionEmbed(nn.Module):
         return self.attention_net(h, x, sequence_lengths=sequence_lengths)
 
 
-class MultitokenAverageEmbed(nn.Module):
-    def __init__(self, embedding_net):
+class MultitokenAvgEmbed(nn.Module):
+    def __init__(self, embed_net):
         super().__init__()
 
-        self.embedding_net = embedding_net
+        self.embed_net = embed_net
 
     def forward(self, x, sequence_lengths, **kwargs):
         max_len = x.size(1)
@@ -157,7 +154,7 @@ class MultitokenAverageEmbed(nn.Module):
             scores = scores.cuda()
 
         x_list = x.unbind(dim=1)
-        x_list = [self.embedding_net(x) for x in x_list]
+        x_list = [self.embed_net(x) for x in x_list]
         x = torch.stack(x_list, dim=1)
 
         # Compute a mask for the attention on the padded sequences
@@ -180,7 +177,7 @@ class MultitokenAverageEmbed(nn.Module):
         return representations
 
 
-class TupleSignature(nn.Module):
+class EntityAvgPoolNet(nn.Module):
     def __init__(self, field_config_dict):
         super().__init__()
         if len(field_config_dict) > 1:
@@ -200,7 +197,7 @@ class TupleSignature(nn.Module):
             return F.normalize(list(field_embedding_dict.values())[0], dim=1)
 
 
-class EmbeddingNet(nn.Module):
+class FieldsEmbedNet(nn.Module):
     def __init__(
         self,
         field_config_dict,
@@ -209,14 +206,14 @@ class EmbeddingNet(nn.Module):
         super().__init__()
         self.field_config_dict = field_config_dict
         self.embedding_size = embedding_size
-        self.embedding_net_dict = nn.ModuleDict()
+        self.embed_net_dict = nn.ModuleDict()
 
         for field, field_config in field_config_dict.items():
             if field_config.field_type in (
                 FieldType.STRING,
                 FieldType.MULTITOKEN,
             ):
-                embedding_net = StringEmbedCNN(
+                embed_net = StringEmbedCNN(
                     field_config=field_config,
                     embedding_size=embedding_size,
                 )
@@ -224,7 +221,7 @@ class EmbeddingNet(nn.Module):
                 FieldType.SEMANTIC_STRING,
                 FieldType.SEMANTIC_MULTITOKEN,
             ):
-                embedding_net = SemanticEmbedNet(
+                embed_net = SemanticEmbedNet(
                     field_config=field_config,
                     embedding_size=embedding_size,
                 )
@@ -236,20 +233,20 @@ class EmbeddingNet(nn.Module):
                 FieldType.SEMANTIC_MULTITOKEN,
             ):
                 if field_config.use_attention:
-                    self.embedding_net_dict[field] = MultitokenAttentionEmbed(embedding_net)
+                    self.embed_net_dict[field] = MultitokenAttentionEmbed(embed_net)
                 else:
-                    self.embedding_net_dict[field] = MultitokenAverageEmbed(embedding_net)
+                    self.embed_net_dict[field] = MultitokenAvgEmbed(embed_net)
             elif field_config.field_type in (
                 FieldType.STRING,
                 FieldType.SEMANTIC_STRING,
             ):
-                self.embedding_net_dict[field] = embedding_net
+                self.embed_net_dict[field] = embed_net
 
     def forward(self, tensor_dict, sequence_length_dict):
         field_embedding_dict = {}
 
-        for field, embedding_net in self.embedding_net_dict.items():
-            field_embedding = embedding_net(
+        for field, embed_net in self.embed_net_dict.items():
+            field_embedding = embed_net(
                 tensor_dict[field], sequence_lengths=sequence_length_dict[field]
             )
             field_embedding_dict[field] = field_embedding
@@ -266,26 +263,26 @@ class BlockerNet(nn.Module):
         super().__init__()
         self.field_config_dict = field_config_dict
         self.embedding_size = embedding_size
-        self.embedding_net = EmbeddingNet(
+        self.field_embed_net = FieldsEmbedNet(
             field_config_dict=field_config_dict, embedding_size=embedding_size
         )
-        self.tuple_signature = TupleSignature(field_config_dict)
+        self.avg_pool_net = EntityAvgPoolNet(field_config_dict)
 
     def forward(self, tensor_dict, sequence_length_dict):
-        field_embedding_dict = self.embedding_net(
+        field_embedding_dict = self.field_embed_net(
             tensor_dict=tensor_dict, sequence_length_dict=sequence_length_dict
         )
-        return self.tuple_signature(field_embedding_dict)
+        return self.avg_pool_net(field_embedding_dict)
 
-    def fix_signature_weights(self):
+    def fix_pool_weights(self):
         """
-        Force signature weights between 0 and 1 and total sum as 1.
+        Force pool weights between 0 and 1 and total sum as 1.
         """
-        if self.tuple_signature.weights is None:
+        if self.avg_pool_net.weights is None:
             return
 
         with torch.no_grad():
-            sd = self.tuple_signature.state_dict()
+            sd = self.avg_pool_net.state_dict()
             weights = sd["weights"]
             one_tensor = torch.tensor([1.0]).to(weights.device)
             if torch.any((weights < 0) | (weights > 1)) or not torch.isclose(
@@ -299,17 +296,17 @@ class BlockerNet(nn.Module):
                     print("Warning: all weights turned to 0. Setting all equal.")
                     weights[[True] * len(weights)] = 1 / len(weights)
                 sd["weights"] = weights
-                self.tuple_signature.load_state_dict(sd)
+                self.avg_pool_net.load_state_dict(sd)
 
-    def get_signature_weights(self):
+    def get_pool_weights(self):
         with torch.no_grad():
-            if self.tuple_signature.weights is None:
+            if self.avg_pool_net.weights is None:
                 return {list(self.field_config_dict.keys())[0]: 1.0}
 
             return {
                 field: float(weight)
                 for field, weight in zip(
                     self.field_config_dict.keys(),
-                    self.tuple_signature.state_dict()["weights"],
+                    self.avg_pool_net.state_dict()["weights"],
                 )
             }
