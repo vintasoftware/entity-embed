@@ -6,13 +6,13 @@ on:
 
 jobs:
   test:
-    timeout-minutes: 10
+    timeout-minutes: 15
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os: [macos-latest, ubuntu-latest]
         python-version: [3.6, 3.7, 3.8, 3.9]
-        pytorch-version: [1.7.1, 1.8.1]
+        pytorch-version: [1.7, 1.8]
 
     steps:
     - name: Checkout code
@@ -36,7 +36,6 @@ jobs:
         PYTORCH: ${{ matrix.pytorch-version }}
         TEST_DEVICE: "cpu"
       run: |
-        pip install torch==${{ matrix.pytorch-version }} --force-reinstall
         tox
     - name: Upload coverage.xml
       if: ${{ matrix.os == 'ubuntu-latest' && matrix.python-version == '3.9' }}
