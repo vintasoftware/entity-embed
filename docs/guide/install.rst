@@ -14,7 +14,7 @@ Requirements
 System
 ~~~~~~
 
-- MacOS or Linux (tested on latest MacOS and Ubuntu via GitHub Actions)
+- MacOS or Linux (tested on latest MacOS and Ubuntu via GitHub Actions).
 - Entity Embed can train and run on a powerful laptop. Tested on a system with 32 GBs of RAM, RTX 2070 Mobile (8 GB VRAM), i7-10750H (12 threads). With batch sizes smaller than 32 and few field types, it's possible to train and run even with 2 GB of VRAM.
 
 Libraries
