@@ -26,7 +26,7 @@ def _validate_base_row_numericalizer(row_numericalizer):
 
     # Assert values were converted from str into proper types
     assert name_field_config.field_type == FieldType.MULTITOKEN
-    assert isinstance(name_field_config.tokenizer, collections.Callable)
+    assert isinstance(name_field_config.tokenizer, collections.abc.Callable)
 
     # Assert max_str_len was computed
     assert isinstance(name_field_config.max_str_len, int)
