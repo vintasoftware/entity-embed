@@ -1,8 +1,9 @@
 # Entity Embed
 
 [![PyPi version](https://img.shields.io/pypi/v/entity-embed.svg)](https://pypi.python.org/pypi/entity-embed)
+[![PyPI - Python Version](https://img.shields.io/pypi/pyversions/pytorch-lightning)](https://pypi.org/project/pytorch-lightning/)
 [![Documentation Status](https://readthedocs.org/projects/entity-embed/badge/?version=latest)](https://entity-embed.readthedocs.io/en/latest/?badge=latest)
-[![Updates](https://pyup.io/repos/github/vintasoftware/entity-embed/shield.svg)](https://pyup.io/repos/github/vintasoftware/entity-embed/)
+[![codecov](https://codecov.io/gh/vintasoftware/entity-embed/branch/main/graph/badge.svg?token=4BW63JN071)](https://codecov.io/gh/vintasoftware/entity-embed)
 [![License: MIT](https://img.shields.io/github/license/vintasoftware/django-react-boilerplate.svg)](LICENSE.txt)
 
 Transform entities like companies, products, etc. into vectors to support **scalable Entity Resolution using Approximate Nearest Neighbors.**
@@ -21,13 +22,20 @@ https://entity-embed.readthedocs.io
 
 ## Requirements
 
+### System
+
+- MacOS or Linux (tested on latest MacOS and Ubuntu via GitHub Actions)
+- Entity Embed can train and run on a powerful laptop. Tested on a system with 32 GBs of RAM, RTX 2070 Mobile (8 GB VRAM), i7-10750H (12 threads). With batch sizes smaller than 32 and few field types, it's possible to train and run even with 2 GB of VRAM.
+
+### Libraries
+
 - **Python**: >= 3.6
 - **[Numpy](https://numpy.org/)**: >= 1.19.0
 - **[PyTorch](https://pytorch.org/)**: >= 1.7.1
 - **[PyTorch Lightning](https://pytorch-lightning.readthedocs.io/en/latest/)**: >= 1.1.6
 - **[N2](https://github.com/kakao/n2/)**: >= 0.1.7
 
-And others, see [requirements.txt](/requirements.txt)
+And others, see [requirements.txt](/requirements.txt).
 
 ## Installation
 
