@@ -11,9 +11,9 @@ from entity_embed.data_utils.numericalizer import FieldType
 
 
 @pytest.fixture
-def attr_config_json(tmp_path):
-    filepath = tmp_path / "attr_config.json"
-    attr_config_dict = {
+def field_config_json(tmp_path):
+    filepath = tmp_path / "field_config.json"
+    field_config_dict = {
         "name": {
             "field_type": "MULTITOKEN",
             "tokenizer": "entity_embed.default_tokenizer",
@@ -22,7 +22,7 @@ def attr_config_json(tmp_path):
     }
 
     with open(filepath, "w") as f:
-        json.dump(attr_config_dict, f)
+        json.dump(field_config_dict, f)
 
     yield filepath
 
@@ -164,7 +164,7 @@ def test_cli_train(
     mock_torch_random_seed,
     mock_cpu_count,
     mode,
-    attr_config_json,
+    field_config_json,
     train_csv,
     valid_csv,
     test_csv,
@@ -183,8 +183,8 @@ def test_cli_train(
         result = runner.invoke(
             cli.train,
             [
-                "--attr_config_json",
-                attr_config_json,
+                "--field_config_json",
+                field_config_json,
                 "--train_csv",
                 train_csv,
                 "--valid_csv",
@@ -195,11 +195,11 @@ def test_cli_train(
                 unlabeled_csv,
                 "--csv_encoding",
                 "utf-8",
-                "--cluster_attr",
+                "--cluster_field",
                 "cluster",
                 *(
                     [
-                        "--source_attr",
+                        "--source_field",
                         "__source",
                         "--left_source",
                         "foo",
@@ -261,14 +261,14 @@ def test_cli_train(
     assert result.exit_code == 0, result.stdout_bytes.decode("utf-8")
 
     expected_args_dict = {
-        "attr_config_json": attr_config_json,
+        "field_config_json": field_config_json,
         "train_csv": train_csv,
         "valid_csv": valid_csv,
         "test_csv": test_csv,
         "unlabeled_csv": unlabeled_csv,
         "csv_encoding": "utf-8",
-        "cluster_attr": "cluster",
-        **({"source_attr": "__source", "left_source": "foo"} if mode == "linkage" else {}),
+        "cluster_field": "cluster",
+        **({"source_field": "__source", "left_source": "foo"} if mode == "linkage" else {}),
         "embedding_size": 500,
         "lr": 0.005,
         "min_epochs": 1,
@@ -294,8 +294,8 @@ def test_cli_train(
         "model_save_dir": "trained-models",
         "n_threads": 16,  # assigned
     }
-    expected_attr_config_name_dict = {
-        "source_attr": "name",
+    expected_field_config_name_dict = {
+        "key": "name",
         "field_type": FieldType.MULTITOKEN,
         "tokenizer": entity_embed.data_utils.numericalizer.default_tokenizer,
         "alphabet": entity_embed.data_utils.numericalizer.DEFAULT_ALPHABET,
@@ -316,7 +316,7 @@ def test_cli_train(
     mock_model.assert_called_once_with(
         **{
             "row_numericalizer": mock.ANY,  # row_numericalizer, will get below and assert
-            **({"source_attr": "__source", "left_source": "foo"} if mode == "linkage" else {}),
+            **({"source_field": "__source", "left_source": "foo"} if mode == "linkage" else {}),
             "embedding_size": expected_args_dict["embedding_size"],
             "learning_rate": expected_args_dict["lr"],
             "ann_k": expected_args_dict["ann_k"],
@@ -331,8 +331,8 @@ def test_cli_train(
 
     # row_numericalizer asserts
     assert all(
-        getattr(row_numericalizer.attr_config_dict["name"], k) == expected
-        for k, expected in expected_attr_config_name_dict.items()
+        getattr(row_numericalizer.field_config_dict["name"], k) == expected
+        for k, expected in expected_field_config_name_dict.items()
     )
 
     # fit asserts
@@ -396,7 +396,7 @@ def test_cli_predict(
     mock_torch_random_seed,
     mock_cpu_count,
     mode,
-    attr_config_json,
+    field_config_json,
     unlabeled_csv,
     caplog,
     tmp_path,
@@ -417,15 +417,15 @@ def test_cli_predict(
             [
                 "--model_save_filepath",
                 "trained-model.ckpt",
-                "--attr_config_json",
-                attr_config_json,
+                "--field_config_json",
+                field_config_json,
                 "--unlabeled_csv",
                 unlabeled_csv,
                 "--csv_encoding",
                 "utf-8",
                 *(
                     [
-                        "--source_attr",
+                        "--source_field",
                         "__source",
                         "--left_source",
                         "foo",
@@ -462,10 +462,10 @@ def test_cli_predict(
 
     expected_args_dict = {
         "model_save_filepath": "trained-model.ckpt",
-        "attr_config_json": attr_config_json,
+        "field_config_json": field_config_json,
         "unlabeled_csv": unlabeled_csv,
         "csv_encoding": "utf-8",
-        **({"source_attr": "__source", "left_source": "foo"} if mode == "linkage" else {}),
+        **({"source_field": "__source", "left_source": "foo"} if mode == "linkage" else {}),
         "eval_batch_size": 64,
         "num_workers": 16,  # assigned from os.cpu_count() mock
         "multiprocessing_context": "fork",
@@ -477,7 +477,7 @@ def test_cli_predict(
         "ef_search": -1,
         "random_seed": 42,
         "output_json": expected_output_json,
-        "cluster_attr": "cluster",
+        "cluster_field": "cluster",
         "n_threads": 16,  # assigned
     }
 
@@ -528,11 +528,11 @@ def test_build_datamodule(mode):
         "train_row_dict": expected_train_row_dict,
         "valid_row_dict": expected_valid_row_dict,
         "test_row_dict": expected_test_row_dict,
-        "cluster_attr": "cluster",
+        "cluster_field": "cluster",
         "row_numericalizer": expected_row_numericalizer,
         "batch_size": 16,
         "eval_batch_size": 64,
-        **({"source_attr": "__source", "left_source": "foo"} if mode == "linkage" else {}),
+        **({"source_field": "__source", "left_source": "foo"} if mode == "linkage" else {}),
         "train_loader_kwargs": {
             "num_workers": 16,
             "multiprocessing_context": "fork",
@@ -555,10 +555,10 @@ def test_build_datamodule(mode):
             test_row_dict=expected_test_row_dict,
             row_numericalizer=expected_row_numericalizer,
             kwargs={
-                "cluster_attr": "cluster",
+                "cluster_field": "cluster",
                 "batch_size": 16,
                 "eval_batch_size": 64,
-                **({"source_attr": "__source", "left_source": "foo"} if mode == "linkage" else {}),
+                **({"source_field": "__source", "left_source": "foo"} if mode == "linkage" else {}),
                 "num_workers": 16,
                 "multiprocessing_context": "fork",
                 "random_seed": 42,
@@ -568,14 +568,14 @@ def test_build_datamodule(mode):
     mock_datamodule.assert_called_once_with(**expected_kwargs)
 
 
-@pytest.mark.parametrize("missing_kwarg", ["source_attr", "left_source"])
-def test_build_linkage_datamodule_without_source_attr_or_left_source_raises(missing_kwarg):
+@pytest.mark.parametrize("missing_kwarg", ["source_field", "left_source"])
+def test_build_linkage_datamodule_without_source_field_or_left_source_raises(missing_kwarg):
     with pytest.raises(KeyError) as exc:
         kwargs = {
-            "cluster_attr": "cluster",
+            "cluster_field": "cluster",
             "batch_size": 16,
             "eval_batch_size": 64,
-            "source_attr": "__source",
+            "source_field": "__source",
             "left_source": "foo",
             "train_loader_kwargs": {
                 "num_workers": 16,
@@ -595,7 +595,7 @@ def test_build_linkage_datamodule_without_source_attr_or_left_source_raises(miss
             row_numericalizer=mock.Mock(),
             kwargs=kwargs,
         )
-    assert 'must provide BOTH "source_attr" and "left_source"' in str(exc)
+    assert 'must provide BOTH "source_field" and "left_source"' in str(exc)
 
 
 @pytest.mark.parametrize("mode", ["linkage", "deduplication"])
@@ -620,7 +620,7 @@ def test_build_model(mode):
                 "ef_construction": 128,
                 "n_threads": 4,
                 "ef_search": -1,
-                **({"source_attr": "__source", "left_source": "foo"} if mode == "linkage" else {}),
+                **({"source_field": "__source", "left_source": "foo"} if mode == "linkage" else {}),
             },
         )
 
@@ -633,6 +633,6 @@ def test_build_model(mode):
             "sim_threshold_list": (0.2, 0.4, 0.6, 0.8),
             "index_build_kwargs": {"ef_construction": 128, "n_threads": 4},
             "index_search_kwargs": {"ef_search": -1, "n_threads": 4},
-            **({"source_attr": "__source", "left_source": "foo"} if mode == "linkage" else {}),
+            **({"source_field": "__source", "left_source": "foo"} if mode == "linkage" else {}),
         }
     )

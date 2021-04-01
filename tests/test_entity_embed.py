@@ -2,7 +2,7 @@ import mock
 import pytest
 import torch
 from entity_embed import EntityEmbed
-from entity_embed.data_utils.attr_config_parser import AttrConfigDictParser
+from entity_embed.data_utils.field_config_parser import FieldConfigDictParser
 
 LABELED_ROW_DICT_VALUES = [
     {
@@ -99,7 +99,7 @@ UNLABELED_ROW_DICT_VALUES = [
 
 
 @pytest.fixture
-def attr_config_dict():
+def field_config_dict():
     return {
         "name": {
             "field_type": "MULTITOKEN",
@@ -107,7 +107,7 @@ def attr_config_dict():
             "max_str_len": None,
         },
         "name_semantic": {
-            "source_attr": "name",
+            "key": "name",
             "field_type": "SEMANTIC_MULTITOKEN",
             "tokenizer": "entity_embed.default_tokenizer",
             "vocab": "fasttext.en.300d",
@@ -121,14 +121,14 @@ def row_list():
 
 
 @pytest.fixture()
-@mock.patch("entity_embed.data_utils.attr_config_parser.Vocab.load_vectors")
-def row_numericalizer(mock_load_vectors, attr_config_dict, row_list):
-    row_numericalizer = AttrConfigDictParser.from_dict(attr_config_dict, row_list=row_list)
-    row_numericalizer.attr_config_dict["name_semantic"].vocab.vectors = torch.empty((1, 300))
+@mock.patch("entity_embed.data_utils.field_config_parser.Vocab.load_vectors")
+def row_numericalizer(mock_load_vectors, field_config_dict, row_list):
+    row_numericalizer = FieldConfigDictParser.from_dict(field_config_dict, row_list=row_list)
+    row_numericalizer.field_config_dict["name_semantic"].vocab.vectors = torch.empty((1, 300))
     return row_numericalizer
 
 
-def test_set_embedding_size_when_using_semantic_attrs(row_numericalizer):
+def test_set_embedding_size_when_using_semantic_fields(row_numericalizer):
     with pytest.raises(ValueError) as excinfo:
         EntityEmbed(row_numericalizer=row_numericalizer, embedding_size=500)
 

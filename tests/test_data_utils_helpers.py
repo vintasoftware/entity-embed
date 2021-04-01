@@ -5,8 +5,8 @@ import tempfile
 import mock
 import n2  # noqa: F401
 import pytest
-from entity_embed.data_utils.attr_config_parser import AttrConfigDictParser
-from entity_embed.data_utils.numericalizer import AttrConfig, FieldType, RowNumericalizer
+from entity_embed.data_utils.field_config_parser import FieldConfigDictParser
+from entity_embed.data_utils.numericalizer import FieldConfig, FieldType, RowNumericalizer
 from torchtext.vocab import Vocab
 
 EXPECTED_DEFAULT_ALPHABET = list(
@@ -17,30 +17,30 @@ EXPECTED_DEFAULT_ALPHABET = list(
 def _validate_base_row_numericalizer(row_numericalizer):
     assert isinstance(row_numericalizer, RowNumericalizer)
 
-    parsed_attr_config_dict = row_numericalizer.attr_config_dict
-    assert list(parsed_attr_config_dict.keys()) == ["name"]
+    parsed_field_config_dict = row_numericalizer.field_config_dict
+    assert list(parsed_field_config_dict.keys()) == ["name"]
 
-    name_attr_config = parsed_attr_config_dict["name"]
-    assert isinstance(name_attr_config, AttrConfig)
-    assert name_attr_config.source_attr == "name"
+    name_field_config = parsed_field_config_dict["name"]
+    assert isinstance(name_field_config, FieldConfig)
+    assert name_field_config.key == "name"
 
     # Assert values were converted from str into proper types
-    assert name_attr_config.field_type == FieldType.MULTITOKEN
-    assert isinstance(name_attr_config.tokenizer, collections.Callable)
+    assert name_field_config.field_type == FieldType.MULTITOKEN
+    assert isinstance(name_field_config.tokenizer, collections.Callable)
 
     # Assert max_str_len was computed
-    assert isinstance(name_attr_config.max_str_len, int)
+    assert isinstance(name_field_config.max_str_len, int)
 
     # Assert non-provided keys were added with the correct default values
-    assert name_attr_config.alphabet == EXPECTED_DEFAULT_ALPHABET
-    assert name_attr_config.vocab is None
-    assert name_attr_config.n_channels == 8
-    assert name_attr_config.embed_dropout_p == 0.2
-    assert name_attr_config.use_attention
+    assert name_field_config.alphabet == EXPECTED_DEFAULT_ALPHABET
+    assert name_field_config.vocab is None
+    assert name_field_config.n_channels == 8
+    assert name_field_config.embed_dropout_p == 0.2
+    assert name_field_config.use_attention
 
 
 def test_row_numericalizer_parse_from_dict():
-    attr_config_dict = {
+    field_config_dict = {
         "name": {
             "field_type": "MULTITOKEN",
             "tokenizer": "entity_embed.default_tokenizer",
@@ -63,12 +63,14 @@ def test_row_numericalizer_parse_from_dict():
         },
     }
 
-    row_numericalizer = AttrConfigDictParser.from_dict(attr_config_dict, row_list=row_dict.values())
+    row_numericalizer = FieldConfigDictParser.from_dict(
+        field_config_dict, row_list=row_dict.values()
+    )
     _validate_base_row_numericalizer(row_numericalizer)
 
 
 def test_row_numericalizer_parse_from_json_file():
-    attr_config_dict = {
+    field_config_dict = {
         "name": {
             "field_type": "MULTITOKEN",
             "tokenizer": "entity_embed.default_tokenizer",
@@ -92,14 +94,14 @@ def test_row_numericalizer_parse_from_json_file():
     ]
 
     with tempfile.NamedTemporaryFile("w+") as f:
-        json.dump(attr_config_dict, f)
+        json.dump(field_config_dict, f)
         f.seek(0)  # Must move the pointer back to beginning since we aren't re-opening the file
-        row_numericalizer = AttrConfigDictParser.from_json(f, row_list=row_list)
+        row_numericalizer = FieldConfigDictParser.from_json(f, row_list=row_list)
         _validate_base_row_numericalizer(row_numericalizer)
 
 
-def test_row_numericalizer_parse_raises_when_attr_config_is_empty():
-    attr_config_dict = {
+def test_row_numericalizer_parse_raises_when_field_config_is_empty():
+    field_config_dict = {
         "name": {
             "field_type": "MULTITOKEN",
             "tokenizer": "entity_embed.default_tokenizer",
@@ -124,11 +126,11 @@ def test_row_numericalizer_parse_raises_when_attr_config_is_empty():
     }
 
     with pytest.raises(ValueError):
-        AttrConfigDictParser.from_dict(attr_config_dict, row_list=row_dict.values())
+        FieldConfigDictParser.from_dict(field_config_dict, row_list=row_dict.values())
 
 
-def test_attr_with_wrong_field_type_raises():
-    attr_config_dict = {
+def test_field_with_wrong_field_type_raises():
+    field_config_dict = {
         "name": {
             "field_type": "FOO_TYPE",
             "tokenizer": "entity_embed.default_tokenizer",
@@ -137,12 +139,12 @@ def test_attr_with_wrong_field_type_raises():
     }
 
     with pytest.raises(KeyError):
-        AttrConfigDictParser.from_dict(attr_config_dict, row_list=[{"name": "foo"}])
+        FieldConfigDictParser.from_dict(field_config_dict, row_list=[{"name": "foo"}])
 
 
-@mock.patch("entity_embed.data_utils.attr_config_parser.Vocab.load_vectors")
-def test_row_numericalizer_parse_with_attr_with_semantic_field_type(mock_load_vectors):
-    attr_config_dict = {
+@mock.patch("entity_embed.data_utils.field_config_parser.Vocab.load_vectors")
+def test_row_numericalizer_parse_with_field_with_semantic_field_type(mock_load_vectors):
+    field_config_dict = {
         "name": {
             "field_type": "SEMANTIC_MULTITOKEN",
             "tokenizer": "entity_embed.default_tokenizer",
@@ -165,18 +167,20 @@ def test_row_numericalizer_parse_with_attr_with_semantic_field_type(mock_load_ve
         },
     }
 
-    row_numericalizer = AttrConfigDictParser.from_dict(attr_config_dict, row_list=row_dict.values())
+    row_numericalizer = FieldConfigDictParser.from_dict(
+        field_config_dict, row_list=row_dict.values()
+    )
 
     mock_load_vectors.assert_called_once_with("fasttext.en.300d")
-    name_attr_config = row_numericalizer.attr_config_dict["name"]
-    assert name_attr_config.source_attr == "name"
-    assert name_attr_config.max_str_len is None
-    assert isinstance(name_attr_config.vocab, Vocab)
+    name_field_config = row_numericalizer.field_config_dict["name"]
+    assert name_field_config.key == "name"
+    assert name_field_config.max_str_len is None
+    assert isinstance(name_field_config.vocab, Vocab)
 
 
-@mock.patch("entity_embed.data_utils.attr_config_parser.Vocab.load_vectors")
-def test_attr_config_dict_with_different_vocab_types_raises(mock_load_vectors):
-    attr_config_dict = {
+@mock.patch("entity_embed.data_utils.field_config_parser.Vocab.load_vectors")
+def test_field_config_dict_with_different_vocab_types_raises(mock_load_vectors):
+    field_config_dict = {
         "title": {
             "field_type": "SEMANTIC_MULTITOKEN",
             "tokenizer": "entity_embed.default_tokenizer",
@@ -203,13 +207,13 @@ def test_attr_config_dict_with_different_vocab_types_raises(mock_load_vectors):
     }
 
     with pytest.raises(ValueError):
-        AttrConfigDictParser.from_dict(attr_config_dict, row_list=row_dict.values())
+        FieldConfigDictParser.from_dict(field_config_dict, row_list=row_dict.values())
 
     mock_load_vectors.assert_called_once_with("fasttext.en.300d")
 
 
-def test_attr_with_semantic_field_type_without_vocab_raises():
-    attr_config_dict = {
+def test_field_with_semantic_field_type_without_vocab_raises():
+    field_config_dict = {
         "name": {
             "field_type": "SEMANTIC_MULTITOKEN",
             "tokenizer": "entity_embed.default_tokenizer",
@@ -233,18 +237,18 @@ def test_attr_with_semantic_field_type_without_vocab_raises():
     }
 
     with pytest.raises(ValueError):
-        AttrConfigDictParser.from_dict(attr_config_dict, row_list=row_dict.values())
+        FieldConfigDictParser.from_dict(field_config_dict, row_list=row_dict.values())
 
 
-def test_row_numericalizer_parse_multiple_attr_for_same_source_attr():
-    attr_config_dict = {
+def test_row_numericalizer_parse_multiple_field_for_same_key():
+    field_config_dict = {
         "name_multitoken": {
-            "source_attr": "name",
+            "key": "name",
             "field_type": "MULTITOKEN",
             "tokenizer": "entity_embed.default_tokenizer",
         },
         "name_string": {
-            "source_attr": "name",
+            "key": "name",
             "field_type": "STRING",
             "tokenizer": "entity_embed.default_tokenizer",
         },
@@ -265,32 +269,34 @@ def test_row_numericalizer_parse_multiple_attr_for_same_source_attr():
         },
     }
 
-    row_numericalizer = AttrConfigDictParser.from_dict(attr_config_dict, row_list=row_dict.values())
+    row_numericalizer = FieldConfigDictParser.from_dict(
+        field_config_dict, row_list=row_dict.values()
+    )
 
     assert isinstance(row_numericalizer, RowNumericalizer)
 
-    parsed_attr_config_dict = row_numericalizer.attr_config_dict
-    assert list(parsed_attr_config_dict.keys()) == ["name_multitoken", "name_string"]
+    parsed_field_config_dict = row_numericalizer.field_config_dict
+    assert list(parsed_field_config_dict.keys()) == ["name_multitoken", "name_string"]
 
-    name_multitoken_attr_config = parsed_attr_config_dict["name_multitoken"]
-    assert isinstance(name_multitoken_attr_config, AttrConfig)
-    assert name_multitoken_attr_config.source_attr == "name"
-    assert name_multitoken_attr_config.field_type == FieldType.MULTITOKEN
+    name_multitoken_field_config = parsed_field_config_dict["name_multitoken"]
+    assert isinstance(name_multitoken_field_config, FieldConfig)
+    assert name_multitoken_field_config.key == "name"
+    assert name_multitoken_field_config.field_type == FieldType.MULTITOKEN
 
-    name_string_attr_config = parsed_attr_config_dict["name_string"]
-    assert isinstance(name_string_attr_config, AttrConfig)
-    assert name_string_attr_config.source_attr == "name"
-    assert name_string_attr_config.field_type == FieldType.STRING
+    name_string_field_config = parsed_field_config_dict["name_string"]
+    assert isinstance(name_string_field_config, FieldConfig)
+    assert name_string_field_config.key == "name"
+    assert name_string_field_config.field_type == FieldType.STRING
 
 
-def test_row_numericalizer_parse_multiple_attr_with_source_attr_as_key():
-    attr_config_dict = {
+def test_row_numericalizer_parse_multiple_field_with_key():
+    field_config_dict = {
         "name": {
             "field_type": "MULTITOKEN",
             "tokenizer": "entity_embed.default_tokenizer",
         },
         "name_string": {
-            "source_attr": "name",
+            "key": "name",
             "field_type": "STRING",
             "tokenizer": "entity_embed.default_tokenizer",
         },
@@ -311,32 +317,34 @@ def test_row_numericalizer_parse_multiple_attr_with_source_attr_as_key():
         },
     }
 
-    row_numericalizer = AttrConfigDictParser.from_dict(attr_config_dict, row_list=row_dict.values())
+    row_numericalizer = FieldConfigDictParser.from_dict(
+        field_config_dict, row_list=row_dict.values()
+    )
 
     assert isinstance(row_numericalizer, RowNumericalizer)
 
-    parsed_attr_config_dict = row_numericalizer.attr_config_dict
-    assert list(parsed_attr_config_dict.keys()) == ["name", "name_string"]
+    parsed_field_config_dict = row_numericalizer.field_config_dict
+    assert list(parsed_field_config_dict.keys()) == ["name", "name_string"]
 
-    name_attr_config = parsed_attr_config_dict["name"]
-    assert isinstance(name_attr_config, AttrConfig)
-    assert name_attr_config.source_attr == "name"
-    assert name_attr_config.field_type == FieldType.MULTITOKEN
+    name_field_config = parsed_field_config_dict["name"]
+    assert isinstance(name_field_config, FieldConfig)
+    assert name_field_config.key == "name"
+    assert name_field_config.field_type == FieldType.MULTITOKEN
 
-    name_string_attr_config = parsed_attr_config_dict["name_string"]
-    assert isinstance(name_string_attr_config, AttrConfig)
-    assert name_string_attr_config.source_attr == "name"
-    assert name_string_attr_config.field_type == FieldType.STRING
+    name_string_field_config = parsed_field_config_dict["name_string"]
+    assert isinstance(name_string_field_config, FieldConfig)
+    assert name_string_field_config.key == "name"
+    assert name_string_field_config.field_type == FieldType.STRING
 
 
-def test_row_numericalizer_parse_multiple_attr_without_source_attr_raises():
-    attr_config_dict = {
+def test_row_numericalizer_parse_multiple_field_without_key_raises():
+    field_config_dict = {
         "name_multitoken": {
             "field_type": "MULTITOKEN",
             "tokenizer": "entity_embed.default_tokenizer",
         },
         "name_string": {
-            "source_attr": "name",
+            "key": "name",
             "field_type": "STRING",
             "tokenizer": "entity_embed.default_tokenizer",
         },
@@ -358,22 +366,22 @@ def test_row_numericalizer_parse_multiple_attr_without_source_attr_raises():
     }
 
     with pytest.raises(ValueError):
-        AttrConfigDictParser.from_dict(attr_config_dict, row_list=row_dict.values())
+        FieldConfigDictParser.from_dict(field_config_dict, row_list=row_dict.values())
 
 
-@mock.patch("entity_embed.data_utils.attr_config_parser.Vocab.load_vectors")
-def test_row_numericalizer_parse_multiple_attr_for_same_source_attr_semantic_field_type(
+@mock.patch("entity_embed.data_utils.field_config_parser.Vocab.load_vectors")
+def test_row_numericalizer_parse_multiple_field_for_same_key_semantic_field_type(
     mock_load_vectors,
 ):
-    attr_config_dict = {
+    field_config_dict = {
         "name_multitoken": {
-            "source_attr": "name",
+            "key": "name",
             "field_type": "SEMANTIC_MULTITOKEN",
             "tokenizer": "entity_embed.default_tokenizer",
             "vocab": "fasttext.en.300d",
         },
         "name_string": {
-            "source_attr": "name",
+            "key": "name",
             "field_type": "SEMANTIC_STRING",
             "tokenizer": "entity_embed.default_tokenizer",
             "vocab": "fasttext.en.300d",
@@ -395,7 +403,9 @@ def test_row_numericalizer_parse_multiple_attr_for_same_source_attr_semantic_fie
         },
     }
 
-    row_numericalizer = AttrConfigDictParser.from_dict(attr_config_dict, row_list=row_dict.values())
+    row_numericalizer = FieldConfigDictParser.from_dict(
+        field_config_dict, row_list=row_dict.values()
+    )
     assert isinstance(row_numericalizer, RowNumericalizer)
 
     mock_load_vectors.assert_has_calls(
@@ -405,33 +415,33 @@ def test_row_numericalizer_parse_multiple_attr_for_same_source_attr_semantic_fie
         ]
     )
 
-    parsed_attr_config_dict = row_numericalizer.attr_config_dict
-    assert list(parsed_attr_config_dict.keys()) == ["name_multitoken", "name_string"]
+    parsed_field_config_dict = row_numericalizer.field_config_dict
+    assert list(parsed_field_config_dict.keys()) == ["name_multitoken", "name_string"]
 
-    name_multitoken_attr_config = parsed_attr_config_dict["name_multitoken"]
-    assert isinstance(name_multitoken_attr_config, AttrConfig)
-    assert name_multitoken_attr_config.source_attr == "name"
-    assert name_multitoken_attr_config.field_type == FieldType.SEMANTIC_MULTITOKEN
-    assert name_multitoken_attr_config.max_str_len is None
-    assert isinstance(name_multitoken_attr_config.vocab, Vocab)
+    name_multitoken_field_config = parsed_field_config_dict["name_multitoken"]
+    assert isinstance(name_multitoken_field_config, FieldConfig)
+    assert name_multitoken_field_config.key == "name"
+    assert name_multitoken_field_config.field_type == FieldType.SEMANTIC_MULTITOKEN
+    assert name_multitoken_field_config.max_str_len is None
+    assert isinstance(name_multitoken_field_config.vocab, Vocab)
 
-    name_string_attr_config = parsed_attr_config_dict["name_string"]
-    assert isinstance(name_string_attr_config, AttrConfig)
-    assert name_string_attr_config.source_attr == "name"
-    assert name_string_attr_config.field_type == FieldType.SEMANTIC_STRING
-    assert name_string_attr_config.max_str_len is None
-    assert isinstance(name_string_attr_config.vocab, Vocab)
+    name_string_field_config = parsed_field_config_dict["name_string"]
+    assert isinstance(name_string_field_config, FieldConfig)
+    assert name_string_field_config.key == "name"
+    assert name_string_field_config.field_type == FieldType.SEMANTIC_STRING
+    assert name_string_field_config.max_str_len is None
+    assert isinstance(name_string_field_config.vocab, Vocab)
 
 
-def test_row_numericalizer_parse_multiple_attr_for_same_source_attr_semantic_field_type_raises():
-    attr_config_dict = {
+def test_row_numericalizer_parse_multiple_field_for_same_key_semantic_field_type_raises():
+    field_config_dict = {
         "name_multitoken": {
             "field_type": "SEMANTIC_MULTITOKEN",
             "tokenizer": "entity_embed.default_tokenizer",
             "vocab": "fasttext.en.300d",
         },
         "name_string": {
-            "source_attr": "name",
+            "key": "name",
             "field_type": "SEMANTIC_STRING",
             "tokenizer": "entity_embed.default_tokenizer",
             "vocab": "fasttext.en.300d",
@@ -454,4 +464,4 @@ def test_row_numericalizer_parse_multiple_attr_for_same_source_attr_semantic_fie
     }
 
     with pytest.raises(ValueError):
-        AttrConfigDictParser.from_dict(attr_config_dict, row_list=row_dict.values())
+        FieldConfigDictParser.from_dict(field_config_dict, row_list=row_dict.values())

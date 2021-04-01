@@ -7,7 +7,7 @@ from abc import ABC
 from typing import List
 from urllib.error import HTTPError
 
-from ..data_modules import DEFAULT_LEFT_SOURCE, DEFAULT_SOURCE_ATTR, LinkageDataModule
+from ..data_modules import DEFAULT_LEFT_SOURCE, DEFAULT_SOURCE_FIELD, LinkageDataModule
 from ..data_utils import utils
 
 logger = logging.getLogger(__name__)
@@ -27,10 +27,10 @@ class DeepmatcherBenchmark(ABC):
     def __init__(self, data_dir_path):
         self.data_dir_path = data_dir_path
         self.cache_dir_name = self.dataset_name
-        self.source_attr = DEFAULT_SOURCE_ATTR
+        self.source_field = DEFAULT_SOURCE_FIELD
         self.left_source = DEFAULT_LEFT_SOURCE
         self.right_source = "right"
-        self.cluster_attr = "cluster"
+        self.cluster_field = "cluster"
 
         self._download()
         self._extract_zip()
@@ -51,7 +51,9 @@ class DeepmatcherBenchmark(ABC):
             row_dict=self.row_dict,
         )
         utils.assign_clusters(
-            row_dict=self.row_dict, cluster_attr=self.cluster_attr, cluster_mapping=cluster_mapping
+            row_dict=self.row_dict,
+            cluster_field=self.cluster_field,
+            cluster_mapping=cluster_mapping,
         )
         self.train_row_dict = {
             id_: self.row_dict[id_]
@@ -112,7 +114,7 @@ class DeepmatcherBenchmark(ABC):
             csv_path = os.path.join(self.local_dir_path, self.base_csv_path, csv_path)
             with open(csv_path, "r", encoding=self.csv_encoding) as f:
                 for row in csv.DictReader(f):
-                    row[self.source_attr] = table_name
+                    row[self.source_field] = table_name
                     row["id"] = self.id_enumerator[f"{table_name}-{row['id']}"]
                     row_dict[row["id"]] = row
 
@@ -141,9 +143,9 @@ class DeepmatcherBenchmark(ABC):
             train_row_dict=self.train_row_dict,
             valid_row_dict=self.valid_row_dict,
             test_row_dict=self.test_row_dict,
-            source_attr=self.source_attr,
+            source_field=self.source_field,
             left_source=self.left_source,
-            cluster_attr=self.cluster_attr,
+            cluster_field=self.cluster_field,
             row_numericalizer=row_numericalizer,
             batch_size=batch_size,
             eval_batch_size=eval_batch_size,

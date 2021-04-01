@@ -39,12 +39,12 @@ class _BaseEmbed(pl.LightningModule):
         self.save_hyperparameters()
 
         self.row_numericalizer = row_numericalizer
-        for attr_config in self.row_numericalizer.attr_config_dict.values():
-            vocab = attr_config.vocab
+        for field_config in self.row_numericalizer.field_config_dict.values():
+            vocab = field_config.vocab
             if vocab:
                 # We can assume that there's only one vocab type across the
-                # whole attr_config_dict, so we can stop the loop once we've
-                # found a attr_config with a vocab
+                # whole field_config_dict, so we can stop the loop once we've
+                # found a field_config with a vocab
                 valid_embedding_size = vocab.vectors.size(1)
                 if valid_embedding_size != embedding_size:
                     raise ValueError(
@@ -53,7 +53,7 @@ class _BaseEmbed(pl.LightningModule):
                     )
         self.embedding_size = embedding_size
         self.blocker_net = BlockerNet(
-            attr_config_dict=self.row_numericalizer.attr_config_dict,
+            field_config_dict=self.row_numericalizer.field_config_dict,
             embedding_size=self.embedding_size,
         )
         self.loss_fn = loss_cls(**loss_kwargs if loss_kwargs else {"temperature": 0.1})
@@ -99,8 +99,8 @@ class _BaseEmbed(pl.LightningModule):
         self.blocker_net.fix_signature_weights()
         self.log_dict(
             {
-                f"signature_{attr}": weight
-                for attr, weight in self.blocker_net.get_signature_weights().items()
+                f"signature_{field}": weight
+                for field, weight in self.blocker_net.get_signature_weights().items()
             }
         )
 
@@ -216,7 +216,7 @@ class _BaseEmbed(pl.LightningModule):
     def _evaluate_metrics(self, set_name, dataloader, row_dict, pos_pair_set):
         embedding_batch_list = []
         for tensor_dict, sequence_length_dict in dataloader:
-            tensor_dict = {attr: t.to(self.device) for attr, t in tensor_dict.items()}
+            tensor_dict = {field: t.to(self.device) for field, t in tensor_dict.items()}
             embeddings = self(tensor_dict, sequence_length_dict)
             embedding_batch_list.append(embeddings)
 
@@ -278,7 +278,7 @@ class _BaseEmbed(pl.LightningModule):
         ) as p_bar:
             vector_list = []
             for tensor_dict, sequence_length_dict in row_loader:
-                tensor_dict = {attr: t.to(self.device) for attr, t in tensor_dict.items()}
+                tensor_dict = {field: t.to(self.device) for field, t in tensor_dict.items()}
                 embeddings = self(tensor_dict, sequence_length_dict)
                 vector_list.extend(v.data.numpy() for v in embeddings.cpu().unbind())
                 p_bar.update(1)
@@ -350,16 +350,16 @@ class LinkageEmbed(_BaseEmbed):
     def __init__(
         self,
         row_numericalizer,
-        source_attr,
+        source_field,
         left_source,
         **kwargs,
     ):
-        self.source_attr = source_attr
+        self.source_field = source_field
         self.left_source = left_source
 
         super().__init__(
             row_numericalizer=row_numericalizer,
-            source_attr=source_attr,
+            source_field=source_field,
             left_source=left_source,
             **kwargs,
         )
@@ -371,7 +371,7 @@ class LinkageEmbed(_BaseEmbed):
         left_vector_dict = {}
         right_vector_dict = {}
         for (id_, row), vector in zip(row_dict.items(), vector_list):
-            if row[self.source_attr] == self.left_source:
+            if row[self.source_field] == self.left_source:
                 left_vector_dict[id_] = vector
             else:
                 right_vector_dict[id_] = vector
@@ -425,7 +425,7 @@ class LinkageEmbed(_BaseEmbed):
         left_vector_dict = {}
         right_vector_dict = {}
         for (id_, row), vector in zip(row_dict.items(), vector_dict.values()):
-            if row[self.source_attr] == self.left_source:
+            if row[self.source_field] == self.left_source:
                 left_vector_dict[id_] = vector
             else:
                 right_vector_dict[id_] = vector

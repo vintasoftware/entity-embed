@@ -15,12 +15,12 @@ class StringEmbedCNN(nn.Module):
     The tensor shape expected here is produced by StringNumericalizer.
     """
 
-    def __init__(self, attr_config, embedding_size):
+    def __init__(self, field_config, embedding_size):
         super().__init__()
 
-        self.alphabet_len = len(attr_config.alphabet)
-        self.max_str_len = attr_config.max_str_len
-        self.n_channels = attr_config.n_channels
+        self.alphabet_len = len(field_config.alphabet)
+        self.max_str_len = field_config.max_str_len
+        self.n_channels = field_config.n_channels
         self.embedding_size = embedding_size
 
         self.conv1 = nn.Conv1d(
@@ -37,8 +37,8 @@ class StringEmbedCNN(nn.Module):
             raise ValueError("Too small alphabet, self.flat_size == 0")
 
         dense_layers = [nn.Linear(self.flat_size, self.embedding_size)]
-        if attr_config.embed_dropout_p:
-            dense_layers.append(nn.Dropout(p=attr_config.embed_dropout_p))
+        if field_config.embed_dropout_p:
+            dense_layers.append(nn.Dropout(p=field_config.embed_dropout_p))
         self.dense_net = nn.Sequential(*dense_layers)
 
     def forward(self, x, **kwargs):
@@ -55,13 +55,13 @@ class StringEmbedCNN(nn.Module):
 
 
 class SemanticEmbedNet(nn.Module):
-    def __init__(self, attr_config, embedding_size):
+    def __init__(self, field_config, embedding_size):
         super().__init__()
 
         self.embedding_size = embedding_size
         self.dense_net = nn.Sequential(
-            nn.Embedding.from_pretrained(attr_config.vocab.vectors),
-            nn.Dropout(p=attr_config.embed_dropout_p),
+            nn.Embedding.from_pretrained(field_config.vocab.vectors),
+            nn.Dropout(p=field_config.embed_dropout_p),
         )
 
     def forward(self, x, **kwargs):
@@ -181,101 +181,101 @@ class MultitokenAverageEmbed(nn.Module):
 
 
 class TupleSignature(nn.Module):
-    def __init__(self, attr_config_dict):
+    def __init__(self, field_config_dict):
         super().__init__()
-        if len(attr_config_dict) > 1:
+        if len(field_config_dict) > 1:
             self.weights = nn.Parameter(
-                torch.full((len(attr_config_dict),), 1 / len(attr_config_dict))
+                torch.full((len(field_config_dict),), 1 / len(field_config_dict))
             )
         else:
             self.weights = None
 
-    def forward(self, attr_embedding_dict):
+    def forward(self, field_embedding_dict):
         if self.weights is not None:
-            attr_embedding_list = list(attr_embedding_dict.values())
-            x = torch.stack(attr_embedding_list, dim=1)
+            field_embedding_list = list(field_embedding_dict.values())
+            x = torch.stack(field_embedding_list, dim=1)
             x = F.normalize(x, dim=2)
             return F.normalize((x * self.weights.unsqueeze(-1).expand_as(x)).sum(axis=1), dim=1)
         else:
-            return F.normalize(list(attr_embedding_dict.values())[0], dim=1)
+            return F.normalize(list(field_embedding_dict.values())[0], dim=1)
 
 
 class EmbeddingNet(nn.Module):
     def __init__(
         self,
-        attr_config_dict,
+        field_config_dict,
         embedding_size,
     ):
         super().__init__()
-        self.attr_config_dict = attr_config_dict
+        self.field_config_dict = field_config_dict
         self.embedding_size = embedding_size
         self.embedding_net_dict = nn.ModuleDict()
 
-        for attr, attr_config in attr_config_dict.items():
-            if attr_config.field_type in (
+        for field, field_config in field_config_dict.items():
+            if field_config.field_type in (
                 FieldType.STRING,
                 FieldType.MULTITOKEN,
             ):
                 embedding_net = StringEmbedCNN(
-                    attr_config=attr_config,
+                    field_config=field_config,
                     embedding_size=embedding_size,
                 )
-            elif attr_config.field_type in (
+            elif field_config.field_type in (
                 FieldType.SEMANTIC_STRING,
                 FieldType.SEMANTIC_MULTITOKEN,
             ):
                 embedding_net = SemanticEmbedNet(
-                    attr_config=attr_config,
+                    field_config=field_config,
                     embedding_size=embedding_size,
                 )
             else:
-                raise ValueError(f"Unexpected attr_config.field_type={attr_config.field_type}")
+                raise ValueError(f"Unexpected field_config.field_type={field_config.field_type}")
 
-            if attr_config.field_type in (
+            if field_config.field_type in (
                 FieldType.MULTITOKEN,
                 FieldType.SEMANTIC_MULTITOKEN,
             ):
-                if attr_config.use_attention:
-                    self.embedding_net_dict[attr] = MultitokenAttentionEmbed(embedding_net)
+                if field_config.use_attention:
+                    self.embedding_net_dict[field] = MultitokenAttentionEmbed(embedding_net)
                 else:
-                    self.embedding_net_dict[attr] = MultitokenAverageEmbed(embedding_net)
-            elif attr_config.field_type in (
+                    self.embedding_net_dict[field] = MultitokenAverageEmbed(embedding_net)
+            elif field_config.field_type in (
                 FieldType.STRING,
                 FieldType.SEMANTIC_STRING,
             ):
-                self.embedding_net_dict[attr] = embedding_net
+                self.embedding_net_dict[field] = embedding_net
 
     def forward(self, tensor_dict, sequence_length_dict):
-        attr_embedding_dict = {}
+        field_embedding_dict = {}
 
-        for attr, embedding_net in self.embedding_net_dict.items():
-            attr_embedding = embedding_net(
-                tensor_dict[attr], sequence_lengths=sequence_length_dict[attr]
+        for field, embedding_net in self.embedding_net_dict.items():
+            field_embedding = embedding_net(
+                tensor_dict[field], sequence_lengths=sequence_length_dict[field]
             )
-            attr_embedding_dict[attr] = attr_embedding
+            field_embedding_dict[field] = field_embedding
 
-        return attr_embedding_dict
+        return field_embedding_dict
 
 
 class BlockerNet(nn.Module):
     def __init__(
         self,
-        attr_config_dict,
+        field_config_dict,
         embedding_size=300,
     ):
         super().__init__()
-        self.attr_config_dict = attr_config_dict
+        self.field_config_dict = field_config_dict
         self.embedding_size = embedding_size
         self.embedding_net = EmbeddingNet(
-            attr_config_dict=attr_config_dict, embedding_size=embedding_size
+            field_config_dict=field_config_dict, embedding_size=embedding_size
         )
-        self.tuple_signature = TupleSignature(attr_config_dict)
+        self.tuple_signature = TupleSignature(field_config_dict)
 
     def forward(self, tensor_dict, sequence_length_dict):
-        attr_embedding_dict = self.embedding_net(
+        field_embedding_dict = self.embedding_net(
             tensor_dict=tensor_dict, sequence_length_dict=sequence_length_dict
         )
-        return self.tuple_signature(attr_embedding_dict)
+        return self.tuple_signature(field_embedding_dict)
 
     def fix_signature_weights(self):
         """
@@ -304,12 +304,12 @@ class BlockerNet(nn.Module):
     def get_signature_weights(self):
         with torch.no_grad():
             if self.tuple_signature.weights is None:
-                return {list(self.attr_config_dict.keys())[0]: 1.0}
+                return {list(self.field_config_dict.keys())[0]: 1.0}
 
             return {
-                attr: float(weight)
-                for attr, weight in zip(
-                    self.attr_config_dict.keys(),
+                field: float(weight)
+                for field, weight in zip(
+                    self.field_config_dict.keys(),
                     self.tuple_signature.state_dict()["weights"],
                 )
             }

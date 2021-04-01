@@ -44,7 +44,7 @@ That's called a ``row_dict`` across Entity Embed's API. Once you have your ``row
 
     train_row_dict, valid_row_dict, test_row_dict = utils.split_row_dict_on_clusters(
         row_dict=row_dict,
-        cluster_attr="cluster",
+        cluster_field="cluster",
         train_proportion=0.6,
         valid_proportion=0.2,
         random_seed=42,
@@ -57,11 +57,11 @@ Defining the fields
 
 We need to define how entity fields will be numericalized and encoded by Entity Embed's deep neural network. First, we need an ``alphabet`` . The default alphabet has the ASCII numbers, letters, symbols and space. You can use any other alphabet if you need::
 
-    from entity_embed.data_utils.attr_config_parser import DEFAULT_ALPHABET
+    from entity_embed.data_utils.field_config_parser import DEFAULT_ALPHABET
 
-Then we define an ``attr_config_dict`` . It defines :ref:`Field Types <field_types>` that determine how fields are processed in the neural network::
+Then we define an ``field_config_dict`` . It defines :ref:`Field Types <field_types>` that determine how fields are processed in the neural network::
 
-    attr_config_dict = {
+    field_config_dict = {
         'title': {
             'field_type': "MULTITOKEN",
             'tokenizer': "entity_embed.default_tokenizer",
@@ -69,7 +69,7 @@ Then we define an ``attr_config_dict`` . It defines :ref:`Field Types <field_typ
             'max_str_len': None,  # compute
         },
         'title_semantic': {
-            'source_attr': 'title',
+            'key': 'title',
             'field_type': "SEMANTIC_MULTITOKEN",
             'tokenizer': "entity_embed.default_tokenizer",
             'vocab': "fasttext.en.300d",
@@ -87,7 +87,7 @@ Then we define an ``attr_config_dict`` . It defines :ref:`Field Types <field_typ
             'max_str_len': None,  # compute
         },
         'album_semantic': {
-            'source_attr': 'album',
+            'key': 'album',
             'field_type': "SEMANTIC_MULTITOKEN",
             'tokenizer': "entity_embed.default_tokenizer",
             'vocab': "fasttext.en.300d",
@@ -97,15 +97,15 @@ Then we define an ``attr_config_dict`` . It defines :ref:`Field Types <field_typ
 .. note::
     Check the available :ref:`Field Types <field_types>` and use the ones that make most sense for your data.
 
-With the ``attr_config_dict``, we can get a ``row_numericalizer`` . This object will convert the strings from our entities into tensors for the neural network::
+With the ``field_config_dict``, we can get a ``row_numericalizer`` . This object will convert the strings from our entities into tensors for the neural network::
 
 
-    from entity_embed import AttrConfigDictParser
+    from entity_embed import FieldConfigDictParser
 
-    row_numericalizer = AttrConfigDictParser.from_dict(attr_config_dict, row_list=row_dict.values())
+    row_numericalizer = FieldConfigDictParser.from_dict(field_config_dict, row_list=row_dict.values())
 
 .. warning::
-    Note the ``attr_config_dict`` receives a ``row_list`` . Here we're passing ``row_list=row_dict.values()``, meaning we're passing all train, valid, and test data. **If you have unlabeled data, you should include it too in** ``row_list`` . It's important to build the ``row_numericalizer`` with ALL available data, labeled or not. This ensures numericalization will know the true ``max_str_len`` of the fields of your data, and the true vocabulary of tokens to generalize well.
+    Note the ``field_config_dict`` receives a ``row_list`` . Here we're passing ``row_list=row_dict.values()``, meaning we're passing all train, valid, and test data. **If you have unlabeled data, you should include it too in** ``row_list`` . It's important to build the ``row_numericalizer`` with ALL available data, labeled or not. This ensures numericalization will know the true ``max_str_len`` of the fields of your data, and the true vocabulary of tokens to generalize well.
 
 Building the model
 ~~~~~~~~~~~~~~~~~~
@@ -118,7 +118,7 @@ Under the hood, Entity Embed uses `pytorch-lightning <https://pytorch-lightning.
         train_row_dict=train_row_dict,
         valid_row_dict=valid_row_dict,
         test_row_dict=test_row_dict,
-        cluster_attr="cluster",
+        cluster_field="cluster",
         row_numericalizer=row_numericalizer,
         batch_size=32,
         eval_batch_size=64,
@@ -237,7 +237,7 @@ On your data for Record Linkage, you must include a field on each entity to info
 Building the model
 ~~~~~~~~~~~~~~~~~~
 
-Use the ``LinkageDataModule`` class to initialize the ``datamodule`` . Note there are two additional parameters here: ``source_attr`` and ``left_source``::
+Use the ``LinkageDataModule`` class to initialize the ``datamodule`` . Note there are two additional parameters here: ``source_field`` and ``left_source``::
 
     from entity_embed import LinkageDataModule
 
@@ -245,9 +245,9 @@ Use the ``LinkageDataModule`` class to initialize the ``datamodule`` . Note ther
         train_row_dict=train_row_dict,
         valid_row_dict=valid_row_dict,
         test_row_dict=test_row_dict,
-        source_attr="__source",
+        source_field="__source",
         left_source="left",
-        cluster_attr="cluster",
+        cluster_field="cluster",
         row_numericalizer=row_numericalizer,
         batch_size=32,
         eval_batch_size=64,
@@ -257,14 +257,14 @@ Use the ``LinkageDataModule`` class to initialize the ``datamodule`` . Note ther
 Training the model
 ~~~~~~~~~~~~~~~~~~
 
-Use the ``LinkageEmbed`` class to initialize the model object. Again, there are two additional parameters here: ``source_attr`` and ``left_source``::
+Use the ``LinkageEmbed`` class to initialize the model object. Again, there are two additional parameters here: ``source_field`` and ``left_source``::
 
     from entity_embed import LinkageEmbed
 
     model = LinkageEmbed(
         row_numericalizer,
         ann_k=100,
-        source_attr="__source",
+        source_field="__source",
         left_source="left",
     )
 

@@ -9,7 +9,7 @@ from .helpers import build_loader_kwargs
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_SOURCE_ATTR = "__source"
+DEFAULT_SOURCE_FIELD = "__source"
 DEFAULT_LEFT_SOURCE = "left"
 
 
@@ -44,7 +44,7 @@ class DeduplicationDataModule(pl.LightningDataModule):
         train_row_dict,
         valid_row_dict,
         test_row_dict,
-        cluster_attr,
+        cluster_field,
         row_numericalizer,
         batch_size,
         eval_batch_size,
@@ -62,7 +62,7 @@ class DeduplicationDataModule(pl.LightningDataModule):
                 test_row_dict,
             )
 
-        self.cluster_attr = cluster_attr
+        self.cluster_field = cluster_field
         self.row_numericalizer = row_numericalizer
         self.batch_size = batch_size
         self.eval_batch_size = eval_batch_size
@@ -80,17 +80,17 @@ class DeduplicationDataModule(pl.LightningDataModule):
     def _set_pair_sets(self, stage):
         if stage == "fit":
             train_cluster_dict = utils.row_dict_to_cluster_dict(
-                self.train_row_dict, self.cluster_attr
+                self.train_row_dict, self.cluster_field
             )
             valid_cluster_dict = utils.row_dict_to_cluster_dict(
-                self.valid_row_dict, self.cluster_attr
+                self.valid_row_dict, self.cluster_field
             )
 
             self.train_pos_pair_set = utils.cluster_dict_to_id_pairs(train_cluster_dict)
             self.valid_pos_pair_set = utils.cluster_dict_to_id_pairs(valid_cluster_dict)
         elif stage == "test":
             test_cluster_dict = utils.row_dict_to_cluster_dict(
-                self.test_row_dict, self.cluster_attr
+                self.test_row_dict, self.cluster_field
             )
 
             self.test_pos_pair_set = utils.cluster_dict_to_id_pairs(test_cluster_dict)
@@ -107,7 +107,7 @@ class DeduplicationDataModule(pl.LightningDataModule):
     def train_dataloader(self):
         train_cluster_dataset = ClusterDataset.from_cluster_dict(
             row_dict=self.train_row_dict,
-            cluster_attr=self.cluster_attr,
+            cluster_field=self.cluster_field,
             row_numericalizer=self.row_numericalizer,
             batch_size=self.batch_size,
             max_cluster_size_in_batch=self.batch_size // 3,
@@ -161,9 +161,9 @@ class LinkageDataModule(pl.LightningDataModule):
         train_row_dict,
         valid_row_dict,
         test_row_dict,
-        source_attr,
+        source_field,
         left_source,
-        cluster_attr,
+        cluster_field,
         row_numericalizer,
         batch_size,
         eval_batch_size,
@@ -190,9 +190,9 @@ class LinkageDataModule(pl.LightningDataModule):
         self.train_row_dict = train_row_dict
         self.valid_row_dict = valid_row_dict
         self.test_row_dict = test_row_dict
-        self.source_attr = source_attr
+        self.source_field = source_field
         self.left_source = left_source
-        self.cluster_attr = cluster_attr
+        self.cluster_field = cluster_field
 
         # set later on setup
         self.train_pos_pair_set = None
@@ -203,19 +203,19 @@ class LinkageDataModule(pl.LightningDataModule):
         if stage == "fit":
             train_left_id_set, train_right_id_set = utils.row_dict_to_left_right_id_set(
                 row_dict=self.train_row_dict,
-                source_attr=self.source_attr,
+                source_field=self.source_field,
                 left_source=self.left_source,
             )
             valid_left_id_set, valid_right_id_set = utils.row_dict_to_left_right_id_set(
                 row_dict=self.valid_row_dict,
-                source_attr=self.source_attr,
+                source_field=self.source_field,
                 left_source=self.left_source,
             )
             train_cluster_dict = utils.row_dict_to_cluster_dict(
-                self.train_row_dict, self.cluster_attr
+                self.train_row_dict, self.cluster_field
             )
             valid_cluster_dict = utils.row_dict_to_cluster_dict(
-                self.valid_row_dict, self.cluster_attr
+                self.valid_row_dict, self.cluster_field
             )
 
             self.train_pos_pair_set = utils.cluster_dict_to_id_pairs(
@@ -227,11 +227,11 @@ class LinkageDataModule(pl.LightningDataModule):
         elif stage == "test":
             test_left_id_set, test_right_id_set = utils.row_dict_to_left_right_id_set(
                 row_dict=self.test_row_dict,
-                source_attr=self.source_attr,
+                source_field=self.source_field,
                 left_source=self.left_source,
             )
             test_cluster_dict = utils.row_dict_to_cluster_dict(
-                self.test_row_dict, self.cluster_attr
+                self.test_row_dict, self.cluster_field
             )
             self.test_pos_pair_set = utils.cluster_dict_to_id_pairs(
                 test_cluster_dict, left_id_set=test_left_id_set, right_id_set=test_right_id_set
@@ -249,7 +249,7 @@ class LinkageDataModule(pl.LightningDataModule):
     def train_dataloader(self):
         train_cluster_dataset = ClusterDataset.from_cluster_dict(
             row_dict=self.train_row_dict,
-            cluster_attr=self.cluster_attr,
+            cluster_field=self.cluster_field,
             row_numericalizer=self.row_numericalizer,
             batch_size=self.batch_size,
             max_cluster_size_in_batch=self.batch_size // 3,

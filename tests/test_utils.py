@@ -39,7 +39,7 @@ def test_row_dict_to_cluster_dict():
         6: {"id": 6, "cluster": 2},
     }
 
-    cluster_dict = row_dict_to_cluster_dict(row_dict=row_dict, cluster_attr="cluster")
+    cluster_dict = row_dict_to_cluster_dict(row_dict=row_dict, cluster_field="cluster")
 
     assert cluster_dict == {
         0: [1, 3, 4],
@@ -49,7 +49,7 @@ def test_row_dict_to_cluster_dict():
 
 
 @pytest.fixture
-def attr_val_gen():
+def field_val_gen():
     row_dict = {
         1: {
             "id": "1",
@@ -67,41 +67,41 @@ def attr_val_gen():
     return (row["name"] for row in row_dict.values())
 
 
-def test_compute_max_str_len_is_multitoken_false(attr_val_gen):
+def test_compute_max_str_len_is_multitoken_false(field_val_gen):
     max_str_len = compute_max_str_len(
-        attr_val_gen=attr_val_gen,
+        field_val_gen=field_val_gen,
         is_multitoken=False,
         # We don't need a tokenizer here
         tokenizer=None,
     )
 
     # Since this isn't multitoken, we simply get the length of the
-    # biggest attr_val_gen value ("the foo product from world")
+    # biggest field_val_gen value ("the foo product from world")
     assert max_str_len == 26
 
 
-def test_compute_max_str_len_is_multitoken_true(attr_val_gen):
+def test_compute_max_str_len_is_multitoken_true(field_val_gen):
     max_str_len = compute_max_str_len(
-        attr_val_gen=attr_val_gen,
+        field_val_gen=field_val_gen,
         is_multitoken=True,
         tokenizer=lambda x: x.split(),
     )
 
-    # We get the length of the largest token we obtained from attr_val_gen,
+    # We get the length of the largest token we obtained from field_val_gen,
     # since our tokenizer simply split "name" into smaller strings, we're
     # getting the length for "product", which should be "7". However, since
     # we always want even values, we get the next available integer, "8".
     assert max_str_len == 8
 
 
-def test_compute_max_str_len_is_multitoken_true_without_callable_tokenizer_raises(attr_val_gen):
+def test_compute_max_str_len_is_multitoken_true_without_callable_tokenizer_raises(field_val_gen):
     with pytest.raises(TypeError):
-        compute_max_str_len(attr_val_gen=attr_val_gen, is_multitoken=True, tokenizer=None)
+        compute_max_str_len(field_val_gen=field_val_gen, is_multitoken=True, tokenizer=None)
 
 
-def test_compute_max_str_len_is_multitoken_with_tokenizer_that_doesnt_return_tokens(attr_val_gen):
+def test_compute_max_str_len_is_multitoken_with_tokenizer_that_doesnt_return_tokens(field_val_gen):
     max_str_len = compute_max_str_len(
-        attr_val_gen=attr_val_gen,
+        field_val_gen=field_val_gen,
         is_multitoken=True,
         tokenizer=lambda x: [],
     )
@@ -109,9 +109,9 @@ def test_compute_max_str_len_is_multitoken_with_tokenizer_that_doesnt_return_tok
     assert max_str_len == 0
 
 
-def test_compute_vocab_counter(attr_val_gen):
+def test_compute_vocab_counter(field_val_gen):
     vocab_counter = compute_vocab_counter(
-        attr_val_gen=attr_val_gen,
+        field_val_gen=field_val_gen,
         tokenizer=lambda x: x.split(),
     )
     assert dict(vocab_counter) == {"foo": 2, "product": 2, "the": 1, "from": 1, "world": 1}

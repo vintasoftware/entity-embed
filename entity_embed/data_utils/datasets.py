@@ -12,19 +12,19 @@ logger = logging.getLogger(__name__)
 
 
 def _collate_tensor_dict(row_batch, row_numericalizer):
-    tensor_dict = {attr: [] for attr in row_numericalizer.attr_config_dict.keys()}
-    sequence_length_dict = {attr: [] for attr in row_numericalizer.attr_config_dict.keys()}
+    tensor_dict = {field: [] for field in row_numericalizer.field_config_dict.keys()}
+    sequence_length_dict = {field: [] for field in row_numericalizer.field_config_dict.keys()}
     for row in row_batch:
         row_tensor_dict, row_sequence_length_dict = row_numericalizer.build_tensor_dict(row)
-        for attr in row_numericalizer.attr_config_dict.keys():
-            tensor_dict[attr].append(row_tensor_dict[attr])
-            sequence_length_dict[attr].append(row_sequence_length_dict[attr])
+        for field in row_numericalizer.field_config_dict.keys():
+            tensor_dict[field].append(row_tensor_dict[field])
+            sequence_length_dict[field].append(row_sequence_length_dict[field])
 
-    for attr, attr_config in row_numericalizer.attr_config_dict.items():
-        if attr_config.is_multitoken:
-            tensor_dict[attr] = nn.utils.rnn.pad_sequence(tensor_dict[attr], batch_first=True)
+    for field, field_config in row_numericalizer.field_config_dict.items():
+        if field_config.is_multitoken:
+            tensor_dict[field] = nn.utils.rnn.pad_sequence(tensor_dict[field], batch_first=True)
         else:
-            tensor_dict[attr] = default_collate(tensor_dict[attr])
+            tensor_dict[field] = default_collate(tensor_dict[field])
     return tensor_dict, sequence_length_dict
 
 
@@ -55,13 +55,13 @@ class ClusterDataset(Dataset):
     def from_cluster_dict(
         cls,
         row_dict,
-        cluster_attr,
+        cluster_field,
         row_numericalizer,
         batch_size,
         max_cluster_size_in_batch,
         random_seed,
     ):
-        cluster_dict = utils.row_dict_to_cluster_dict(row_dict, cluster_attr)
+        cluster_dict = utils.row_dict_to_cluster_dict(row_dict, cluster_field)
         cluster_mapping = {
             id_: cluster_id for cluster_id, cluster in cluster_dict.items() for id_ in cluster
         }

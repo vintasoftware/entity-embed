@@ -9,7 +9,7 @@ import numpy as np
 import torch
 
 from . import DeduplicationDataModule, EntityEmbed, LinkageDataModule, LinkageEmbed
-from .data_utils.attr_config_parser import AttrConfigDictParser
+from .data_utils.field_config_parser import FieldConfigDictParser
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -33,15 +33,15 @@ def _set_random_seeds(kwargs):
 
 def _build_row_dict(csv_filepath, kwargs):
     csv_encoding = kwargs["csv_encoding"]
-    cluster_attr = kwargs.get("cluster_attr")
+    cluster_field = kwargs.get("cluster_field")
     row_dict = {}
 
     with open(csv_filepath, "r", newline="", encoding=csv_encoding) as row_dict_csv_file:
         for row in csv.DictReader(row_dict_csv_file):
-            if cluster_attr in row:
-                # force cluster_attr to be an int, if there's a cluster_attr
-                row[cluster_attr] = int(row[cluster_attr])
-            # force id attr to be an int
+            if cluster_field in row:
+                # force cluster_field to be an int, if there's a cluster_field
+                row[cluster_field] = int(row[cluster_field])
+            # force id field to be an int
             row["id"] = int(row["id"])
             row_dict[row["id"]] = row
 
@@ -50,21 +50,23 @@ def _build_row_dict(csv_filepath, kwargs):
 
 
 def _build_row_numericalizer(row_list, kwargs):
-    attr_config_json = kwargs["attr_config_json"]
+    field_config_json = kwargs["field_config_json"]
 
-    with open(attr_config_json, "r") as attr_config_json_file:
-        row_numericalizer = AttrConfigDictParser.from_json(attr_config_json_file, row_list=row_list)
+    with open(field_config_json, "r") as field_config_json_file:
+        row_numericalizer = FieldConfigDictParser.from_json(
+            field_config_json_file, row_list=row_list
+        )
 
-    logger.info(f"Finished reading {attr_config_json}")
+    logger.info(f"Finished reading {field_config_json}")
     return row_numericalizer
 
 
 def _is_record_linkage(kwargs):
     left_source = kwargs.get("left_source")
-    source_attr = kwargs.get("source_attr")
-    if (left_source and not source_attr) or (not left_source and source_attr):
+    source_field = kwargs.get("source_field")
+    if (left_source and not source_field) or (not left_source and source_field):
         raise KeyError(
-            'You must provide BOTH "source_attr" and "left_source" to perform Record Linkage. '
+            'You must provide BOTH "source_field" and "left_source" to perform Record Linkage. '
             "Either remove both or provide both."
         )
     else:
@@ -76,7 +78,7 @@ def _build_datamodule(train_row_dict, valid_row_dict, test_row_dict, row_numeric
         "train_row_dict": train_row_dict,
         "valid_row_dict": valid_row_dict,
         "test_row_dict": test_row_dict,
-        "cluster_attr": kwargs["cluster_attr"],
+        "cluster_field": kwargs["cluster_field"],
         "row_numericalizer": row_numericalizer,
         "batch_size": kwargs["batch_size"],
         "eval_batch_size": kwargs["eval_batch_size"],
@@ -86,7 +88,7 @@ def _build_datamodule(train_row_dict, valid_row_dict, test_row_dict, row_numeric
         datamodule_cls = LinkageDataModule
         datamodule_args.update(
             {
-                "source_attr": kwargs["source_attr"],
+                "source_field": kwargs["source_field"],
                 "left_source": kwargs["left_source"],
             }
         )
@@ -114,7 +116,7 @@ def _build_model(row_numericalizer, kwargs):
         model_cls = LinkageEmbed
         model_args.update(
             {
-                "source_attr": kwargs["source_attr"],
+                "source_field": kwargs["source_field"],
                 "left_source": kwargs["left_source"],
             }
         )
@@ -171,7 +173,7 @@ def _fit_model(model, datamodule, kwargs):
 
 @click.command()
 @click.option(
-    "--attr_config_json",
+    "--field_config_json",
     type=str,
     required=True,
     help="Path of the JSON configuration file "
@@ -205,14 +207,14 @@ def _fit_model(model, datamodule, kwargs):
     "--csv_encoding", type=str, default="utf-8", help="Encoding of the input dataset CSV file"
 )
 @click.option(
-    "--cluster_attr",
+    "--cluster_field",
     type=str,
     required=True,
     help="Column of the CSV dataset that contains the true cluster assignment. "
     "Equivalent to the label in tabular classification",
 )
 @click.option(
-    "--source_attr",
+    "--source_field",
     type=str,
     help="Set this when doing Record Linkage. "
     "Column of the CSV dataset that contains the indication of the left or right source "
@@ -222,8 +224,8 @@ def _fit_model(model, datamodule, kwargs):
     "--left_source",
     type=str,
     help="Set this when doing Record Linkage. "
-    "Consider any row with this value in the `source_attr` column as the left_source dataset. "
-    "The rows with other `source_attr` values are considered the right dataset",
+    "Consider any row with this value in the `source_field` column as the left_source dataset. "
+    "The rows with other `source_field` values are considered the right dataset",
 )
 @click.option(
     "--embedding_size", type=int, default=300, help="Embedding Dimensionality, for example: 300"
@@ -418,7 +420,7 @@ def _write_json(found_pairs, kwargs):
     help="Path where the model checkpoint was saved",
 )
 @click.option(
-    "--attr_config_json",
+    "--field_config_json",
     type=str,
     required=True,
     help="Path of the JSON configuration file "
@@ -437,7 +439,7 @@ def _write_json(found_pairs, kwargs):
     help="Encoding of the input and output dataset CSV files",
 )
 @click.option(
-    "--source_attr",
+    "--source_field",
     type=str,
     help="Set this when doing Record Linkage. "
     "Column of the CSV dataset that contains the indication of the left or right source "
@@ -447,8 +449,8 @@ def _write_json(found_pairs, kwargs):
     "--left_source",
     type=str,
     help="Set this when doing Record Linkage. "
-    "Consider any row with this value in the `source_attr` column as the left_source dataset. "
-    "The rows with other `source_attr` values are considered the right dataset",
+    "Consider any row with this value in the `source_field` column as the left_source dataset. "
+    "The rows with other `source_field` values are considered the right dataset",
 )
 @click.option("--eval_batch_size", type=int, required=True, help="Evaluation batch size, in ROWS")
 @click.option(
@@ -492,8 +494,8 @@ def _write_json(found_pairs, kwargs):
     "--output_json",
     type=str,
     required=True,
-    help="Path of the output CSV file that will contain the `cluster_attr` with the found values. "
-    "The CSV will be equal to the dataset CSV but with the additional `cluster_attr` column",
+    help="Path of the output CSV file that will contain the `cluster_field` with the found values. "
+    "The CSV will be equal to the dataset CSV but with the additional `cluster_field` column",
 )
 def predict(**kwargs):
     _fix_workers_kwargs(kwargs)

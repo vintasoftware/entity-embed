@@ -14,12 +14,12 @@ def Enumerator(start=0, initial=()):
     return defaultdict(itertools.count(start).__next__, initial)
 
 
-def row_dict_to_left_right_id_set(row_dict, source_attr, left_source):
+def row_dict_to_left_right_id_set(row_dict, source_field, left_source):
     left_id_set = set()
     right_id_set = set()
 
     for id_, row in row_dict.items():
-        if row[source_attr] == left_source:
+        if row[source_field] == left_source:
             left_id_set.add(id_)
         else:
             right_id_set.add(id_)
@@ -27,13 +27,13 @@ def row_dict_to_left_right_id_set(row_dict, source_attr, left_source):
     return left_id_set, right_id_set
 
 
-def row_dict_to_cluster_dict(row_dict, cluster_attr):
+def row_dict_to_cluster_dict(row_dict, cluster_field):
     cluster_dict = defaultdict(list)
     for id_, row in row_dict.items():
-        cluster_id = row[cluster_attr]
+        cluster_id = row[cluster_field]
         if not isinstance(cluster_id, int):
             raise ValueError(
-                "cluster_attr values must always be an int, "
+                "cluster_field values must always be an int, "
                 f"found {type(cluster_id)} at row={row}"
             )
         cluster_dict[cluster_id].append(id_)
@@ -162,9 +162,9 @@ def _filtered_row_dict_from_cluster_dict(row_dict, cluster_dict):
 
 
 def split_row_dict_on_clusters(
-    row_dict, cluster_attr, train_proportion, valid_proportion, random_seed
+    row_dict, cluster_field, train_proportion, valid_proportion, random_seed
 ):
-    cluster_dict = row_dict_to_cluster_dict(row_dict, cluster_attr)
+    cluster_dict = row_dict_to_cluster_dict(row_dict, cluster_field)
     train_cluster_dict, valid_cluster_dict, test_cluster_dict = split_clusters(
         cluster_dict, train_proportion, valid_proportion, random_seed
     )
@@ -175,13 +175,13 @@ def split_row_dict_on_clusters(
     )
 
 
-def compute_max_str_len(attr_val_gen, is_multitoken, tokenizer):
+def compute_max_str_len(field_val_gen, is_multitoken, tokenizer):
     actual_max_str_len = 0
-    for attr_val in attr_val_gen:
+    for field_val in field_val_gen:
         if not is_multitoken:
-            str_len = len(attr_val)
+            str_len = len(field_val)
         else:
-            tokens = tokenizer(attr_val)
+            tokens = tokenizer(field_val)
             if tokens:
                 str_len = max(len(v) for v in tokens)
             else:
@@ -199,10 +199,10 @@ def compute_max_str_len(attr_val_gen, is_multitoken, tokenizer):
     return actual_max_str_len
 
 
-def compute_vocab_counter(attr_val_gen, tokenizer):
+def compute_vocab_counter(field_val_gen, tokenizer):
     vocab_counter = Counter()
-    for attr_val in attr_val_gen:
-        tokens = tokenizer(attr_val)
+    for field_val in field_val_gen:
+        tokens = tokenizer(field_val)
         vocab_counter.update(tokens)
     return vocab_counter
 
@@ -234,9 +234,9 @@ def id_pairs_to_cluster_mapping_and_dict(id_pairs, row_dict):
     return cluster_mapping, cluster_dict
 
 
-def assign_clusters(row_dict, cluster_attr, cluster_mapping):
+def assign_clusters(row_dict, cluster_field, cluster_mapping):
     for id_, row in row_dict.items():
-        row[cluster_attr] = cluster_mapping[id_]
+        row[cluster_field] = cluster_mapping[id_]
 
 
 def subdict(d, keys):

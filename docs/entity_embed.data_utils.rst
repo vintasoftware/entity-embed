@@ -7,7 +7,7 @@ Submodules
 entity\_embed.data\_utils.attr\_config\_parser module
 -----------------------------------------------------
 
-.. automodule:: entity_embed.data_utils.attr_config_parser
+.. automodule:: entity_embed.data_utils.field_config_parser
    :members:
    :undoc-members:
    :show-inheritance:

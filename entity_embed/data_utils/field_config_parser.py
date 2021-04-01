@@ -7,7 +7,7 @@ from torchtext.vocab import Vocab
 from .numericalizer import (
     AVAILABLE_VOCABS,
     DEFAULT_ALPHABET,
-    AttrConfig,
+    FieldConfig,
     FieldType,
     MultitokenNumericalizer,
     RowNumericalizer,
@@ -26,52 +26,54 @@ def _import_function(function_dotted_path):
     return getattr(module, function_name)
 
 
-class AttrConfigDictParser:
+class FieldConfigDictParser:
     @classmethod
-    def from_json(cls, attr_config_json_file_obj, row_list):
-        attr_config_dict = json.load(attr_config_json_file_obj)
-        return cls.from_dict(attr_config_dict, row_list=row_list)
+    def from_json(cls, field_config_json_file_obj, row_list):
+        field_config_dict = json.load(field_config_json_file_obj)
+        return cls.from_dict(field_config_dict, row_list=row_list)
 
     @classmethod
-    def from_dict(cls, attr_config_dict, row_list):
-        parsed_attr_config_dict = {}
-        attr_to_numericalizer = {}
+    def from_dict(cls, field_config_dict, row_list):
+        parsed_field_config_dict = {}
+        field_to_numericalizer = {}
         found_vocab = None
-        for attr, attr_config in list(attr_config_dict.items()):
-            if not attr_config:
-                raise ValueError(f'Please set the value of "{attr}" in attr_config_dict')
+        for field, field_config in list(field_config_dict.items()):
+            if not field_config:
+                raise ValueError(f'Please set the value of "{field}" in field_config_dict')
             # Validate if all vocabs used are the same,
             # to ensure embedding sizes match
-            current_vocab = attr_config.get("vocab")
+            current_vocab = field_config.get("vocab")
             if current_vocab:
                 if not found_vocab:
                     found_vocab = current_vocab
                 elif found_vocab != current_vocab:
                     raise ValueError(
-                        "Found more than one vocab on attr_config_dict, please "
-                        "use a single vocab for the whole attr_config_dict, "
+                        "Found more than one vocab on field_config_dict, please "
+                        "use a single vocab for the whole field_config_dict, "
                         f'"{found_vocab}" != "{current_vocab}"'
                     )
-            attr_config = cls._parse_attr_config(attr, attr_config, row_list=row_list)
-            parsed_attr_config_dict[attr] = attr_config
-            attr_to_numericalizer[attr] = cls._build_attr_numericalizer(attr, attr_config)
-        return RowNumericalizer(parsed_attr_config_dict, attr_to_numericalizer)
+            field_config = cls._parse_field_config(field, field_config, row_list=row_list)
+            parsed_field_config_dict[field] = field_config
+            field_to_numericalizer[field] = cls._build_field_numericalizer(field, field_config)
+        return RowNumericalizer(parsed_field_config_dict, field_to_numericalizer)
 
     @classmethod
-    def _parse_attr_config(cls, attr, attr_config, row_list):
-        field_type = FieldType[attr_config["field_type"]]
-        tokenizer = _import_function(attr_config.get("tokenizer", "entity_embed.default_tokenizer"))
-        alphabet = attr_config.get("alphabet", DEFAULT_ALPHABET)
-        max_str_len = attr_config.get("max_str_len")
+    def _parse_field_config(cls, field, field_config, row_list):
+        field_type = FieldType[field_config["field_type"]]
+        tokenizer = _import_function(
+            field_config.get("tokenizer", "entity_embed.default_tokenizer")
+        )
+        alphabet = field_config.get("alphabet", DEFAULT_ALPHABET)
+        max_str_len = field_config.get("max_str_len")
         vocab = None
 
-        # Check if there's a source_attr defined on the attr_config,
-        # useful when we want to have multiple AttrConfig for the same attr
-        source_attr = attr_config.get("source_attr", attr)
+        # Check if there's a key defined on the field_config,
+        # useful when we want to have multiple FieldConfig for the same field
+        key = field_config.get("key", field)
 
         # Compute vocab if necessary
         if field_type in (FieldType.SEMANTIC_STRING, FieldType.SEMANTIC_MULTITOKEN):
-            vocab_type = attr_config.get("vocab")
+            vocab_type = field_config.get("vocab")
             if vocab_type is None:
                 raise ValueError(
                     "Please set a torchtext pretrained vocab to use. "
@@ -79,48 +81,48 @@ class AttrConfigDictParser:
                 )
             try:
                 vocab_counter = compute_vocab_counter(
-                    attr_val_gen=(row[source_attr] for row in row_list),
+                    field_val_gen=(row[key] for row in row_list),
                     tokenizer=tokenizer,
                 )
             except KeyError:
                 raise ValueError(
-                    f"Cannot compute vocab_counter for attr={source_attr}. "
-                    f"Please make sure that attr={attr} is a key in every "
-                    "row of row_list or define source_attr in "
-                    "attr_config if you wish to use a override "
-                    "an attr name."
+                    f"Cannot compute vocab_counter for field={key}. "
+                    f"Please make sure that field={field} is a key in every "
+                    "row of row_list or define key in "
+                    "field_config if you wish to use a override "
+                    "an field name."
                 )
             vocab = Vocab(vocab_counter)
             vocab.load_vectors(vocab_type)
 
         # Compute max_str_len if necessary
         if field_type in (FieldType.STRING, FieldType.MULTITOKEN) and (max_str_len is None):
-            logger.info(f"For attr={attr}, computing actual max_str_len")
+            logger.info(f"For field={field}, computing actual max_str_len")
             is_multitoken = field_type in (FieldType.MULTITOKEN, FieldType.SEMANTIC_MULTITOKEN)
             try:
                 actual_max_str_len = compute_max_str_len(
-                    attr_val_gen=(row[source_attr] for row in row_list),
+                    field_val_gen=(row[key] for row in row_list),
                     is_multitoken=is_multitoken,
                     tokenizer=tokenizer,
                 )
             except KeyError:
                 raise ValueError(
-                    f"Cannot compute max_str_len for attr={source_attr}. "
-                    f"Please make sure that attr={attr} is a key in every "
-                    "row of row_list or define source_attr in "
-                    "attr_config if you wish to use a override "
-                    "an attr name."
+                    f"Cannot compute max_str_len for field={key}. "
+                    f"Please make sure that field={field} is a key in every "
+                    "row of row_list or define key in "
+                    "field_config if you wish to use a override "
+                    "an field name."
                 )
             if max_str_len is None:
-                logger.info(f"For attr={attr}, using actual_max_str_len={actual_max_str_len}")
+                logger.info(f"For field={field}, using actual_max_str_len={actual_max_str_len}")
                 max_str_len = actual_max_str_len
 
-        n_channels = attr_config.get("n_channels", 8)
-        embed_dropout_p = attr_config.get("embed_dropout_p", 0.2)
-        use_attention = attr_config.get("use_attention", True)
+        n_channels = field_config.get("n_channels", 8)
+        embed_dropout_p = field_config.get("embed_dropout_p", 0.2)
+        use_attention = field_config.get("use_attention", True)
 
-        return AttrConfig(
-            source_attr=source_attr,
+        return FieldConfig(
+            key=key,
             field_type=field_type,
             tokenizer=tokenizer,
             alphabet=alphabet,
@@ -132,8 +134,8 @@ class AttrConfigDictParser:
         )
 
     @classmethod
-    def _build_attr_numericalizer(cls, attr, attr_config: AttrConfig):
-        field_type = attr_config.field_type
+    def _build_field_numericalizer(cls, field, field_config: FieldConfig):
+        field_type = field_config.field_type
 
         field_type_to_numericalizer_cls = {
             FieldType.STRING: StringNumericalizer,
@@ -145,4 +147,4 @@ class AttrConfigDictParser:
         if numericalizer_cls is None:
             raise ValueError(f"Unexpected field_type={field_type}")  # pragma: no cover
 
-        return numericalizer_cls(attr=attr, attr_config=attr_config)
+        return numericalizer_cls(field=field, field_config=field_config)

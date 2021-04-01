@@ -38,8 +38,8 @@ class FieldType(Enum):
 
 
 @dataclass
-class AttrConfig:
-    source_attr: str
+class FieldConfig:
+    key: str
     field_type: FieldType
     tokenizer: Callable[[str], List[str]]
     alphabet: List[str]
@@ -80,10 +80,10 @@ def default_tokenizer(val):
 class StringNumericalizer:
     is_multitoken = False
 
-    def __init__(self, attr, attr_config):
-        self.attr = attr
-        self.alphabet = attr_config.alphabet
-        self.max_str_len = attr_config.max_str_len
+    def __init__(self, field, field_config):
+        self.field = field
+        self.alphabet = field_config.alphabet
+        self.max_str_len = field_config.max_str_len
         self.char_to_ord = {c: i for i, c in enumerate(self.alphabet)}
 
     def _ord_encode(self, val):
@@ -111,9 +111,9 @@ class StringNumericalizer:
 class SemanticStringNumericalizer:
     is_multitoken = False
 
-    def __init__(self, attr, attr_config):
-        self.attr = attr
-        self.vocab = attr_config.vocab
+    def __init__(self, field, field_config):
+        self.field = field
+        self.vocab = field_config.vocab
 
     def build_tensor(self, val):
         # encoded_arr is a lookup_tensor like in
@@ -125,10 +125,10 @@ class SemanticStringNumericalizer:
 class MultitokenNumericalizer:
     is_multitoken = True
 
-    def __init__(self, attr, attr_config):
-        self.attr = attr
-        self.tokenizer = attr_config.tokenizer
-        self.string_numericalizer = StringNumericalizer(attr=attr, attr_config=attr_config)
+    def __init__(self, field, field_config):
+        self.field = field
+        self.tokenizer = field_config.tokenizer
+        self.string_numericalizer = StringNumericalizer(field=field, field_config=field_config)
 
     def build_tensor(self, val):
         val_tokens = self.tokenizer(val)
@@ -146,38 +146,40 @@ class MultitokenNumericalizer:
 
 
 class SemanticMultitokenNumericalizer(MultitokenNumericalizer):
-    def __init__(self, attr, attr_config):
-        self.attr = attr
-        self.tokenizer = attr_config.tokenizer
-        self.string_numericalizer = SemanticStringNumericalizer(attr=attr, attr_config=attr_config)
+    def __init__(self, field, field_config):
+        self.field = field
+        self.tokenizer = field_config.tokenizer
+        self.string_numericalizer = SemanticStringNumericalizer(
+            field=field, field_config=field_config
+        )
 
 
 class RowNumericalizer:
     def __init__(
         self,
-        attr_config_dict,
-        attr_to_numericalizer,
+        field_config_dict,
+        field_to_numericalizer,
     ):
-        self.attr_config_dict = attr_config_dict
-        self.attr_to_numericalizer = attr_to_numericalizer
+        self.field_config_dict = field_config_dict
+        self.field_to_numericalizer = field_to_numericalizer
 
     def build_tensor_dict(self, row):
         tensor_dict = {}
         sequence_length_dict = {}
 
-        for attr, numericalizer in self.attr_to_numericalizer.items():
-            # Get the source_attr from the AttrConfig object for the
-            # cases where the attr is different from the row's key
-            source_attr = self.attr_config_dict[attr].source_attr
+        for field, numericalizer in self.field_to_numericalizer.items():
+            # Get the key from the FieldConfig object for the
+            # cases where the field is different from the row's key
+            key = self.field_config_dict[field].key
             if numericalizer.is_multitoken:
-                t, sequence_length = numericalizer.build_tensor(row[source_attr])
+                t, sequence_length = numericalizer.build_tensor(row[key])
             else:
-                t = numericalizer.build_tensor(row[source_attr])
+                t = numericalizer.build_tensor(row[key])
                 sequence_length = None
-            tensor_dict[attr] = t
-            sequence_length_dict[attr] = sequence_length
+            tensor_dict[field] = t
+            sequence_length_dict[field] = sequence_length
 
         return tensor_dict, sequence_length_dict
 
     def __repr__(self):
-        return f"<RowNumericalizer with attr_config_dict={self.attr_config_dict}>"
+        return f"<RowNumericalizer with field_config_dict={self.field_config_dict}>"
