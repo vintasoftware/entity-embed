@@ -25,18 +25,19 @@ jobs:
       uses: actions/cache@v2
       with:
         path: ${{ env.pythonLocation }}
-        key: ${{ env.pythonLocation }}-${{ hashFiles('**/requirements.txt', '**/requirements-dev.txt') }}
+        key: ${{ matrix.os }}-${{ env.pythonLocation }}-${{ hashFiles('**/requirements.txt', '**/requirements-dev.txt') }}
     - name: Install tox and tox-gh-actions
       run: pip install tox==3.21.3 tox-gh-actions==2.4.0
     - name: Lint using flake8
+      if: ${{ matrix.os == 'ubuntu-latest' && matrix.python-version == '3.6' && matrix.pytorch-version == '1.8' }}
       run: tox -e flake8
     - name: Run tests with tox
       env:
-        PLATFORM: ${{ matrix.os }}
+        OS: ${{ matrix.os }}
+        PYTHON: ${{ matrix.python-version }}
         PYTORCH: ${{ matrix.pytorch-version }}
         TEST_DEVICE: "cpu"
-      run: |
-        tox
+      run: tox
     - name: Upload coverage.xml
       if: ${{ matrix.os == 'ubuntu-latest' && matrix.python-version == '3.9' && matrix.pytorch-version == '1.8' }}
       uses: actions/upload-artifact@v2
