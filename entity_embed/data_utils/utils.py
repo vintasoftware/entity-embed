@@ -76,10 +76,11 @@ def count_cluster_dict_pairs(cluster_dict):
 def _split_cluster_dict(cluster_dict, train_len, valid_len, random_seed):
     rnd = random.Random(random_seed)
 
-    train_cluster_id_set = OrderedSet(rnd.sample(cluster_dict.keys(), train_len))
-    all_minus_train_cluster_id_set = cluster_dict.keys() - train_cluster_id_set
-    valid_cluster_id_set = OrderedSet(rnd.sample(all_minus_train_cluster_id_set, valid_len))
-    test_cluster_id_set = all_minus_train_cluster_id_set - valid_cluster_id_set
+    cluster_id_set = OrderedSet(cluster_dict.keys())  # ensure deterministic order
+    train_cluster_id_set = OrderedSet(rnd.sample(list(cluster_id_set), train_len))
+    all_minus_train_cluster_id_set = cluster_id_set - train_cluster_id_set
+    valid_cluster_id_set = OrderedSet(rnd.sample(list(all_minus_train_cluster_id_set), valid_len))
+    test_cluster_id_set = OrderedSet(all_minus_train_cluster_id_set - valid_cluster_id_set)
 
     train_cluster_dict = {
         cluster_id: cluster_dict[cluster_id] for cluster_id in train_cluster_id_set
