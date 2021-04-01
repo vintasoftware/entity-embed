@@ -16,6 +16,8 @@ Entity Embed is based on and is a special case of the [AutoBlock model described
 
 **⚠️ Warning: this project is under heavy development.**
 
+![Embedding Space Example](https://user-images.githubusercontent.com/397989/113318040-689a2d00-92e6-11eb-8373-29477d57d29e.png)
+
 ## Documentation
 
 https://entity-embed.readthedocs.io
