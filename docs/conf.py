@@ -1,11 +1,11 @@
 import os
 import sys
 
-import entity_embed
 import sphinx_rtd_theme  # noqa: F401
 
 sys.path.insert(0, os.path.abspath(".."))
 
+import entity_embed  # isort:skip  # noqa: E402
 
 # Configuration file for the Sphinx documentation builder.
 #
