@@ -31,34 +31,34 @@ def _set_random_seeds(kwargs):
     random.seed(random_seed)
 
 
-def _build_row_dict(csv_filepath, kwargs):
+def _build_record_dict(csv_filepath, kwargs):
     csv_encoding = kwargs["csv_encoding"]
     cluster_field = kwargs.get("cluster_field")
-    row_dict = {}
+    record_dict = {}
 
-    with open(csv_filepath, "r", newline="", encoding=csv_encoding) as row_dict_csv_file:
-        for row in csv.DictReader(row_dict_csv_file):
-            if cluster_field in row:
+    with open(csv_filepath, "r", newline="", encoding=csv_encoding) as record_dict_csv_file:
+        for record in csv.DictReader(record_dict_csv_file):
+            if cluster_field in record:
                 # force cluster_field to be an int, if there's a cluster_field
-                row[cluster_field] = int(row[cluster_field])
+                record[cluster_field] = int(record[cluster_field])
             # force id field to be an int
-            row["id"] = int(row["id"])
-            row_dict[row["id"]] = row
+            record["id"] = int(record["id"])
+            record_dict[record["id"]] = record
 
     logger.info(f"Finished reading {csv_filepath}")
-    return row_dict
+    return record_dict
 
 
-def _build_row_numericalizer(row_list, kwargs):
+def _build_record_numericalizer(record_list, kwargs):
     field_config_json = kwargs["field_config_json"]
 
     with open(field_config_json, "r") as field_config_json_file:
-        row_numericalizer = FieldConfigDictParser.from_json(
-            field_config_json_file, row_list=row_list
+        record_numericalizer = FieldConfigDictParser.from_json(
+            field_config_json_file, record_list=record_list
         )
 
     logger.info(f"Finished reading {field_config_json}")
-    return row_numericalizer
+    return record_numericalizer
 
 
 def _is_record_linkage(kwargs):
@@ -73,13 +73,15 @@ def _is_record_linkage(kwargs):
         return bool(left_source)
 
 
-def _build_datamodule(train_row_dict, valid_row_dict, test_row_dict, row_numericalizer, kwargs):
+def _build_datamodule(
+    train_record_dict, valid_record_dict, test_record_dict, record_numericalizer, kwargs
+):
     datamodule_args = {
-        "train_row_dict": train_row_dict,
-        "valid_row_dict": valid_row_dict,
-        "test_row_dict": test_row_dict,
+        "train_record_dict": train_record_dict,
+        "valid_record_dict": valid_record_dict,
+        "test_record_dict": test_record_dict,
         "cluster_field": kwargs["cluster_field"],
-        "row_numericalizer": row_numericalizer,
+        "record_numericalizer": record_numericalizer,
         "batch_size": kwargs["batch_size"],
         "eval_batch_size": kwargs["eval_batch_size"],
     }
@@ -109,8 +111,8 @@ def _build_datamodule(train_row_dict, valid_row_dict, test_row_dict, row_numeric
     return datamodule_cls(**datamodule_args)
 
 
-def _build_model(row_numericalizer, kwargs):
-    model_args = {"row_numericalizer": row_numericalizer}
+def _build_model(record_numericalizer, kwargs):
+    model_args = {"record_numericalizer": record_numericalizer}
 
     if _is_record_linkage(kwargs):
         model_cls = LinkageEmbed
@@ -177,7 +179,7 @@ def _fit_model(model, datamodule, kwargs):
     type=str,
     required=True,
     help="Path of the JSON configuration file "
-    "that defines how columns will be processed by the neural network",
+    "that defines how fields will be processed by the neural network",
 )
 @click.option(
     "--train_csv",
@@ -224,8 +226,8 @@ def _fit_model(model, datamodule, kwargs):
     "--left_source",
     type=str,
     help="Set this when doing Record Linkage. "
-    "Consider any row with this value in the `source_field` column as the left_source dataset. "
-    "The rows with other `source_field` values are considered the right dataset",
+    "Consider any record with this value in the `source_field` as the left_source dataset. "
+    "The records with other `source_field` values are considered the right dataset",
 )
 @click.option(
     "--embedding_size", type=int, default=300, help="Embedding Dimensionality, for example: 300"
@@ -268,7 +270,9 @@ def _fit_model(model, datamodule, kwargs):
     help="Run validation every N epochs.",
 )
 @click.option("--batch_size", type=int, required=True, help="Training batch size, in CLUSTERS")
-@click.option("--eval_batch_size", type=int, required=True, help="Evaluation batch size, in ROWS")
+@click.option(
+    "--eval_batch_size", type=int, required=True, help="Evaluation batch size, in RECORDS"
+)
 @click.option(
     "--num_workers",
     type=int,
@@ -320,26 +324,26 @@ def train(**kwargs):
     """
     _fix_workers_kwargs(kwargs)
     _set_random_seeds(kwargs)
-    train_row_dict = _build_row_dict(csv_filepath=kwargs["train_csv"], kwargs=kwargs)
-    valid_row_dict = _build_row_dict(csv_filepath=kwargs["valid_csv"], kwargs=kwargs)
-    test_row_dict = _build_row_dict(csv_filepath=kwargs["test_csv"], kwargs=kwargs)
-    unlabeled_row_dict = _build_row_dict(csv_filepath=kwargs["unlabeled_csv"], kwargs=kwargs)
-    row_list_all = [
-        *train_row_dict.values(),
-        *valid_row_dict.values(),
-        *test_row_dict.values(),
-        *unlabeled_row_dict.values(),
+    train_record_dict = _build_record_dict(csv_filepath=kwargs["train_csv"], kwargs=kwargs)
+    valid_record_dict = _build_record_dict(csv_filepath=kwargs["valid_csv"], kwargs=kwargs)
+    test_record_dict = _build_record_dict(csv_filepath=kwargs["test_csv"], kwargs=kwargs)
+    unlabeled_record_dict = _build_record_dict(csv_filepath=kwargs["unlabeled_csv"], kwargs=kwargs)
+    record_list_all = [
+        *train_record_dict.values(),
+        *valid_record_dict.values(),
+        *test_record_dict.values(),
+        *unlabeled_record_dict.values(),
     ]
-    row_numericalizer = _build_row_numericalizer(row_list=row_list_all, kwargs=kwargs)
-    del row_list_all, unlabeled_row_dict
+    record_numericalizer = _build_record_numericalizer(record_list=record_list_all, kwargs=kwargs)
+    del record_list_all, unlabeled_record_dict
     datamodule = _build_datamodule(
-        train_row_dict=train_row_dict,
-        valid_row_dict=valid_row_dict,
-        test_row_dict=test_row_dict,
-        row_numericalizer=row_numericalizer,
+        train_record_dict=train_record_dict,
+        valid_record_dict=valid_record_dict,
+        test_record_dict=test_record_dict,
+        record_numericalizer=record_numericalizer,
         kwargs=kwargs,
     )
-    model = _build_model(row_numericalizer=row_numericalizer, kwargs=kwargs)
+    model = _build_model(record_numericalizer=record_numericalizer, kwargs=kwargs)
     trainer = _fit_model(model, datamodule, kwargs)
     logger.info("Validating best model:")
     valid_metrics = model.validate(datamodule)
@@ -362,7 +366,7 @@ def _load_model(kwargs):
     return model_cls.load_from_checkpoint(kwargs["model_save_filepath"], datamodule=None)
 
 
-def _predict_pairs(row_dict, model, kwargs):
+def _predict_pairs(record_dict, model, kwargs):
     eval_batch_size = kwargs["eval_batch_size"]
     num_workers = kwargs["num_workers"]
     multiprocessing_context = kwargs["multiprocessing_context"]
@@ -381,7 +385,7 @@ def _predict_pairs(row_dict, model, kwargs):
 
     if _is_record_linkage(kwargs):
         found_pair_set = model.predict_pairs(
-            row_dict=row_dict,
+            record_dict=record_dict,
             batch_size=eval_batch_size,
             ann_k=ann_k,
             sim_threshold=sim_threshold,
@@ -394,7 +398,7 @@ def _predict_pairs(row_dict, model, kwargs):
         )
     else:
         found_pair_set = model.predict_pairs(
-            row_dict=row_dict,
+            record_dict=record_dict,
             batch_size=eval_batch_size,
             ann_k=ann_k,
             sim_threshold=sim_threshold,
@@ -424,7 +428,7 @@ def _write_json(found_pairs, kwargs):
     type=str,
     required=True,
     help="Path of the JSON configuration file "
-    "that defines how columns will be processed by the neural network",
+    "that defines how fields will be processed by the neural network",
 )
 @click.option(
     "--unlabeled_csv",
@@ -449,10 +453,12 @@ def _write_json(found_pairs, kwargs):
     "--left_source",
     type=str,
     help="Set this when doing Record Linkage. "
-    "Consider any row with this value in the `source_field` column as the left_source dataset. "
-    "The rows with other `source_field` values are considered the right dataset",
+    "Consider any record with this value in the `source_field` as the left_source dataset. "
+    "The records with other `source_field` values are considered the right dataset",
 )
-@click.option("--eval_batch_size", type=int, required=True, help="Evaluation batch size, in ROWS")
+@click.option(
+    "--eval_batch_size", type=int, required=True, help="Evaluation batch size, in RECORDS"
+)
 @click.option(
     "--num_workers",
     type=int,
@@ -494,18 +500,19 @@ def _write_json(found_pairs, kwargs):
     "--output_json",
     type=str,
     required=True,
-    help="Path of the output CSV file that will contain the `cluster_field` with the found values. "
-    "The CSV will be equal to the dataset CSV but with the additional `cluster_field` column",
+    help="Path of the output JSON file that will contain the candidate duplicate pairs. "
+    "Remember Entity Embed is focused on recall. "
+    "You must use some classifier to filter these and find the best matching pairs.",
 )
 def predict(**kwargs):
     _fix_workers_kwargs(kwargs)
     _set_random_seeds(kwargs)
     model = _load_model(kwargs)
-    row_dict = _build_row_dict(
+    record_dict = _build_record_dict(
         csv_filepath=kwargs["unlabeled_csv"],
         kwargs=kwargs,
     )
-    found_pairs = _predict_pairs(row_dict=row_dict, model=model, kwargs=kwargs)
+    found_pairs = _predict_pairs(record_dict=record_dict, model=model, kwargs=kwargs)
     _write_json(found_pairs=found_pairs, kwargs=kwargs)
 
     logger.info(f"Found {len(found_pairs)} candidate pairs, writing to JSON file at:")

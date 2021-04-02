@@ -10,7 +10,7 @@ from .numericalizer import (
     FieldConfig,
     FieldType,
     MultitokenNumericalizer,
-    RowNumericalizer,
+    RecordNumericalizer,
     SemanticMultitokenNumericalizer,
     SemanticStringNumericalizer,
     StringNumericalizer,
@@ -28,12 +28,12 @@ def _import_function(function_dotted_path):
 
 class FieldConfigDictParser:
     @classmethod
-    def from_json(cls, field_config_json_file_obj, row_list):
+    def from_json(cls, field_config_json_file_obj, record_list):
         field_config_dict = json.load(field_config_json_file_obj)
-        return cls.from_dict(field_config_dict, row_list=row_list)
+        return cls.from_dict(field_config_dict, record_list=record_list)
 
     @classmethod
-    def from_dict(cls, field_config_dict, row_list):
+    def from_dict(cls, field_config_dict, record_list):
         parsed_field_config_dict = {}
         field_to_numericalizer = {}
         found_vocab = None
@@ -52,13 +52,13 @@ class FieldConfigDictParser:
                         "use a single vocab for the whole field_config_dict, "
                         f'"{found_vocab}" != "{current_vocab}"'
                     )
-            field_config = cls._parse_field_config(field, field_config, row_list=row_list)
+            field_config = cls._parse_field_config(field, field_config, record_list=record_list)
             parsed_field_config_dict[field] = field_config
             field_to_numericalizer[field] = cls._build_field_numericalizer(field, field_config)
-        return RowNumericalizer(parsed_field_config_dict, field_to_numericalizer)
+        return RecordNumericalizer(parsed_field_config_dict, field_to_numericalizer)
 
     @classmethod
-    def _parse_field_config(cls, field, field_config, row_list):
+    def _parse_field_config(cls, field, field_config, record_list):
         field_type = FieldType[field_config["field_type"]]
         tokenizer = _import_function(
             field_config.get("tokenizer", "entity_embed.default_tokenizer")
@@ -81,14 +81,14 @@ class FieldConfigDictParser:
                 )
             try:
                 vocab_counter = compute_vocab_counter(
-                    field_val_gen=(row[key] for row in row_list),
+                    field_val_gen=(record[key] for record in record_list),
                     tokenizer=tokenizer,
                 )
             except KeyError:
                 raise ValueError(
                     f"Cannot compute vocab_counter for field={key}. "
                     f"Please make sure that field={field} is a key in every "
-                    "row of row_list or define key in "
+                    "record of record_list or define key in "
                     "field_config if you wish to use a override "
                     "an field name."
                 )
@@ -101,7 +101,7 @@ class FieldConfigDictParser:
             is_multitoken = field_type in (FieldType.MULTITOKEN, FieldType.SEMANTIC_MULTITOKEN)
             try:
                 actual_max_str_len = compute_max_str_len(
-                    field_val_gen=(row[key] for row in row_list),
+                    field_val_gen=(record[key] for record in record_list),
                     is_multitoken=is_multitoken,
                     tokenizer=tokenizer,
                 )
@@ -109,7 +109,7 @@ class FieldConfigDictParser:
                 raise ValueError(
                     f"Cannot compute max_str_len for field={key}. "
                     f"Please make sure that field={field} is a key in every "
-                    "row of row_list or define key in "
+                    "record of record_list or define key in "
                     "field_config if you wish to use a override "
                     "an field name."
                 )

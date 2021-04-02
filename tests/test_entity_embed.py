@@ -4,7 +4,7 @@ import torch
 from entity_embed import EntityEmbed
 from entity_embed.data_utils.field_config_parser import FieldConfigDictParser
 
-LABELED_ROW_DICT_VALUES = [
+LABELED_RECORD_DICT_VALUES = [
     {
         "id": 0,
         "cluster": 1,
@@ -76,7 +76,7 @@ LABELED_ROW_DICT_VALUES = [
         "__source": "foo",
     },
 ]
-UNLABELED_ROW_DICT_VALUES = [
+UNLABELED_RECORD_DICT_VALUES = [
     {
         "id": 10,
         "name": "good product",
@@ -116,21 +116,23 @@ def field_config_dict():
 
 
 @pytest.fixture()
-def row_list():
-    return LABELED_ROW_DICT_VALUES + UNLABELED_ROW_DICT_VALUES
+def record_list():
+    return LABELED_RECORD_DICT_VALUES + UNLABELED_RECORD_DICT_VALUES
 
 
 @pytest.fixture()
 @mock.patch("entity_embed.data_utils.field_config_parser.Vocab.load_vectors")
-def row_numericalizer(mock_load_vectors, field_config_dict, row_list):
-    row_numericalizer = FieldConfigDictParser.from_dict(field_config_dict, row_list=row_list)
-    row_numericalizer.field_config_dict["name_semantic"].vocab.vectors = torch.empty((1, 300))
-    return row_numericalizer
+def record_numericalizer(mock_load_vectors, field_config_dict, record_list):
+    record_numericalizer = FieldConfigDictParser.from_dict(
+        field_config_dict, record_list=record_list
+    )
+    record_numericalizer.field_config_dict["name_semantic"].vocab.vectors = torch.empty((1, 300))
+    return record_numericalizer
 
 
-def test_set_embedding_size_when_using_semantic_fields(row_numericalizer):
+def test_set_embedding_size_when_using_semantic_fields(record_numericalizer):
     with pytest.raises(ValueError) as excinfo:
-        EntityEmbed(row_numericalizer=row_numericalizer, embedding_size=500)
+        EntityEmbed(record_numericalizer=record_numericalizer, embedding_size=500)
 
     assert "Invalid embedding_size=500. Expected 300, due to semantic fields." in str(excinfo)
 
@@ -146,12 +148,12 @@ def test_fit(
     mock_tb_logger,
     mock_load,
     mock_trainer,
-    row_numericalizer,
+    record_numericalizer,
 ):
-    model = EntityEmbed(row_numericalizer=row_numericalizer)
+    model = EntityEmbed(record_numericalizer=record_numericalizer)
     datamodule = mock.Mock()
     mock_load.return_value.blocker_net = EntityEmbed(
-        row_numericalizer=row_numericalizer
+        record_numericalizer=record_numericalizer
     )  # other model, best model
 
     trainer = model.fit(
@@ -212,9 +214,9 @@ def test_fit_with_only_tb_name_raises(
     mock_tb_logger,
     mock_load,
     mock_trainer,
-    row_numericalizer,
+    record_numericalizer,
 ):
-    model = EntityEmbed(row_numericalizer=row_numericalizer)
+    model = EntityEmbed(record_numericalizer=record_numericalizer)
     datamodule = mock.Mock()
 
     with pytest.raises(ValueError) as exc:

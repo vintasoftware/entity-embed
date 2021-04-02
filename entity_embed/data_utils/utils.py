@@ -14,12 +14,12 @@ def Enumerator(start=0, initial=()):
     return defaultdict(itertools.count(start).__next__, initial)
 
 
-def row_dict_to_left_right_id_set(row_dict, source_field, left_source):
+def record_dict_to_left_right_id_set(record_dict, source_field, left_source):
     left_id_set = set()
     right_id_set = set()
 
-    for id_, row in row_dict.items():
-        if row[source_field] == left_source:
+    for id_, record in record_dict.items():
+        if record[source_field] == left_source:
             left_id_set.add(id_)
         else:
             right_id_set.add(id_)
@@ -27,14 +27,14 @@ def row_dict_to_left_right_id_set(row_dict, source_field, left_source):
     return left_id_set, right_id_set
 
 
-def row_dict_to_cluster_dict(row_dict, cluster_field):
+def record_dict_to_cluster_dict(record_dict, cluster_field):
     cluster_dict = defaultdict(list)
-    for id_, row in row_dict.items():
-        cluster_id = row[cluster_field]
+    for id_, record in record_dict.items():
+        cluster_id = record[cluster_field]
         if not isinstance(cluster_id, int):
             raise ValueError(
                 "cluster_field values must always be an int, "
-                f"found {type(cluster_id)} at row={row}"
+                f"found {type(cluster_id)} at record={record}"
             )
         cluster_dict[cluster_id].append(id_)
 
@@ -158,21 +158,21 @@ def split_clusters(cluster_dict, train_proportion, valid_proportion, random_seed
     return train_cluster_dict, valid_cluster_dict, test_cluster_dict
 
 
-def _filtered_row_dict_from_cluster_dict(row_dict, cluster_dict):
-    return {id_: row_dict[id_] for cluster in cluster_dict.values() for id_ in cluster}
+def _filtered_record_dict_from_cluster_dict(record_dict, cluster_dict):
+    return {id_: record_dict[id_] for cluster in cluster_dict.values() for id_ in cluster}
 
 
-def split_row_dict_on_clusters(
-    row_dict, cluster_field, train_proportion, valid_proportion, random_seed
+def split_record_dict_on_clusters(
+    record_dict, cluster_field, train_proportion, valid_proportion, random_seed
 ):
-    cluster_dict = row_dict_to_cluster_dict(row_dict, cluster_field)
+    cluster_dict = record_dict_to_cluster_dict(record_dict, cluster_field)
     train_cluster_dict, valid_cluster_dict, test_cluster_dict = split_clusters(
         cluster_dict, train_proportion, valid_proportion, random_seed
     )
     return (
-        _filtered_row_dict_from_cluster_dict(row_dict, train_cluster_dict),
-        _filtered_row_dict_from_cluster_dict(row_dict, valid_cluster_dict),
-        _filtered_row_dict_from_cluster_dict(row_dict, test_cluster_dict),
+        _filtered_record_dict_from_cluster_dict(record_dict, train_cluster_dict),
+        _filtered_record_dict_from_cluster_dict(record_dict, valid_cluster_dict),
+        _filtered_record_dict_from_cluster_dict(record_dict, test_cluster_dict),
     )
 
 
@@ -208,7 +208,7 @@ def compute_vocab_counter(field_val_gen, tokenizer):
     return vocab_counter
 
 
-def id_pairs_to_cluster_mapping_and_dict(id_pairs, row_dict):
+def id_pairs_to_cluster_mapping_and_dict(id_pairs, record_dict):
     uf = UnionFind()
     uf.union_pairs(id_pairs)
     cluster_dict = uf.component_dict()
@@ -227,7 +227,7 @@ def id_pairs_to_cluster_mapping_and_dict(id_pairs, row_dict):
 
     # add singleton clusters
     current_singleton_cluster_id = max(cluster_dict.keys()) + 1
-    for id_ in row_dict.keys() - cluster_mapping.keys():
+    for id_ in record_dict.keys() - cluster_mapping.keys():
         cluster_mapping[id_] = current_singleton_cluster_id
         cluster_dict[current_singleton_cluster_id] = [id_]
         current_singleton_cluster_id += 1
@@ -235,9 +235,9 @@ def id_pairs_to_cluster_mapping_and_dict(id_pairs, row_dict):
     return cluster_mapping, cluster_dict
 
 
-def assign_clusters(row_dict, cluster_field, cluster_mapping):
-    for id_, row in row_dict.items():
-        row[cluster_field] = cluster_mapping[id_]
+def assign_clusters(record_dict, cluster_field, cluster_mapping):
+    for id_, record in record_dict.items():
+        record[cluster_field] = cluster_mapping[id_]
 
 
 def subdict(d, keys):

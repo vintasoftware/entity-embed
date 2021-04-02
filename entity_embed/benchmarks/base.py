@@ -35,7 +35,7 @@ class DeepmatcherBenchmark(ABC):
         self._download()
         self._extract_zip()
         self.id_enumerator = utils.Enumerator()
-        self.row_dict = self._read_row_dict()
+        self.record_dict = self._read_record_dict()
         self.train_pos_pair_set, self.train_neg_pair_set = self._read_pair_sets(
             pair_csv_path=self.train_csv_path
         )
@@ -48,25 +48,25 @@ class DeepmatcherBenchmark(ABC):
 
         cluster_mapping, __ = utils.id_pairs_to_cluster_mapping_and_dict(
             id_pairs=self.train_pos_pair_set | self.valid_pos_pair_set | self.test_pos_pair_set,
-            row_dict=self.row_dict,
+            record_dict=self.record_dict,
         )
         utils.assign_clusters(
-            row_dict=self.row_dict,
+            record_dict=self.record_dict,
             cluster_field=self.cluster_field,
             cluster_mapping=cluster_mapping,
         )
-        self.train_row_dict = {
-            id_: self.row_dict[id_]
+        self.train_record_dict = {
+            id_: self.record_dict[id_]
             for pair in self.train_pos_pair_set | self.train_neg_pair_set
             for id_ in pair
         }
-        self.valid_row_dict = {
-            id_: self.row_dict[id_]
+        self.valid_record_dict = {
+            id_: self.record_dict[id_]
             for pair in self.valid_pos_pair_set | self.valid_neg_pair_set
             for id_ in pair
         }
-        self.test_row_dict = {
-            id_: self.row_dict[id_]
+        self.test_record_dict = {
+            id_: self.record_dict[id_]
             for pair in self.test_pos_pair_set | self.test_neg_pair_set
             for id_ in pair
         }
@@ -101,24 +101,24 @@ class DeepmatcherBenchmark(ABC):
         with zipfile.ZipFile(self.local_file_path, "r") as zf:
             zf.extractall(self.local_dir_path)
 
-    def _read_row_dict(self):
-        logging.info(f"Reading {self.dataset_name} row_dict...")
+    def _read_record_dict(self):
+        logging.info(f"Reading {self.dataset_name} record_dict...")
         if len(self.table_csv_paths) > 2:
             raise ValueError("table_csv_paths with more than two paths not supported.")
 
-        row_dict = {}
+        record_dict = {}
 
         for table_name, csv_path in zip(
             [self.left_source, self.right_source], self.table_csv_paths
         ):
             csv_path = os.path.join(self.local_dir_path, self.base_csv_path, csv_path)
             with open(csv_path, "r", encoding=self.csv_encoding) as f:
-                for row in csv.DictReader(f):
-                    row[self.source_field] = table_name
-                    row["id"] = self.id_enumerator[f"{table_name}-{row['id']}"]
-                    row_dict[row["id"]] = row
+                for record in csv.DictReader(f):
+                    record[self.source_field] = table_name
+                    record["id"] = self.id_enumerator[f"{table_name}-{record['id']}"]
+                    record_dict[record["id"]] = record
 
-        return row_dict
+        return record_dict
 
     def _read_pair_sets(self, pair_csv_path):
         logging.info(f"Reading {self.dataset_name} {pair_csv_path}...")
@@ -138,19 +138,19 @@ class DeepmatcherBenchmark(ABC):
 
         return pos_pair_set, neg_pair_set
 
-    def build_datamodule(self, row_numericalizer, batch_size, eval_batch_size, random_seed):
+    def build_datamodule(self, record_numericalizer, batch_size, eval_batch_size, random_seed):
         return LinkageDataModule(
-            train_row_dict=self.train_row_dict,
-            valid_row_dict=self.valid_row_dict,
-            test_row_dict=self.test_row_dict,
+            train_record_dict=self.train_record_dict,
+            valid_record_dict=self.valid_record_dict,
+            test_record_dict=self.test_record_dict,
             source_field=self.source_field,
             left_source=self.left_source,
             cluster_field=self.cluster_field,
-            row_numericalizer=row_numericalizer,
+            record_numericalizer=record_numericalizer,
             batch_size=batch_size,
             eval_batch_size=eval_batch_size,
             random_seed=random_seed,
-            check_for_common_rows=False,
+            check_for_common_records=False,
         )
 
     def __repr__(self):

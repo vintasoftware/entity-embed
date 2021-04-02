@@ -6,12 +6,20 @@ This guide will teach you how to train Entity Embed's deep neural network, use i
 
 It's also possible to run Entity Embed from the command line, check the :ref:`Command Line Interface <cli>` guide.
 
+
+Before starting
+---------------
+
+Please make sure you are familiar with all stages of a traditional Entity Resolution pipeline. Remember Entity Embed aims for high recall at the expense of precision. Therefore, it is suited for the Blocking/Indexing stage of an Entity Resolution pipeline. **The output you'll get from Entity Embed is a set of candidate duplicate pairs, not the final matching clusters.**
+
+A good introduction for Entity Resolution with Python is the `PyCon 2020 talk "1 + 1 = 1 or Record Deduplication with Python" <https://youtu.be/eMI8lwQl3Dc>`_ .
+
 .. _deduplication:
 
 Deduplication
 -------------
 
-Let's learn first how to perform Deduplication on Entity Embed. After that, we can learn the specifics on how to perform :ref:`Record Linkage <record_linkage>`. Deduplication means finding duplicates within a single dataset. Record Linkage means finding matching rows across two datasets.
+Let's learn first how to use Entity Embed for Deduplication. After that, we can learn the specifics on how to perform :ref:`Record Linkage <record_linkage>`. Deduplication means finding duplicates within a single dataset. Record Linkage means finding matching records across two datasets.
 
 Preparing the data
 ~~~~~~~~~~~~~~~~~~
@@ -40,19 +48,19 @@ For example::
       'artist': '',
       'album': 'The Division Bell'}]
 
-That's called a ``row_dict`` across Entity Embed's API. Once you have your ``row_dict``, you must split it into train, valid, and test data::
+That's called a ``record_dict`` across Entity Embed's API. Once you have your ``record_dict``, you must split it into train, valid, and test data::
 
     from entity_embed.data_utils import utils
 
-    train_row_dict, valid_row_dict, test_row_dict = utils.split_row_dict_on_clusters(
-        row_dict=row_dict,
+    train_record_dict, valid_record_dict, test_record_dict = utils.split_record_dict_on_clusters(
+        record_dict=record_dict,
         cluster_field="cluster",
         train_proportion=0.6,
         valid_proportion=0.2,
         random_seed=42,
     )
 
-Note we're splitting the data on **clusters**, not rows, so the row counts vary across the returned ``row_dict`` s.
+Note we're splitting the data on **clusters**, not records, so the record counts vary across the returned ``record_dict`` s.
 
 Defining the fields
 ~~~~~~~~~~~~~~~~~~~
@@ -99,18 +107,18 @@ Then we define an ``field_config_dict`` . It defines :ref:`Field Types <field_ty
 .. note::
     Check the available :ref:`Field Types <field_types>` and use the ones that make most sense for your data.
 
-With the ``field_config_dict``, we can get a ``row_numericalizer`` . This object will convert the strings from our entities into tensors for the neural network::
+With the ``field_config_dict``, we can get a ``record_numericalizer`` . This object will convert the strings from our entities into tensors for the neural network::
 
 
     from entity_embed import FieldConfigDictParser
 
-    row_numericalizer = FieldConfigDictParser.from_dict(
+    record_numericalizer = FieldConfigDictParser.from_dict(
         field_config_dict,
-        row_list=row_dict.values(),
+        record_list=record_dict.values(),
     )
 
 .. warning::
-    Note the ``field_config_dict`` receives a ``row_list`` . Here we're passing ``row_list=row_dict.values()``, meaning we're passing all train, valid, and test data. **If you have unlabeled data, you should include it too in** ``row_list`` . It's important to build the ``row_numericalizer`` with ALL available data, labeled or not. This ensures numericalization will know the true ``max_str_len`` of the fields of your data, and the true vocabulary of tokens to generalize well.
+    Note the ``field_config_dict`` receives a ``record_list`` . Here we're passing ``record_list=record_dict.values()``, meaning we're passing all train, valid, and test data. **If you have unlabeled data, you should include it too in** ``record_list`` . It's important to build the ``record_numericalizer`` with ALL available data, labeled or not. This ensures numericalization will know the true ``max_str_len`` of the fields of your data, and the true vocabulary of tokens to generalize well.
 
 Building the model
 ~~~~~~~~~~~~~~~~~~
@@ -120,11 +128,11 @@ Under the hood, Entity Embed uses `pytorch-lightning <https://pytorch-lightning.
     from entity_embed import DeduplicationDataModule
 
     datamodule = DeduplicationDataModule(
-        train_row_dict=train_row_dict,
-        valid_row_dict=valid_row_dict,
-        test_row_dict=test_row_dict,
+        train_record_dict=train_record_dict,
+        valid_record_dict=valid_record_dict,
+        test_record_dict=test_record_dict,
         cluster_field="cluster",
-        row_numericalizer=row_numericalizer,
+        record_numericalizer=record_numericalizer,
         batch_size=32,
         eval_batch_size=64,
         random_seed=42,
@@ -135,12 +143,12 @@ Training the model
 
 Now the training process!
 
-We must choose the K of the Approximate Nearest Neighbors, i.e., the top K neighbors our model will use to find duplicates in the embedding space. Below we're using the ``row_numericalizer`` and ``ann_k`` to initializing the ``EntityEmbed`` model object::
+We must choose the K of the Approximate Nearest Neighbors, i.e., the top K neighbors our model will use to find duplicates in the embedding space. Below we're using the ``record_numericalizer`` and ``ann_k`` to initializing the ``EntityEmbed`` model object::
 
     from entity_embed import EntityEmbed
 
     model = EntityEmbed(
-        row_numericalizer,
+        record_numericalizer,
         ann_k=100,
     )
 
@@ -177,10 +185,10 @@ Again with the best validation model, we can check the performance on the test s
 Indexing embeddings / Production run
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-When running in production, you only have access to the trained ``model`` object and the production ``row_dict`` (without the true clusters filled, of course). You can get the embedding vectors of a production ``row_dict`` using the ``predict`` method::
+When running in production, you only have access to the trained ``model`` object and the production ``record_dict`` (without the true clusters filled, of course). You can get the embedding vectors of a production ``record_dict`` using the ``predict`` method::
 
     vector_dict = model.predict(
-        row_dict=production_row_dict,
+        record_dict=production_record_dict,
         batch_size=64
     )
 
@@ -249,13 +257,13 @@ Use the ``LinkageDataModule`` class to initialize the ``datamodule`` . Note ther
     from entity_embed import LinkageDataModule
 
     datamodule = LinkageDataModule(
-        train_row_dict=train_row_dict,
-        valid_row_dict=valid_row_dict,
-        test_row_dict=test_row_dict,
+        train_record_dict=train_record_dict,
+        valid_record_dict=valid_record_dict,
+        test_record_dict=test_record_dict,
         source_field="__source",
         left_source="left",
         cluster_field="cluster",
-        row_numericalizer=row_numericalizer,
+        record_numericalizer=record_numericalizer,
         batch_size=32,
         eval_batch_size=64,
         random_seed=42,
@@ -269,7 +277,7 @@ Use the ``LinkageEmbed`` class to initialize the model object. Again, there are 
     from entity_embed import LinkageEmbed
 
     model = LinkageEmbed(
-        row_numericalizer,
+        record_numericalizer,
         ann_k=100,
         source_field="__source",
         left_source="left",
@@ -281,7 +289,7 @@ Indexing embeddings / Production run
 When calling ``predict``, you will now get two ``vector_dict`` s, one for each source dataset::
 
     test_left_vector_dict, test_right_vector_dict = model.predict(
-        row_dict=test_row_dict,
+        record_dict=test_record_dict,
         batch_size=eval_batch_size
     )
 

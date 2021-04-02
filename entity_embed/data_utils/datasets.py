@@ -11,16 +11,18 @@ from . import utils
 logger = logging.getLogger(__name__)
 
 
-def _collate_tensor_dict(row_batch, row_numericalizer):
-    tensor_dict = {field: [] for field in row_numericalizer.field_config_dict.keys()}
-    sequence_length_dict = {field: [] for field in row_numericalizer.field_config_dict.keys()}
-    for row in row_batch:
-        row_tensor_dict, row_sequence_length_dict = row_numericalizer.build_tensor_dict(row)
-        for field in row_numericalizer.field_config_dict.keys():
-            tensor_dict[field].append(row_tensor_dict[field])
-            sequence_length_dict[field].append(row_sequence_length_dict[field])
+def _collate_tensor_dict(record_batch, record_numericalizer):
+    tensor_dict = {field: [] for field in record_numericalizer.field_config_dict.keys()}
+    sequence_length_dict = {field: [] for field in record_numericalizer.field_config_dict.keys()}
+    for record in record_batch:
+        record_tensor_dict, record_sequence_length_dict = record_numericalizer.build_tensor_dict(
+            record
+        )
+        for field in record_numericalizer.field_config_dict.keys():
+            tensor_dict[field].append(record_tensor_dict[field])
+            sequence_length_dict[field].append(record_sequence_length_dict[field])
 
-    for field, field_config in row_numericalizer.field_config_dict.items():
+    for field, field_config in record_numericalizer.field_config_dict.items():
         if field_config.is_multitoken:
             tensor_dict[field] = nn.utils.rnn.pad_sequence(tensor_dict[field], batch_first=True)
         else:
@@ -31,16 +33,16 @@ def _collate_tensor_dict(row_batch, row_numericalizer):
 class ClusterDataset(Dataset):
     def __init__(
         self,
-        row_dict,
-        row_numericalizer,
+        record_dict,
+        record_numericalizer,
         cluster_dict,
         cluster_mapping,
         batch_size,
         max_cluster_size_in_batch,
         random_seed,
     ):
-        self.row_dict = row_dict
-        self.row_numericalizer = row_numericalizer
+        self.record_dict = record_dict
+        self.record_numericalizer = record_numericalizer
         self.batch_size = batch_size
         self.cluster_list = cluster_dict.values()
         self.singleton_id_list = [cluster[0] for cluster in self.cluster_list if len(cluster) == 1]
@@ -54,20 +56,20 @@ class ClusterDataset(Dataset):
     @classmethod
     def from_cluster_dict(
         cls,
-        row_dict,
+        record_dict,
         cluster_field,
-        row_numericalizer,
+        record_numericalizer,
         batch_size,
         max_cluster_size_in_batch,
         random_seed,
     ):
-        cluster_dict = utils.row_dict_to_cluster_dict(row_dict, cluster_field)
+        cluster_dict = utils.record_dict_to_cluster_dict(record_dict, cluster_field)
         cluster_mapping = {
             id_: cluster_id for cluster_id, cluster in cluster_dict.items() for id_ in cluster
         }
         return ClusterDataset(
-            row_dict=row_dict,
-            row_numericalizer=row_numericalizer,
+            record_dict=record_dict,
+            record_numericalizer=record_numericalizer,
             cluster_dict=cluster_dict,
             cluster_mapping=cluster_mapping,
             batch_size=batch_size,
@@ -122,10 +124,10 @@ class ClusterDataset(Dataset):
 
     def __getitem__(self, idx):
         id_batch = self.id_batch_list[idx]
-        row_batch = [self.row_dict[id_] for id_ in id_batch]
+        record_batch = [self.record_dict[id_] for id_ in id_batch]
         tensor_dict, sequence_length_dict = _collate_tensor_dict(
-            row_batch=row_batch,
-            row_numericalizer=self.row_numericalizer,
+            record_batch=record_batch,
+            record_numericalizer=self.record_numericalizer,
         )
         label_list = [self.cluster_mapping[id_] for id_ in id_batch]
         return tensor_dict, sequence_length_dict, default_collate(label_list)
@@ -134,18 +136,18 @@ class ClusterDataset(Dataset):
         return len(self.id_batch_list)
 
 
-class RowDataset(Dataset):
-    def __init__(self, row_dict, row_numericalizer, batch_size):
-        self.row_numericalizer = row_numericalizer
-        self.row_batch_list = list(more_itertools.chunked(row_dict.values(), batch_size))
+class RecordDataset(Dataset):
+    def __init__(self, record_dict, record_numericalizer, batch_size):
+        self.record_numericalizer = record_numericalizer
+        self.record_batch_list = list(more_itertools.chunked(record_dict.values(), batch_size))
 
     def __getitem__(self, idx):
-        row_batch = self.row_batch_list[idx]
+        record_batch = self.record_batch_list[idx]
         tensor_dict, sequence_length_dict = _collate_tensor_dict(
-            row_batch=row_batch,
-            row_numericalizer=self.row_numericalizer,
+            record_batch=record_batch,
+            record_numericalizer=self.record_numericalizer,
         )
         return tensor_dict, sequence_length_dict
 
     def __len__(self):
-        return len(self.row_batch_list)
+        return len(self.record_batch_list)

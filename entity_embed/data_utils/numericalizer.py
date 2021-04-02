@@ -98,7 +98,7 @@ class StringNumericalizer:
 
     def build_tensor(self, val):
         # encoded_arr is a one hot encoded bidimensional tensor
-        # where the rows represent characters and the columns positions in the string.
+        # with characters as rows and positions as columns.
         # This is the shape expected by StringEmbedCNN.
         ord_encoded_val = self._ord_encode(val)
         encoded_arr = np.zeros((len(self.alphabet), self.max_str_len), dtype=np.float32)
@@ -154,7 +154,7 @@ class SemanticMultitokenNumericalizer(MultitokenNumericalizer):
         )
 
 
-class RowNumericalizer:
+class RecordNumericalizer:
     def __init__(
         self,
         field_config_dict,
@@ -163,18 +163,18 @@ class RowNumericalizer:
         self.field_config_dict = field_config_dict
         self.field_to_numericalizer = field_to_numericalizer
 
-    def build_tensor_dict(self, row):
+    def build_tensor_dict(self, record):
         tensor_dict = {}
         sequence_length_dict = {}
 
         for field, numericalizer in self.field_to_numericalizer.items():
             # Get the key from the FieldConfig object for the
-            # cases where the field is different from the row's key
+            # cases where the field is different from the record's key
             key = self.field_config_dict[field].key
             if numericalizer.is_multitoken:
-                t, sequence_length = numericalizer.build_tensor(row[key])
+                t, sequence_length = numericalizer.build_tensor(record[key])
             else:
-                t = numericalizer.build_tensor(row[key])
+                t = numericalizer.build_tensor(record[key])
                 sequence_length = None
             tensor_dict[field] = t
             sequence_length_dict[field] = sequence_length
@@ -182,4 +182,4 @@ class RowNumericalizer:
         return tensor_dict, sequence_length_dict
 
     def __repr__(self):
-        return f"<RowNumericalizer with field_config_dict={self.field_config_dict}>"
+        return f"<RecordNumericalizer with field_config_dict={self.field_config_dict}>"

@@ -27,7 +27,7 @@ def field_config_json(tmp_path):
     yield filepath
 
 
-LABELED_ROW_DICT_VALUES = [
+LABELED_RECORD_DICT_VALUES = [
     {
         "id": 0,
         "cluster": 1,
@@ -99,7 +99,7 @@ LABELED_ROW_DICT_VALUES = [
         "__source": "foo",
     },
 ]
-UNLABELED_ROW_DICT_VALUES = [
+UNLABELED_RECORD_DICT_VALUES = [
     {
         "id": 10,
         "name": "good product",
@@ -121,36 +121,36 @@ UNLABELED_ROW_DICT_VALUES = [
 ]
 
 
-def yield_temporary_csv_filepath(row_dict_values, tmp_path, filename):
+def yield_temporary_csv_filepath(record_dict_values, tmp_path, filename):
     filepath = tmp_path / filename
 
     with open(filepath, "w", newline="") as f:
         csv_writer = csv.writer(f)
-        csv_writer.writerow(row_dict_values[0].keys())
-        for row in row_dict_values:
-            csv_writer.writerow(row.values())
+        csv_writer.writerow(record_dict_values[0].keys())
+        for record in record_dict_values:
+            csv_writer.writerow(record.values())
 
     yield filepath
 
 
 @pytest.fixture
 def train_csv(tmp_path):
-    yield from yield_temporary_csv_filepath(LABELED_ROW_DICT_VALUES[:5], tmp_path, "train.csv")
+    yield from yield_temporary_csv_filepath(LABELED_RECORD_DICT_VALUES[:5], tmp_path, "train.csv")
 
 
 @pytest.fixture
 def valid_csv(tmp_path):
-    yield from yield_temporary_csv_filepath(LABELED_ROW_DICT_VALUES[5:8], tmp_path, "valid.csv")
+    yield from yield_temporary_csv_filepath(LABELED_RECORD_DICT_VALUES[5:8], tmp_path, "valid.csv")
 
 
 @pytest.fixture
 def test_csv(tmp_path):
-    yield from yield_temporary_csv_filepath(LABELED_ROW_DICT_VALUES[8:], tmp_path, "test.csv")
+    yield from yield_temporary_csv_filepath(LABELED_RECORD_DICT_VALUES[8:], tmp_path, "test.csv")
 
 
 @pytest.fixture
 def unlabeled_csv(tmp_path):
-    yield from yield_temporary_csv_filepath(UNLABELED_ROW_DICT_VALUES, tmp_path, "unlabeled.csv")
+    yield from yield_temporary_csv_filepath(UNLABELED_RECORD_DICT_VALUES, tmp_path, "unlabeled.csv")
 
 
 @pytest.mark.parametrize("mode", ["linkage", "deduplication"])
@@ -315,7 +315,7 @@ def test_cli_train(
     # model asserts
     mock_model.assert_called_once_with(
         **{
-            "row_numericalizer": mock.ANY,  # row_numericalizer, will get below and assert
+            "record_numericalizer": mock.ANY,  # record_numericalizer, will get below and assert
             **({"source_field": "__source", "left_source": "foo"} if mode == "linkage" else {}),
             "embedding_size": expected_args_dict["embedding_size"],
             "learning_rate": expected_args_dict["lr"],
@@ -327,11 +327,11 @@ def test_cli_train(
             "index_search_kwargs": {k: expected_args_dict[k] for k in ["ef_search", "n_threads"]},
         }
     )
-    row_numericalizer = mock_model.call_args[1]["row_numericalizer"]
+    record_numericalizer = mock_model.call_args[1]["record_numericalizer"]
 
-    # row_numericalizer asserts
+    # record_numericalizer asserts
     assert all(
-        getattr(row_numericalizer.field_config_dict["name"], k) == expected
+        getattr(record_numericalizer.field_config_dict["name"], k) == expected
         for k, expected in expected_field_config_name_dict.items()
     )
 
@@ -355,10 +355,16 @@ def test_cli_train(
     datamodule = mock_model.return_value.fit.call_args[0][0]
 
     # datamodule asserts
-    assert datamodule.train_row_dict == {row["id"]: row for row in LABELED_ROW_DICT_VALUES[:5]}
-    assert datamodule.valid_row_dict == {row["id"]: row for row in LABELED_ROW_DICT_VALUES[5:8]}
-    assert datamodule.test_row_dict == {row["id"]: row for row in LABELED_ROW_DICT_VALUES[8:]}
-    assert datamodule.row_numericalizer == row_numericalizer
+    assert datamodule.train_record_dict == {
+        record["id"]: record for record in LABELED_RECORD_DICT_VALUES[:5]
+    }
+    assert datamodule.valid_record_dict == {
+        record["id"]: record for record in LABELED_RECORD_DICT_VALUES[5:8]
+    }
+    assert datamodule.test_record_dict == {
+        record["id"]: record for record in LABELED_RECORD_DICT_VALUES[8:]
+    }
+    assert datamodule.record_numericalizer == record_numericalizer
     assert datamodule.batch_size == expected_args_dict["batch_size"]
     assert datamodule.eval_batch_size == expected_args_dict["eval_batch_size"]
     assert datamodule.train_loader_kwargs == {
@@ -488,10 +494,10 @@ def test_cli_predict(
     mock_torch_random_seed.assert_called_once_with(expected_args_dict["random_seed"])
 
     # predict_pairs asserts
-    expected_row_dict = {row["id"]: row for row in UNLABELED_ROW_DICT_VALUES}
+    expected_record_dict = {record["id"]: record for record in UNLABELED_RECORD_DICT_VALUES}
     model_load.return_value.predict_pairs.assert_called_once_with(
         **{
-            "row_dict": expected_row_dict,
+            "record_dict": expected_record_dict,
             "batch_size": expected_args_dict["eval_batch_size"],
             "ann_k": expected_args_dict["ann_k"],
             "sim_threshold": expected_args_dict["sim_threshold"],
@@ -520,16 +526,18 @@ def test_cli_predict(
 
 @pytest.mark.parametrize("mode", ["linkage", "deduplication"])
 def test_build_datamodule(mode):
-    expected_train_row_dict = {row["id"]: row for row in LABELED_ROW_DICT_VALUES[:5]}
-    expected_valid_row_dict = {row["id"]: row for row in LABELED_ROW_DICT_VALUES[5:8]}
-    expected_test_row_dict = {row["id"]: row for row in LABELED_ROW_DICT_VALUES[8:]}
-    expected_row_numericalizer = mock.Mock()
+    expected_train_record_dict = {record["id"]: record for record in LABELED_RECORD_DICT_VALUES[:5]}
+    expected_valid_record_dict = {
+        record["id"]: record for record in LABELED_RECORD_DICT_VALUES[5:8]
+    }
+    expected_test_record_dict = {record["id"]: record for record in LABELED_RECORD_DICT_VALUES[8:]}
+    expected_record_numericalizer = mock.Mock()
     expected_kwargs = {
-        "train_row_dict": expected_train_row_dict,
-        "valid_row_dict": expected_valid_row_dict,
-        "test_row_dict": expected_test_row_dict,
+        "train_record_dict": expected_train_record_dict,
+        "valid_record_dict": expected_valid_record_dict,
+        "test_record_dict": expected_test_record_dict,
         "cluster_field": "cluster",
-        "row_numericalizer": expected_row_numericalizer,
+        "record_numericalizer": expected_record_numericalizer,
         "batch_size": 16,
         "eval_batch_size": 64,
         **({"source_field": "__source", "left_source": "foo"} if mode == "linkage" else {}),
@@ -550,10 +558,10 @@ def test_build_datamodule(mode):
 
     with mock.patch(f"entity_embed.cli.{expected_dm_cls.__name__}") as mock_datamodule:
         cli._build_datamodule(
-            train_row_dict=expected_train_row_dict,
-            valid_row_dict=expected_valid_row_dict,
-            test_row_dict=expected_test_row_dict,
-            row_numericalizer=expected_row_numericalizer,
+            train_record_dict=expected_train_record_dict,
+            valid_record_dict=expected_valid_record_dict,
+            test_record_dict=expected_test_record_dict,
+            record_numericalizer=expected_record_numericalizer,
             kwargs={
                 "cluster_field": "cluster",
                 "batch_size": 16,
@@ -589,10 +597,10 @@ def test_build_linkage_datamodule_without_source_field_or_left_source_raises(mis
         }
         del kwargs[missing_kwarg]
         cli._build_datamodule(
-            train_row_dict=mock.Mock(),
-            valid_row_dict=mock.Mock(),
-            test_row_dict=mock.Mock(),
-            row_numericalizer=mock.Mock(),
+            train_record_dict=mock.Mock(),
+            valid_record_dict=mock.Mock(),
+            test_record_dict=mock.Mock(),
+            record_numericalizer=mock.Mock(),
             kwargs=kwargs,
         )
     assert 'must provide BOTH "source_field" and "left_source"' in str(exc)
@@ -605,11 +613,11 @@ def test_build_model(mode):
     else:
         expected_model_cls = EntityEmbed
 
-    mock_row_numericalizer = mock.MagicMock()
+    mock_record_numericalizer = mock.MagicMock()
 
     with mock.patch(f"entity_embed.cli.{expected_model_cls.__name__}") as mock_model:
         cli._build_model(
-            mock_row_numericalizer,
+            mock_record_numericalizer,
             {
                 "embedding_size": 100,
                 "lr": 0.2,
@@ -626,7 +634,7 @@ def test_build_model(mode):
 
     mock_model.assert_called_once_with(
         **{
-            "row_numericalizer": mock_row_numericalizer,
+            "record_numericalizer": mock_record_numericalizer,
             "embedding_size": 100,
             "learning_rate": 0.2,
             "ann_k": 10,

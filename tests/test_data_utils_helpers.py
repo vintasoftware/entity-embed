@@ -6,7 +6,7 @@ import mock
 import n2  # noqa: F401
 import pytest
 from entity_embed.data_utils.field_config_parser import FieldConfigDictParser
-from entity_embed.data_utils.numericalizer import FieldConfig, FieldType, RowNumericalizer
+from entity_embed.data_utils.numericalizer import FieldConfig, FieldType, RecordNumericalizer
 from torchtext.vocab import Vocab
 
 EXPECTED_DEFAULT_ALPHABET = list(
@@ -14,10 +14,10 @@ EXPECTED_DEFAULT_ALPHABET = list(
 )
 
 
-def _validate_base_row_numericalizer(row_numericalizer):
-    assert isinstance(row_numericalizer, RowNumericalizer)
+def _validate_base_record_numericalizer(record_numericalizer):
+    assert isinstance(record_numericalizer, RecordNumericalizer)
 
-    parsed_field_config_dict = row_numericalizer.field_config_dict
+    parsed_field_config_dict = record_numericalizer.field_config_dict
     assert list(parsed_field_config_dict.keys()) == ["name"]
 
     name_field_config = parsed_field_config_dict["name"]
@@ -39,7 +39,7 @@ def _validate_base_row_numericalizer(row_numericalizer):
     assert name_field_config.use_attention
 
 
-def test_row_numericalizer_parse_from_dict():
+def test_record_numericalizer_parse_from_dict():
     field_config_dict = {
         "name": {
             "field_type": "MULTITOKEN",
@@ -48,7 +48,7 @@ def test_row_numericalizer_parse_from_dict():
         }
     }
 
-    row_dict = {
+    record_dict = {
         "1": {
             "id": "1",
             "name": "foo product",
@@ -63,13 +63,13 @@ def test_row_numericalizer_parse_from_dict():
         },
     }
 
-    row_numericalizer = FieldConfigDictParser.from_dict(
-        field_config_dict, row_list=row_dict.values()
+    record_numericalizer = FieldConfigDictParser.from_dict(
+        field_config_dict, record_list=record_dict.values()
     )
-    _validate_base_row_numericalizer(row_numericalizer)
+    _validate_base_record_numericalizer(record_numericalizer)
 
 
-def test_row_numericalizer_parse_from_json_file():
+def test_record_numericalizer_parse_from_json_file():
     field_config_dict = {
         "name": {
             "field_type": "MULTITOKEN",
@@ -78,7 +78,7 @@ def test_row_numericalizer_parse_from_json_file():
         }
     }
 
-    row_list = [
+    record_list = [
         {
             "id": "1",
             "name": "foo product",
@@ -96,11 +96,11 @@ def test_row_numericalizer_parse_from_json_file():
     with tempfile.NamedTemporaryFile("w+") as f:
         json.dump(field_config_dict, f)
         f.seek(0)  # Must move the pointer back to beginning since we aren't re-opening the file
-        row_numericalizer = FieldConfigDictParser.from_json(f, row_list=row_list)
-        _validate_base_row_numericalizer(row_numericalizer)
+        record_numericalizer = FieldConfigDictParser.from_json(f, record_list=record_list)
+        _validate_base_record_numericalizer(record_numericalizer)
 
 
-def test_row_numericalizer_parse_raises_when_field_config_is_empty():
+def test_record_numericalizer_parse_raises_when_field_config_is_empty():
     field_config_dict = {
         "name": {
             "field_type": "MULTITOKEN",
@@ -110,7 +110,7 @@ def test_row_numericalizer_parse_raises_when_field_config_is_empty():
         "foo": {},
     }
 
-    row_dict = {
+    record_dict = {
         "1": {
             "id": "1",
             "name": "foo product",
@@ -126,7 +126,7 @@ def test_row_numericalizer_parse_raises_when_field_config_is_empty():
     }
 
     with pytest.raises(ValueError):
-        FieldConfigDictParser.from_dict(field_config_dict, row_list=row_dict.values())
+        FieldConfigDictParser.from_dict(field_config_dict, record_list=record_dict.values())
 
 
 def test_field_with_wrong_field_type_raises():
@@ -139,11 +139,11 @@ def test_field_with_wrong_field_type_raises():
     }
 
     with pytest.raises(KeyError):
-        FieldConfigDictParser.from_dict(field_config_dict, row_list=[{"name": "foo"}])
+        FieldConfigDictParser.from_dict(field_config_dict, record_list=[{"name": "foo"}])
 
 
 @mock.patch("entity_embed.data_utils.field_config_parser.Vocab.load_vectors")
-def test_row_numericalizer_parse_with_field_with_semantic_field_type(mock_load_vectors):
+def test_record_numericalizer_parse_with_field_with_semantic_field_type(mock_load_vectors):
     field_config_dict = {
         "name": {
             "field_type": "SEMANTIC_MULTITOKEN",
@@ -152,7 +152,7 @@ def test_row_numericalizer_parse_with_field_with_semantic_field_type(mock_load_v
         }
     }
 
-    row_dict = {
+    record_dict = {
         "1": {
             "id": "1",
             "name": "foo product",
@@ -167,12 +167,12 @@ def test_row_numericalizer_parse_with_field_with_semantic_field_type(mock_load_v
         },
     }
 
-    row_numericalizer = FieldConfigDictParser.from_dict(
-        field_config_dict, row_list=row_dict.values()
+    record_numericalizer = FieldConfigDictParser.from_dict(
+        field_config_dict, record_list=record_dict.values()
     )
 
     mock_load_vectors.assert_called_once_with("fasttext.en.300d")
-    name_field_config = row_numericalizer.field_config_dict["name"]
+    name_field_config = record_numericalizer.field_config_dict["name"]
     assert name_field_config.key == "name"
     assert name_field_config.max_str_len is None
     assert isinstance(name_field_config.vocab, Vocab)
@@ -193,7 +193,7 @@ def test_field_config_dict_with_different_vocab_types_raises(mock_load_vectors):
         },
     }
 
-    row_dict = {
+    record_dict = {
         "1": {
             "id": "1",
             "title": "foo product",
@@ -207,7 +207,7 @@ def test_field_config_dict_with_different_vocab_types_raises(mock_load_vectors):
     }
 
     with pytest.raises(ValueError):
-        FieldConfigDictParser.from_dict(field_config_dict, row_list=row_dict.values())
+        FieldConfigDictParser.from_dict(field_config_dict, record_list=record_dict.values())
 
     mock_load_vectors.assert_called_once_with("fasttext.en.300d")
 
@@ -221,7 +221,7 @@ def test_field_with_semantic_field_type_without_vocab_raises():
         }
     }
 
-    row_dict = {
+    record_dict = {
         "1": {
             "id": "1",
             "name": "foo product",
@@ -237,10 +237,10 @@ def test_field_with_semantic_field_type_without_vocab_raises():
     }
 
     with pytest.raises(ValueError):
-        FieldConfigDictParser.from_dict(field_config_dict, row_list=row_dict.values())
+        FieldConfigDictParser.from_dict(field_config_dict, record_list=record_dict.values())
 
 
-def test_row_numericalizer_parse_multiple_field_for_same_key():
+def test_record_numericalizer_parse_multiple_field_for_same_key():
     field_config_dict = {
         "name_multitoken": {
             "key": "name",
@@ -254,7 +254,7 @@ def test_row_numericalizer_parse_multiple_field_for_same_key():
         },
     }
 
-    row_dict = {
+    record_dict = {
         "1": {
             "id": "1",
             "name": "foo product",
@@ -269,13 +269,13 @@ def test_row_numericalizer_parse_multiple_field_for_same_key():
         },
     }
 
-    row_numericalizer = FieldConfigDictParser.from_dict(
-        field_config_dict, row_list=row_dict.values()
+    record_numericalizer = FieldConfigDictParser.from_dict(
+        field_config_dict, record_list=record_dict.values()
     )
 
-    assert isinstance(row_numericalizer, RowNumericalizer)
+    assert isinstance(record_numericalizer, RecordNumericalizer)
 
-    parsed_field_config_dict = row_numericalizer.field_config_dict
+    parsed_field_config_dict = record_numericalizer.field_config_dict
     assert list(parsed_field_config_dict.keys()) == ["name_multitoken", "name_string"]
 
     name_multitoken_field_config = parsed_field_config_dict["name_multitoken"]
@@ -289,7 +289,7 @@ def test_row_numericalizer_parse_multiple_field_for_same_key():
     assert name_string_field_config.field_type == FieldType.STRING
 
 
-def test_row_numericalizer_parse_multiple_field_with_key():
+def test_record_numericalizer_parse_multiple_field_with_key():
     field_config_dict = {
         "name": {
             "field_type": "MULTITOKEN",
@@ -302,7 +302,7 @@ def test_row_numericalizer_parse_multiple_field_with_key():
         },
     }
 
-    row_dict = {
+    record_dict = {
         "1": {
             "id": "1",
             "name": "foo product",
@@ -317,13 +317,13 @@ def test_row_numericalizer_parse_multiple_field_with_key():
         },
     }
 
-    row_numericalizer = FieldConfigDictParser.from_dict(
-        field_config_dict, row_list=row_dict.values()
+    record_numericalizer = FieldConfigDictParser.from_dict(
+        field_config_dict, record_list=record_dict.values()
     )
 
-    assert isinstance(row_numericalizer, RowNumericalizer)
+    assert isinstance(record_numericalizer, RecordNumericalizer)
 
-    parsed_field_config_dict = row_numericalizer.field_config_dict
+    parsed_field_config_dict = record_numericalizer.field_config_dict
     assert list(parsed_field_config_dict.keys()) == ["name", "name_string"]
 
     name_field_config = parsed_field_config_dict["name"]
@@ -337,7 +337,7 @@ def test_row_numericalizer_parse_multiple_field_with_key():
     assert name_string_field_config.field_type == FieldType.STRING
 
 
-def test_row_numericalizer_parse_multiple_field_without_key_raises():
+def test_record_numericalizer_parse_multiple_field_without_key_raises():
     field_config_dict = {
         "name_multitoken": {
             "field_type": "MULTITOKEN",
@@ -350,7 +350,7 @@ def test_row_numericalizer_parse_multiple_field_without_key_raises():
         },
     }
 
-    row_dict = {
+    record_dict = {
         "1": {
             "id": "1",
             "name": "foo product",
@@ -366,11 +366,11 @@ def test_row_numericalizer_parse_multiple_field_without_key_raises():
     }
 
     with pytest.raises(ValueError):
-        FieldConfigDictParser.from_dict(field_config_dict, row_list=row_dict.values())
+        FieldConfigDictParser.from_dict(field_config_dict, record_list=record_dict.values())
 
 
 @mock.patch("entity_embed.data_utils.field_config_parser.Vocab.load_vectors")
-def test_row_numericalizer_parse_multiple_field_for_same_key_semantic_field_type(
+def test_record_numericalizer_parse_multiple_field_for_same_key_semantic_field_type(
     mock_load_vectors,
 ):
     field_config_dict = {
@@ -388,7 +388,7 @@ def test_row_numericalizer_parse_multiple_field_for_same_key_semantic_field_type
         },
     }
 
-    row_dict = {
+    record_dict = {
         "1": {
             "id": "1",
             "name": "foo product",
@@ -403,10 +403,10 @@ def test_row_numericalizer_parse_multiple_field_for_same_key_semantic_field_type
         },
     }
 
-    row_numericalizer = FieldConfigDictParser.from_dict(
-        field_config_dict, row_list=row_dict.values()
+    record_numericalizer = FieldConfigDictParser.from_dict(
+        field_config_dict, record_list=record_dict.values()
     )
-    assert isinstance(row_numericalizer, RowNumericalizer)
+    assert isinstance(record_numericalizer, RecordNumericalizer)
 
     mock_load_vectors.assert_has_calls(
         [
@@ -415,7 +415,7 @@ def test_row_numericalizer_parse_multiple_field_for_same_key_semantic_field_type
         ]
     )
 
-    parsed_field_config_dict = row_numericalizer.field_config_dict
+    parsed_field_config_dict = record_numericalizer.field_config_dict
     assert list(parsed_field_config_dict.keys()) == ["name_multitoken", "name_string"]
 
     name_multitoken_field_config = parsed_field_config_dict["name_multitoken"]
@@ -433,7 +433,7 @@ def test_row_numericalizer_parse_multiple_field_for_same_key_semantic_field_type
     assert isinstance(name_string_field_config.vocab, Vocab)
 
 
-def test_row_numericalizer_parse_multiple_field_for_same_key_semantic_field_type_raises():
+def test_record_numericalizer_parse_multiple_field_for_same_key_semantic_field_type_raises():
     field_config_dict = {
         "name_multitoken": {
             "field_type": "SEMANTIC_MULTITOKEN",
@@ -448,7 +448,7 @@ def test_row_numericalizer_parse_multiple_field_for_same_key_semantic_field_type
         },
     }
 
-    row_dict = {
+    record_dict = {
         "1": {
             "id": "1",
             "name": "foo product",
@@ -464,4 +464,4 @@ def test_row_numericalizer_parse_multiple_field_for_same_key_semantic_field_type
     }
 
     with pytest.raises(ValueError):
-        FieldConfigDictParser.from_dict(field_config_dict, row_list=row_dict.values())
+        FieldConfigDictParser.from_dict(field_config_dict, record_list=record_dict.values())

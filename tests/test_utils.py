@@ -5,7 +5,7 @@ from entity_embed.data_utils.utils import (
     compute_max_str_len,
     compute_vocab_counter,
     id_pairs_to_cluster_mapping_and_dict,
-    row_dict_to_cluster_dict,
+    record_dict_to_cluster_dict,
     split_clusters,
 )
 
@@ -29,8 +29,8 @@ def test_enumerator_with_start():
         assert enumerator[f"test-{x}"] == x + start
 
 
-def test_row_dict_to_cluster_dict():
-    row_dict = {
+def test_record_dict_to_cluster_dict():
+    record_dict = {
         1: {"id": 1, "cluster": 0},
         2: {"id": 2, "cluster": 1},
         3: {"id": 3, "cluster": 0},
@@ -39,7 +39,7 @@ def test_row_dict_to_cluster_dict():
         6: {"id": 6, "cluster": 2},
     }
 
-    cluster_dict = row_dict_to_cluster_dict(row_dict=row_dict, cluster_field="cluster")
+    cluster_dict = record_dict_to_cluster_dict(record_dict=record_dict, cluster_field="cluster")
 
     assert cluster_dict == {
         0: [1, 3, 4],
@@ -50,7 +50,7 @@ def test_row_dict_to_cluster_dict():
 
 @pytest.fixture
 def field_val_gen():
-    row_dict = {
+    record_dict = {
         1: {
             "id": "1",
             "name": "foo product",
@@ -64,7 +64,7 @@ def field_val_gen():
             "source": "baz",
         },
     }
-    return (row["name"] for row in row_dict.values())
+    return (record["name"] for record in record_dict.values())
 
 
 def test_compute_max_str_len_is_multitoken_false(field_val_gen):
@@ -127,8 +127,8 @@ def test_id_pairs_to_cluster_mapping_and_dict():
         (7, 9),
         (9, 10),
     }
-    row_dict = {id_: {"name": str(id_)} for id_ in range(1, 13)}
-    cluster_mapping, cluster_dict = id_pairs_to_cluster_mapping_and_dict(id_pairs, row_dict)
+    record_dict = {id_: {"name": str(id_)} for id_ in range(1, 13)}
+    cluster_mapping, cluster_dict = id_pairs_to_cluster_mapping_and_dict(id_pairs, record_dict)
 
     # 1, 2, 3 are part of the same cluster
     assert len(set(v for k, v in cluster_mapping.items() if k in [1, 2, 3])) == 1

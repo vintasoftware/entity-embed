@@ -8,7 +8,7 @@ from pytorch_metric_learning.distances import DotProductSimilarity
 from pytorch_metric_learning.losses import SupConLoss
 from tqdm.auto import tqdm
 
-from .data_utils.datasets import RowDataset
+from .data_utils.datasets import RecordDataset
 from .early_stopping import EarlyStoppingMinEpochs, ModelCheckpointMinEpochs
 from .evaluation import f1_score, pair_entity_ratio, precision_and_recall
 from .indexes import ANNEntityIndex, ANNLinkageIndex
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 class _BaseEmbed(pl.LightningModule):
     def __init__(
         self,
-        row_numericalizer,
+        record_numericalizer,
         embedding_size=300,
         loss_cls=SupConLoss,
         loss_kwargs=None,
@@ -38,8 +38,8 @@ class _BaseEmbed(pl.LightningModule):
         super().__init__()
         self.save_hyperparameters()
 
-        self.row_numericalizer = row_numericalizer
-        for field_config in self.row_numericalizer.field_config_dict.values():
+        self.record_numericalizer = record_numericalizer
+        for field_config in self.record_numericalizer.field_config_dict.values():
             vocab = field_config.vocab
             if vocab:
                 # We can assume that there's only one vocab type across the
@@ -53,7 +53,7 @@ class _BaseEmbed(pl.LightningModule):
                     )
         self.embedding_size = embedding_size
         self.blocker_net = BlockerNet(
-            field_config_dict=self.row_numericalizer.field_config_dict,
+            field_config_dict=self.record_numericalizer.field_config_dict,
             embedding_size=self.embedding_size,
         )
         self.loss_fn = loss_cls(**loss_kwargs if loss_kwargs else {"temperature": 0.1})
@@ -112,7 +112,7 @@ class _BaseEmbed(pl.LightningModule):
     def validation_epoch_end(self, outputs):
         metric_dict = self._evaluate_with_ann(
             set_name="valid",
-            row_dict=self.trainer.datamodule.valid_row_dict,
+            record_dict=self.trainer.datamodule.valid_record_dict,
             embedding_batch_list=outputs,
             pos_pair_set=self.trainer.datamodule.valid_pos_pair_set,
         )
@@ -125,7 +125,7 @@ class _BaseEmbed(pl.LightningModule):
     def test_epoch_end(self, outputs):
         metric_dict = self._evaluate_with_ann(
             set_name="test",
-            row_dict=self.trainer.datamodule.test_row_dict,
+            record_dict=self.trainer.datamodule.test_record_dict,
             embedding_batch_list=outputs,
             pos_pair_set=self.trainer.datamodule.test_pos_pair_set,
         )
@@ -210,10 +210,10 @@ class _BaseEmbed(pl.LightningModule):
         self.blocker_net = best_model.blocker_net
         return trainer
 
-    def _evaluate_with_ann(self, set_name, row_dict, embedding_batch_list, pos_pair_set):
+    def _evaluate_with_ann(self, set_name, record_dict, embedding_batch_list, pos_pair_set):
         raise NotImplementedError
 
-    def _evaluate_metrics(self, set_name, dataloader, row_dict, pos_pair_set):
+    def _evaluate_metrics(self, set_name, dataloader, record_dict, pos_pair_set):
         embedding_batch_list = []
         for tensor_dict, sequence_length_dict in dataloader:
             tensor_dict = {field: t.to(self.device) for field, t in tensor_dict.items()}
@@ -222,7 +222,7 @@ class _BaseEmbed(pl.LightningModule):
 
         metric_dict = self._evaluate_with_ann(
             set_name=set_name,
-            row_dict=row_dict,
+            record_dict=record_dict,
             embedding_batch_list=embedding_batch_list,
             pos_pair_set=pos_pair_set,
         )
@@ -234,7 +234,7 @@ class _BaseEmbed(pl.LightningModule):
         metric_dict = self._evaluate_metrics(
             set_name="valid",
             dataloader=datamodule.val_dataloader(),
-            row_dict=datamodule.valid_row_dict,
+            record_dict=datamodule.valid_record_dict,
             pos_pair_set=datamodule.valid_pos_pair_set,
         )
         return metric_dict
@@ -247,26 +247,28 @@ class _BaseEmbed(pl.LightningModule):
         metric_dict = self._evaluate_metrics(
             set_name="test",
             dataloader=datamodule.test_dataloader(),
-            row_dict=datamodule.test_row_dict,
+            record_dict=datamodule.test_record_dict,
             pos_pair_set=datamodule.test_pos_pair_set,
         )
         return metric_dict
 
     def predict(
         self,
-        row_dict,
+        record_dict,
         batch_size,
         loader_kwargs=None,
         show_progress=True,
     ):
         self.freeze()
 
-        row_dataset = RowDataset(
-            row_numericalizer=self.row_numericalizer, row_dict=row_dict, batch_size=batch_size
+        record_dataset = RecordDataset(
+            record_numericalizer=self.record_numericalizer,
+            record_dict=record_dict,
+            batch_size=batch_size,
         )
-        row_loader = torch.utils.data.DataLoader(
-            row_dataset,
-            batch_size=None,  # batch size is set on RowDataset
+        record_loader = torch.utils.data.DataLoader(
+            record_dataset,
+            batch_size=None,  # batch size is set on RecordDataset
             shuffle=False,
             **loader_kwargs
             if loader_kwargs
@@ -274,25 +276,25 @@ class _BaseEmbed(pl.LightningModule):
         )
 
         with tqdm(
-            total=len(row_loader), desc="# batch embedding", disable=not show_progress
+            total=len(record_loader), desc="# batch embedding", disable=not show_progress
         ) as p_bar:
             vector_list = []
-            for tensor_dict, sequence_length_dict in row_loader:
+            for tensor_dict, sequence_length_dict in record_loader:
                 tensor_dict = {field: t.to(self.device) for field, t in tensor_dict.items()}
                 embeddings = self(tensor_dict, sequence_length_dict)
                 vector_list.extend(v.data.numpy() for v in embeddings.cpu().unbind())
                 p_bar.update(1)
 
-        vector_dict = dict(zip(row_dict.keys(), vector_list))
+        vector_dict = dict(zip(record_dict.keys(), vector_list))
         return vector_dict
 
 
 class EntityEmbed(_BaseEmbed):
-    def _evaluate_with_ann(self, set_name, row_dict, embedding_batch_list, pos_pair_set):
+    def _evaluate_with_ann(self, set_name, record_dict, embedding_batch_list, pos_pair_set):
         vector_list = []
         for embedding_batch in embedding_batch_list:
             vector_list.extend(v.data.numpy() for v in embedding_batch.cpu().unbind())
-        vector_dict = dict(zip(row_dict.keys(), vector_list))
+        vector_dict = dict(zip(record_dict.keys(), vector_list))
 
         ann_index = ANNEntityIndex(embedding_size=self.embedding_size)
         ann_index.insert_vector_dict(vector_dict)
@@ -322,7 +324,7 @@ class EntityEmbed(_BaseEmbed):
 
     def predict_pairs(
         self,
-        row_dict,
+        record_dict,
         batch_size,
         ann_k,
         sim_threshold,
@@ -332,7 +334,7 @@ class EntityEmbed(_BaseEmbed):
         show_progress=True,
     ):
         vector_dict = self.predict(
-            row_dict=row_dict,
+            record_dict=record_dict,
             batch_size=batch_size,
             loader_kwargs=loader_kwargs,
             show_progress=show_progress,
@@ -349,7 +351,7 @@ class EntityEmbed(_BaseEmbed):
 class LinkageEmbed(_BaseEmbed):
     def __init__(
         self,
-        row_numericalizer,
+        record_numericalizer,
         source_field,
         left_source,
         **kwargs,
@@ -358,20 +360,20 @@ class LinkageEmbed(_BaseEmbed):
         self.left_source = left_source
 
         super().__init__(
-            row_numericalizer=row_numericalizer,
+            record_numericalizer=record_numericalizer,
             source_field=source_field,
             left_source=left_source,
             **kwargs,
         )
 
-    def _evaluate_with_ann(self, set_name, row_dict, embedding_batch_list, pos_pair_set):
+    def _evaluate_with_ann(self, set_name, record_dict, embedding_batch_list, pos_pair_set):
         vector_list = []
         for embedding_batch in embedding_batch_list:
             vector_list.extend(v.data.numpy() for v in embedding_batch.cpu().unbind())
         left_vector_dict = {}
         right_vector_dict = {}
-        for (id_, row), vector in zip(row_dict.items(), vector_list):
-            if row[self.source_field] == self.left_source:
+        for (id_, record), vector in zip(record_dict.items(), vector_list):
+            if record[self.source_field] == self.left_source:
                 left_vector_dict[id_] = vector
             else:
                 right_vector_dict[id_] = vector
@@ -411,21 +413,21 @@ class LinkageEmbed(_BaseEmbed):
 
     def predict(
         self,
-        row_dict,
+        record_dict,
         batch_size,
         loader_kwargs=None,
         show_progress=True,
     ):
         vector_dict = super().predict(
-            row_dict=row_dict,
+            record_dict=record_dict,
             batch_size=batch_size,
             loader_kwargs=loader_kwargs,
             show_progress=show_progress,
         )
         left_vector_dict = {}
         right_vector_dict = {}
-        for (id_, row), vector in zip(row_dict.items(), vector_dict.values()):
-            if row[self.source_field] == self.left_source:
+        for (id_, record), vector in zip(record_dict.items(), vector_dict.values()):
+            if record[self.source_field] == self.left_source:
                 left_vector_dict[id_] = vector
             else:
                 right_vector_dict[id_] = vector
@@ -433,7 +435,7 @@ class LinkageEmbed(_BaseEmbed):
 
     def predict_pairs(
         self,
-        row_dict,
+        record_dict,
         batch_size,
         ann_k,
         sim_threshold,
@@ -443,7 +445,7 @@ class LinkageEmbed(_BaseEmbed):
         show_progress=True,
     ):
         left_vector_dict, right_vector_dict = self.predict(
-            row_dict=row_dict,
+            record_dict=record_dict,
             batch_size=batch_size,
             loader_kwargs=loader_kwargs,
             show_progress=show_progress,
