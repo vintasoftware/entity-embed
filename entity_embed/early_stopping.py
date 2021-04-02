@@ -24,7 +24,7 @@ class EarlyStoppingMinEpochs(EarlyStopping):
         self.min_epochs = min_epochs
 
     def on_validation_end(self, trainer, pl_module):
-        if trainer.current_epoch < self.min_epochs:
+        if trainer.current_epoch < self.min_epochs - 1:
             return
         super().on_validation_end(trainer, pl_module)
 
@@ -59,6 +59,6 @@ class ModelCheckpointMinEpochs(ModelCheckpoint):
         self.min_epochs = min_epochs
 
     def on_validation_end(self, trainer, pl_module):
-        if trainer.current_epoch < self.min_epochs:
+        if trainer.current_epoch < self.min_epochs - 1:
             return
         super().on_validation_end(trainer, pl_module)
