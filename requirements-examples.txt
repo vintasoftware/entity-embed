@@ -1,3 +1,4 @@
 -r requirements.txt
-scikit-learn==0.23.2
+scikit-learn==0.24.1
 unidecode==1.1.2
+jupyter>=1.0.0

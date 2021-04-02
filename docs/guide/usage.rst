@@ -311,7 +311,11 @@ Here, ``found_pair_set`` is again a set of tuple ``id`` pairs, but there's a cat
 Examples
 --------
 
-Check these Jupyter Notebooks for step-by-step examples:
+Do::
+
+    pip install -r requirements-examples.txt
+
+Then check these Jupyter Notebooks for step-by-step examples:
 
 - Deduplication, when you have a single dirty dataset with duplicates: `notebooks/Deduplication-Example.ipynb <https://github.com/vintasoftware/entity-embed/blob/main/notebooks/Deduplication-Example.ipynb>`_
 - Record Linkage, when you have multiple clean datasets you need to link: `notebooks/Record-Linkage-Example.ipynb <https://github.com/vintasoftware/entity-embed/blob/main/notebooks/Record-Linkage-Example.ipynb>`_
