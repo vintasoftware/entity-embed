@@ -59,7 +59,7 @@ Now, here's how to set up `entity-embed` for local development.
     $ cd entity-embed/
     $ python setup.py develop
 
-4. Install dev requirements:
+4. Install dev requirements::
 
     $ pip install -r requirements-dev.txt
 

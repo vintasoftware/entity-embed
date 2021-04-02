@@ -313,7 +313,7 @@ Examples
 
 Do::
 
-    pip install -r requirements-examples.txt
+    $ pip install -r requirements-examples.txt
 
 Then check these Jupyter Notebooks for step-by-step examples:
 
