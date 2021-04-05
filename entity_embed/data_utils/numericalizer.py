@@ -105,7 +105,7 @@ class StringNumericalizer:
         if len(ord_encoded_val) > 0:
             encoded_arr[ord_encoded_val, range(len(ord_encoded_val))] = 1.0
         t = torch.from_numpy(encoded_arr)
-        return t
+        return t, len(val)
 
 
 class SemanticStringNumericalizer:
@@ -119,7 +119,7 @@ class SemanticStringNumericalizer:
         # encoded_arr is a lookup_tensor like in
         # https://pytorch.org/tutorials/beginner/nlp/word_embeddings_tutorial.html
         t = torch.tensor(self.vocab[val], dtype=torch.long)
-        return t
+        return t, len(val)
 
 
 class MultitokenNumericalizer:
@@ -135,13 +135,13 @@ class MultitokenNumericalizer:
         t_list = []
         for v in val_tokens:
             if v != "":
-                t = self.string_numericalizer.build_tensor(v)
+                t, __ = self.string_numericalizer.build_tensor(v)
                 t_list.append(t)
 
         if len(t_list) > 0:
             return torch.stack(t_list), len(t_list)
         else:
-            t = self.string_numericalizer.build_tensor("")
+            t, __ = self.string_numericalizer.build_tensor("")
             return torch.stack([t]), 0
 
 
@@ -171,11 +171,7 @@ class RecordNumericalizer:
             # Get the key from the FieldConfig object for the
             # cases where the field is different from the record's key
             key = self.field_config_dict[field].key
-            if numericalizer.is_multitoken:
-                t, sequence_length = numericalizer.build_tensor(record[key])
-            else:
-                t = numericalizer.build_tensor(record[key])
-                sequence_length = None
+            t, sequence_length = numericalizer.build_tensor(record[key])
             tensor_dict[field] = t
             sequence_length_dict[field] = sequence_length
 

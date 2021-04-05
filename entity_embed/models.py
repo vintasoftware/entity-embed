@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.autograd import Variable
 
 from .data_utils.numericalizer import FieldType
 
@@ -92,7 +91,7 @@ class MaskedAttention(nn.Module):
         # See e.g. https://discuss.pytorch.org/t/self-attention-on-words-and-masking/5671/5
         max_len = h.size(1)
         idxes = torch.arange(0, max_len, out=torch.LongTensor(max_len)).unsqueeze(0)
-        mask = Variable((idxes < torch.LongTensor(sequence_lengths).unsqueeze(1)).float())
+        mask = (idxes < torch.LongTensor(sequence_lengths).unsqueeze(1)).float()
         if scores.data.is_cuda:
             mask = mask.cuda()
 
@@ -160,7 +159,7 @@ class MultitokenAvgEmbed(nn.Module):
         # Compute a mask for the attention on the padded sequences
         # See e.g. https://discuss.pytorch.org/t/self-attention-on-words-and-masking/5671/5
         idxes = torch.arange(0, max_len, out=torch.LongTensor(max_len)).unsqueeze(0)
-        mask = Variable((idxes < torch.LongTensor(sequence_lengths).unsqueeze(1)).float())
+        mask = (idxes < torch.LongTensor(sequence_lengths).unsqueeze(1)).float()
         if x.data.is_cuda:
             mask = mask.cuda()
 
@@ -187,10 +186,18 @@ class EntityAvgPoolNet(nn.Module):
         else:
             self.weights = None
 
-    def forward(self, field_embedding_dict):
+    def forward(self, field_embedding_dict, sequence_length_dict):
         if self.weights is not None:
             field_embedding_list = list(field_embedding_dict.values())
             x = torch.stack(field_embedding_list, dim=1)
+
+            # zero empty strings and sequences
+            field_mask = torch.stack(
+                [torch.tensor(ls, device=x.device) for ls in sequence_length_dict.values()],
+                dim=1,
+            )
+            x = x * field_mask.unsqueeze(dim=-1)
+
             x = F.normalize(x, dim=2)
             return F.normalize((x * self.weights.unsqueeze(-1).expand_as(x)).sum(axis=1), dim=1)
         else:
@@ -272,7 +279,9 @@ class BlockerNet(nn.Module):
         field_embedding_dict = self.field_embed_net(
             tensor_dict=tensor_dict, sequence_length_dict=sequence_length_dict
         )
-        return self.avg_pool_net(field_embedding_dict)
+        return self.avg_pool_net(
+            field_embedding_dict=field_embedding_dict, sequence_length_dict=sequence_length_dict
+        )
 
     def fix_pool_weights(self):
         """
