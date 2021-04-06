@@ -32,8 +32,8 @@ If you're doing Record Linkage, there are other **mandatory** options:
    :widths: 30, 70
    :header-rows: 1
 
-Preedict Options
-~~~~~~~~~~~~~~~~
+Predict Options
+~~~~~~~~~~~~~~~
 
 To check all the CLI options for predict, run:
 
