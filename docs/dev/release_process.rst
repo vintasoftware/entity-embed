@@ -4,6 +4,9 @@ Release Process
 For maintainers only:
 
 - Update ``CHANGELOG.md`` with the version changes
+- Update ``docs/`` as required
+- Update ``README.md`` as required
+    - Update "Citations" section on ``README.md``
 - Commit changes
 - Run ``bump2version <minor|major|patch>`` to update the version number (pick one of the options)
 
