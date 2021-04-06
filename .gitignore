@@ -161,8 +161,9 @@ release-backup-*/
 # Notebooks Benchmark Data
 /notebooks/data/
 
-# Generated Example Data
-/example-data/
+# Example Data Outputs
+/example-data/er-prediction.json
+/example-data/rl-prediction.json
 
 # Example trained models
 /trained-models/
