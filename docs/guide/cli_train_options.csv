@@ -1,0 +1,10 @@
+Option,Description
+"``--field_config_json``","Path of the JSON configuration file that defines how fields will be processed by the neural network. Check :ref:`Field Types <field_types>`."
+"``--train_csv``","Path of the TRAIN input dataset CSV file."
+"``--valid_csv``","Path of the VALID input dataset CSV file."
+"``--test_csv``","Path of the TEST input dataset CSV file."
+"``--unlabeled_csv``","Path of the UNLABELED input dataset CSV file."
+"``--cluster_field``","Column of the CSV dataset that contains the true cluster assignment. Equivalent to the label in tabular classification. Files ``train_csv``, ``valid_csv``, ``test_csv`` MUST HAVE cluster_field column. File test_csv MUST NOT."
+"``--batch_size``","Training batch size, in CLUSTERS."
+"``--eval_batch_size``","Evaluation batch size, in RECORDS."
+"``--model_save_dir``","Directory path where to save the best validation model checkpoint using PyTorch Lightning."

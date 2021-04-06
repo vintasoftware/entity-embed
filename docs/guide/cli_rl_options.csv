@@ -1,0 +1,3 @@
+Option,Description
+"``--source_field``","Set this when doing Record Linkage. Column of the CSV dataset that contains the indication of the left or right source for Record Linkage."
+"``--left_source``","Set this when doing Record Linkage. Consider any record with this value in the ``source_field`` as the ``left_source`` dataset. The records with other ``source_field`` values are considered the right dataset."

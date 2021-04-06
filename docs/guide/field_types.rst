@@ -8,7 +8,6 @@ Entity Embed supports different field types that define how record fields are nu
 
 Currently only fields of strings are supported.
 
-
 Field Config and Record Numericalizer
 -------------------------------------
 

@@ -6,7 +6,6 @@ This guide will teach you how to train Entity Embed's deep neural network, use i
 
 It's also possible to run Entity Embed from the command line, check the :ref:`Command Line Interface <cli>` guide.
 
-
 Before starting
 ---------------
 
@@ -319,7 +318,9 @@ Here, ``found_pair_set`` is again a set of tuple ``id`` pairs, but there's a cat
 Examples
 --------
 
-Do::
+Do:
+
+.. code-block:: bash
 
     $ pip install -r requirements-examples.txt
 

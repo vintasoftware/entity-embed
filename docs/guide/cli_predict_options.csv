@@ -1,0 +1,6 @@
+Option,Description
+"``--model_save_filepath``","Path where the model checkpoint was saved. Get this from ``entity_embed_train`` output."
+"``--unlabeled_csv``","Path of the unlabeled input dataset CSV file."
+"``--eval_batch_size``","Evaluation batch size, in RECORDS."
+"``--sim_threshold``","A SINGLE cosine similarity threshold to use when finding duplicates. Any ANN neighbors with cosine similarity BELOW this threshold is ignored."
+"``--output_json``","Path of the output JSON file that will contain the candidate duplicate pairs. Remember Entity Embed is focused on recall. You must use some classifier to filter these and find the best matching pairs."

@@ -213,7 +213,8 @@ def _fit_model(model, datamodule, kwargs):
     type=str,
     required=True,
     help="Column of the CSV dataset that contains the true cluster assignment. "
-    "Equivalent to the label in tabular classification",
+    "Equivalent to the label in tabular classification. "
+    "Files train_csv, valid_csv, test_csv MUST HAVE cluster_field column. File test_csv MUST NOT.",
 )
 @click.option(
     "--source_field",
@@ -226,7 +227,7 @@ def _fit_model(model, datamodule, kwargs):
     "--left_source",
     type=str,
     help="Set this when doing Record Linkage. "
-    "Consider any record with this value in the `source_field` as the left_source dataset. "
+    "Consider any record with this value in the `source_field` as the `left_source` dataset. "
     "The records with other `source_field` values are considered the right dataset",
 )
 @click.option(
@@ -313,6 +314,7 @@ def _fit_model(model, datamodule, kwargs):
 @click.option(
     "--model_save_dir",
     type=str,
+    required=True,
     help="Directory path where to save the best validation model checkpoint"
     " using PyTorch Lightning",
 )
@@ -421,14 +423,8 @@ def _write_json(found_pairs, kwargs):
 @click.option(
     "--model_save_filepath",
     type=str,
-    help="Path where the model checkpoint was saved",
-)
-@click.option(
-    "--field_config_json",
-    type=str,
     required=True,
-    help="Path of the JSON configuration file "
-    "that defines how fields will be processed by the neural network",
+    help="Path where the model checkpoint was saved. Get this from entity_embed_train output",
 )
 @click.option(
     "--unlabeled_csv",
@@ -453,7 +449,7 @@ def _write_json(found_pairs, kwargs):
     "--left_source",
     type=str,
     help="Set this when doing Record Linkage. "
-    "Consider any record with this value in the `source_field` as the left_source dataset. "
+    "Consider any record with this value in the `source_field` as the `left_source` dataset. "
     "The records with other `source_field` values are considered the right dataset",
 )
 @click.option(
@@ -476,8 +472,7 @@ def _write_json(found_pairs, kwargs):
 @click.option(
     "--sim_threshold",
     type=float,
-    multiple=False,
-    default=[0.3, 0.5, 0.7],
+    required=True,
     help="A SINGLE cosine similarity threshold to use when finding duplicates. "
     "Any ANN neighbors with cosine similarity BELOW this threshold is ignored",
 )

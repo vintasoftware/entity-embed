@@ -18,8 +18,8 @@ Entity Embed is based on and is a special case of the `AutoBlock model described
    guide/install
    guide/usage
    guide/field_types
-   guide/cli
    guide/nn_architecture
+   guide/cli
 
 .. toctree::
    :maxdepth: 1

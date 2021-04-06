@@ -402,7 +402,6 @@ def test_cli_predict(
     mock_torch_random_seed,
     mock_cpu_count,
     mode,
-    field_config_json,
     unlabeled_csv,
     caplog,
     tmp_path,
@@ -423,8 +422,6 @@ def test_cli_predict(
             [
                 "--model_save_filepath",
                 "trained-model.ckpt",
-                "--field_config_json",
-                field_config_json,
                 "--unlabeled_csv",
                 unlabeled_csv,
                 "--csv_encoding",
