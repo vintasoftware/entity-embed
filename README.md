@@ -85,7 +85,7 @@ BibTeX entry:
   title = {{Entity Embed}: Scalable Entity Resolution using Approximate Nearest Neighbors.},
   author = {Juvenal, Flávio and Vieira, Renato},
   url = {https://github.com/vintasoftware/entity-embed},
-  version = {0.0.1},
+  version = {0.0.2},
   date = {2021-03-30},
   year = {2021}
 }
