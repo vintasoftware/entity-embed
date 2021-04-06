@@ -2,7 +2,7 @@
 Usage
 =====
 
-This guide will teach you how to train Entity Embed's deep neural network, use it to embed entities, index those embedding vectors into an Approximate Nearest Neighbors index, and finally search for candidate duplicate pairs on that index. All using the Python API.
+This guide will teach you how to train Entity Embed's deep neural network, use it to embed records, index those embedding vectors into an Approximate Nearest Neighbors index, and finally search for candidate duplicate pairs on that index. All using the Python API.
 
 It's also possible to run Entity Embed from the command line, check the :ref:`Command Line Interface <cli>` guide.
 
@@ -24,10 +24,10 @@ Let's learn first how to use Entity Embed for Deduplication. After that, we can 
 Preparing the data
 ~~~~~~~~~~~~~~~~~~
 
-Your data needs to represent a list of entities as list of ``dict`` s. Those ``dict`` s must contain:
+Your data needs to represent a list of records as list of ``dict`` s. Those ``dict`` s must contain:
 
-* an ``id`` to uniquely identify each entity
-* a ``cluster`` key that indicates the true matching entities
+* an ``id`` to uniquely identify each record
+* a ``cluster`` key that indicates the true matching records (same real-world entity)
 * the fields you want to use for embedding
 
 For example::
@@ -65,7 +65,7 @@ Note we're splitting the data on **clusters**, not records, so the record counts
 Defining the fields
 ~~~~~~~~~~~~~~~~~~~
 
-We need to define how entity fields will be numericalized and encoded by Entity Embed's deep neural network. First, we need an ``alphabet`` . The default alphabet has the ASCII numbers, letters, symbols and space. You can use any other alphabet if you need::
+We need to define how record fields will be numericalized and encoded by Entity Embed's deep neural network. First, we need an ``alphabet`` . The default alphabet is a list with the ASCII numbers, letters, symbols and space. You can use any other alphabet if you need::
 
     from entity_embed.data_utils.field_config_parser import DEFAULT_ALPHABET
 
@@ -107,7 +107,7 @@ Then we define an ``field_config_dict`` . It defines :ref:`Field Types <field_ty
 .. note::
     Check the available :ref:`Field Types <field_types>` and use the ones that make most sense for your data.
 
-With the ``field_config_dict``, we can get a ``record_numericalizer`` . This object will convert the strings from our entities into tensors for the neural network::
+With the ``field_config_dict``, we can get a ``record_numericalizer`` . This object can convert the strings from your records into tensors for the neural network::
 
 
     from entity_embed import FieldConfigDictParser
@@ -224,7 +224,7 @@ The steps to perform Record Linkage are similar to the ones for :ref:`Deduplicat
 Preparing the data
 ~~~~~~~~~~~~~~~~~~
 
-On your data for Record Linkage, you must include a field on each entity to inform what is its source dataset. For example::
+On your data for Record Linkage, you must include a field on each record to inform what is its source dataset. For example::
 
 
     [{'id': 0,

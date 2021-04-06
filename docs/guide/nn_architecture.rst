@@ -18,9 +18,9 @@ Let's discuss each step and where Entity Embed differs from AutoBlock.
 Fields
 ------
 
-A single entity is composed of multiple string fields. Currently only strings are supported.
+A single record is composed of multiple string fields. Currently only strings are supported.
 
-Each entity field can be composed of multiple tokens or a single token. The NN deals with numericalizations of the tokens of those fields.
+Each record field can be composed of multiple tokens or a single token. The NN deals with numericalizations of the tokens of those fields.
 
 Check ``entity_embed/data_utils/numericalizer.py``.
 
@@ -49,14 +49,14 @@ Check ``MultitokenAttentionEmbed`` and ``MultitokenAvgEmbed`` in ``entity_embed/
 Entity Embedding
 ----------------
 
-With the Field Embeddings from all entity fields, this step takes a **learned weighted average** of the Field Embeddings to output a single embedding that represents the whole entity.
+With the Field Embeddings from all record fields, this step takes a **learned weighted average** of the Field Embeddings to output a single embedding that represents the whole record.
 
 Check ``EntityAvgPoolNet`` in ``entity_embed/models.py``.
 
 Contrastive Training
 --------------------
 
-With the Entity Embeddings, a contrastive loss is used to approximate in the N dimensional space embeddings of entities that belong to the same true cluster.
+With the Entity Embeddings, a contrastive loss is used to approximate in the N dimensional space embeddings of records that belong to the same true cluster.
 
 By default `SupConLoss from pytorch-metric-learning <https://kevinmusgrave.github.io/pytorch-metric-learning/losses/>`_ is used.
 
@@ -72,7 +72,7 @@ Differences from AutoBlock
 
 Here are the key differences from Entity Embed's architecture and AutoBlock:
 
-- AutoBlock uses only fasttext to embed tokens. Entity Embed supports character-level CNNs too, enabling embeddings focused on semantic features and syntatic features.
+- AutoBlock uses only fasttext to embed tokens. Entity Embed supports character-level CNNs too, enabling embeddings focused on semantic features and syntactic features.
 - AutoBlock uses Bi-LSTMs on field embedding, Entity Embed uses Bi-GRUs.
 - AutoBlock can learn multiple entity embeddings by combining different fields (multiple signatures), Entity Embed learns only a single entity embedding (learned average of all fields).
 - AutoBlock uses ``NTXentLoss``, Entity Embed uses ``SupConLoss``. Both are available on `pytorch-metric-learning <https://kevinmusgrave.github.io/pytorch-metric-learning/losses/>`_ and you can change Entity Embed to use ``NTXentLoss`` if you wish.

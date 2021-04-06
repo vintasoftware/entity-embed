@@ -165,8 +165,7 @@ release-backup-*/
 /example-data/
 
 # Example trained models
-/er-trained-models/
-/rl-trained-models/
+/trained-models/
 
 # PyTorch Lightning logs
 /lightning_logs/
