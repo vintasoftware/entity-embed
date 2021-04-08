@@ -129,7 +129,7 @@ class _BaseEmbed(pl.LightningModule):
                 "params": [
                     p
                     for n, p in named_parameters
-                    if not any(nd in n for nd in no_decay) and "avg_pool_net" not in n
+                    if not any(nd in n for nd in no_decay) and "semantic" in n
                 ],
                 "weight_decay": 0.01,
             },
@@ -137,12 +137,12 @@ class _BaseEmbed(pl.LightningModule):
                 "params": [
                     p
                     for n, p in named_parameters
-                    if any(nd in n for nd in no_decay) and "avg_pool_net" not in n
+                    if any(nd in n for nd in no_decay) and "semantic" in n
                 ],
                 "weight_decay": 0.0,
             },
             {
-                "params": [p for n, p in named_parameters if "avg_pool_net" in n],
+                "params": [p for n, p in named_parameters if "semantic" not in n],
                 "weight_decay": 0.0,
                 "lr": 0.001,
             },
