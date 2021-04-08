@@ -78,14 +78,20 @@ def default_tokenizer(val):
 class SemanticNumericalizer:
     def __init__(self, field, field_config):
         self.field = field
+        self.keys = field_config.key
         self.transformer_tokenizer = field_config.transformer_tokenizer
 
     def build_tensor(self, val_list):
-        semantic_str = self.transformer_tokenizer.sep_token.join(
+        semantic_val_list = []
+        for key, val in zip(self.keys, val_list):
+            semantic_val_list.append("COL")
             # force lowercase, avoids injection of special tokens
-            val.lower()
-            for val in val_list
-        )
+            semantic_val_list.append(key.lower())
+            semantic_val_list.append("VAL")
+            # force lowercase, avoids injection of special tokens
+            semantic_val_list.append(val.lower())
+
+        semantic_str = " ".join(semantic_val_list)
         t = self.transformer_tokenizer.encode(
             semantic_str, padding=False, add_special_tokens=True, return_tensors="pt"
         ).view(-1)
