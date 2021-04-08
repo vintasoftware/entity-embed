@@ -7,8 +7,8 @@ from typing import Callable, List, Union
 import numpy as np
 import regex
 import torch
-import transformers
 from cached_property import cached_property
+from sentence_transformers import SentenceTransformer
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +49,9 @@ class FieldConfig:
 
     @cached_property
     def transformer_tokenizer(self):
-        return transformers.AutoTokenizer.from_pretrained("bert-base-uncased", do_lower_case=True)
+        return SentenceTransformer(
+            "stsb-distilbert-base",
+        ).tokenizer
 
     def __repr__(self):
         repr_dict = {}

@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import transformers
+from sentence_transformers import SentenceTransformer
 
 from .data_utils.numericalizer import FieldType
 
@@ -59,35 +60,28 @@ class SemanticEmbedNet(nn.Module):
         super().__init__()
 
         self.embedding_size = embedding_size
-        self.transformer_net = transformers.AutoModel.from_pretrained(
-            "bert-base-uncased", add_pooling_layer=False
-        )
+        self.transformer_net = SentenceTransformer("stsb-distilbert-base")
+        sentence_dim_size = self.transformer_net.get_sentence_embedding_dimension()
 
         if field_config.n_transformer_layers is not None:
-            self.transformer_net.encoder.layer = self.transformer_net.encoder.layer[
-                : field_config.n_transformer_layers
-            ]
+            self.transformer_net[0].auto_model.transformer.layer = self.transformer_net[
+                0
+            ].auto_model.transformer.layer[: field_config.n_transformer_layers]
 
         if field_config.embed_dropout_p:
             self.dropout = nn.Dropout(p=field_config.embed_dropout_p)
         else:
             self.dropout = None
-        self.dense_net = nn.Linear(self.transformer_net.config.hidden_size, embedding_size)
+        self.dense_net = nn.Linear(sentence_dim_size, embedding_size)
 
     def forward(self, x, transformer_attention_mask, **kwargs):
-        # Based on sentence-transformers Pooling layer,
-        # and Ditto's train_blocker.py: https://github.com/megagonlabs/ditto/
-        transformer_outputs = self.transformer_net(
-            input_ids=x, attention_mask=transformer_attention_mask
+        # Based on Ditto's train_blocker.py: https://github.com/megagonlabs/ditto/
+        t_outputs = self.transformer_net(
+            transformers.BatchEncoding(
+                {"input_ids": x, "attention_mask": transformer_attention_mask}
+            )
         )
-        token_embeddings = transformer_outputs["last_hidden_state"]
-        input_mask_expanded = (
-            transformer_attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
-        )
-        sum_embeddings = torch.sum(token_embeddings * input_mask_expanded, 1)
-        sum_mask = input_mask_expanded.sum(1)
-        sum_mask = torch.clamp(sum_mask, min=1e-9)
-        x = sum_embeddings / sum_mask
+        x = t_outputs["sentence_embedding"]
 
         x = self.dropout(x)
         x = self.dense_net(x)
