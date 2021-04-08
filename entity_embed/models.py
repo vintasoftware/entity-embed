@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import transformers
 
 from .data_utils.numericalizer import FieldType
 
@@ -58,13 +59,28 @@ class SemanticEmbedNet(nn.Module):
         super().__init__()
 
         self.embedding_size = embedding_size
-        self.dense_net = nn.Sequential(
-            nn.Embedding.from_pretrained(field_config.vocab.vectors),
-            nn.Dropout(p=field_config.embed_dropout_p),
-        )
+        self.transformer_net = transformers.AutoModel.from_pretrained("bert-base-uncased")
 
-    def forward(self, x, **kwargs):
-        return self.dense_net(x)
+        if field_config.n_transformer_layers is not None:
+            self.transformer_net.encoder.layer = self.transformer_net.encoder.layer[
+                : field_config.n_transformer_layers
+            ]
+
+        if field_config.embed_dropout_p:
+            self.dropout = nn.Dropout(p=field_config.embed_dropout_p)
+        else:
+            self.dropout = None
+        self.dense_net = nn.Linear(self.transformer_net.config.hidden_size, embedding_size)
+
+    def forward(self, x, transformer_attention_mask, **kwargs):
+        transformer_outputs = self.transformer_net(
+            input_ids=x, attention_mask=transformer_attention_mask
+        )
+        x = transformer_outputs[1]
+        x = self.dropout(x)
+        x = self.dense_net(x)
+
+        return x
 
 
 class MaskedAttention(nn.Module):
@@ -180,9 +196,8 @@ class EntityAvgPoolNet(nn.Module):
     def __init__(self, field_config_dict):
         super().__init__()
         if len(field_config_dict) > 1:
-            self.weights = nn.Parameter(
-                torch.full((len(field_config_dict),), 1 / len(field_config_dict))
-            )
+            weights_len = len(field_config_dict)
+            self.weights = nn.Parameter(torch.full((weights_len,), 1 / weights_len))
         else:
             self.weights = None
 
@@ -216,45 +231,37 @@ class FieldsEmbedNet(nn.Module):
         self.embed_net_dict = nn.ModuleDict()
 
         for field, field_config in field_config_dict.items():
-            if field_config.field_type in (
-                FieldType.STRING,
-                FieldType.MULTITOKEN,
-            ):
+            if field_config.field_type == FieldType.MULTITOKEN:
                 embed_net = StringEmbedCNN(
                     field_config=field_config,
                     embedding_size=embedding_size,
                 )
-            elif field_config.field_type in (
-                FieldType.SEMANTIC_STRING,
-                FieldType.SEMANTIC_MULTITOKEN,
-            ):
-                embed_net = SemanticEmbedNet(
+
+                if field_config.use_attention:
+                    self.embed_net_dict[field] = MultitokenAttentionEmbed(embed_net)
+                else:
+                    self.embed_net_dict[field] = MultitokenAvgEmbed(embed_net)
+            elif field_config.field_type == FieldType.STRING:
+                self.embed_net_dict[field] = StringEmbedCNN(
+                    field_config=field_config,
+                    embedding_size=embedding_size,
+                )
+            elif field_config.field_type == FieldType.SEMANTIC:
+                self.embed_net_dict[field] = SemanticEmbedNet(
                     field_config=field_config,
                     embedding_size=embedding_size,
                 )
             else:
                 raise ValueError(f"Unexpected field_config.field_type={field_config.field_type}")
 
-            if field_config.field_type in (
-                FieldType.MULTITOKEN,
-                FieldType.SEMANTIC_MULTITOKEN,
-            ):
-                if field_config.use_attention:
-                    self.embed_net_dict[field] = MultitokenAttentionEmbed(embed_net)
-                else:
-                    self.embed_net_dict[field] = MultitokenAvgEmbed(embed_net)
-            elif field_config.field_type in (
-                FieldType.STRING,
-                FieldType.SEMANTIC_STRING,
-            ):
-                self.embed_net_dict[field] = embed_net
-
-    def forward(self, tensor_dict, sequence_length_dict):
+    def forward(self, tensor_dict, sequence_length_dict, transformer_attention_mask_dict):
         field_embedding_dict = {}
 
         for field, embed_net in self.embed_net_dict.items():
             field_embedding = embed_net(
-                tensor_dict[field], sequence_lengths=sequence_length_dict[field]
+                tensor_dict[field],
+                sequence_lengths=sequence_length_dict[field],
+                transformer_attention_mask=transformer_attention_mask_dict[field],
             )
             field_embedding_dict[field] = field_embedding
 
@@ -275,9 +282,11 @@ class BlockerNet(nn.Module):
         )
         self.avg_pool_net = EntityAvgPoolNet(field_config_dict)
 
-    def forward(self, tensor_dict, sequence_length_dict):
+    def forward(self, tensor_dict, sequence_length_dict, transformer_attention_mask_dict):
         field_embedding_dict = self.field_embed_net(
-            tensor_dict=tensor_dict, sequence_length_dict=sequence_length_dict
+            tensor_dict=tensor_dict,
+            sequence_length_dict=sequence_length_dict,
+            transformer_attention_mask_dict=transformer_attention_mask_dict,
         )
         return self.avg_pool_net(
             field_embedding_dict=field_embedding_dict, sequence_length_dict=sequence_length_dict

@@ -7,7 +7,6 @@ import n2  # noqa: F401
 import pytest
 from entity_embed.data_utils.field_config_parser import FieldConfigDictParser
 from entity_embed.data_utils.numericalizer import FieldConfig, FieldType, RecordNumericalizer
-from torchtext.vocab import Vocab
 
 EXPECTED_DEFAULT_ALPHABET = list(
     "0123456789abcdefghijklmnopqrstuvwxyz!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~ "
@@ -33,7 +32,6 @@ def _validate_base_record_numericalizer(record_numericalizer):
 
     # Assert non-provided keys were added with the correct default values
     assert name_field_config.alphabet == EXPECTED_DEFAULT_ALPHABET
-    assert name_field_config.vocab is None
     assert name_field_config.n_channels == 8
     assert name_field_config.embed_dropout_p == 0.2
     assert name_field_config.use_attention

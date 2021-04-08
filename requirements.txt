@@ -1,3 +1,4 @@
+cached-property>=1.5.2
 click==7.1.2
 more-itertools>=8.6.0
 n2>=0.1.7
@@ -9,3 +10,4 @@ regex>=2020.11.13
 torch>=1.7.1
 torchtext>=0.8.1
 tqdm>=4.53.0
+transformers>=4.5.0
