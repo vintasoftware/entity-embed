@@ -242,3 +242,7 @@ def assign_clusters(record_dict, cluster_field, cluster_mapping):
 
 def subdict(d, keys):
     return {k: d[k] for k in keys}
+
+
+def tensor_dict_to_device(tensor_dict, device):
+    return {field: t.to(device) for field, t in tensor_dict.items()}

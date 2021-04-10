@@ -89,16 +89,14 @@ class MaskedAttention(nn.Module):
 
         # Compute a mask for the attention on the padded sequences
         # See e.g. https://discuss.pytorch.org/t/self-attention-on-words-and-masking/5671/5
-        max_len = h.size(1)
-        idxes = torch.arange(0, max_len, out=torch.LongTensor(max_len)).unsqueeze(0)
-        mask = (idxes < torch.LongTensor(sequence_lengths).unsqueeze(1)).float()
-        if scores.data.is_cuda:
-            mask = mask.cuda()
+        max_sequence_len = h.size(1)
+        idxes = torch.arange(0, max_sequence_len, dtype=torch.int64, device=x.device).unsqueeze(0)
+        mask = (idxes < sequence_lengths.unsqueeze(1)).float()
 
         # apply mask and renormalize attention scores (weights)
         masked_scores = scores * mask
         att_sums = masked_scores.sum(dim=1, keepdim=True)  # sums per sequence
-        att_sums[att_sums == 0] = 1.0  # prevents division by zero on empty sequences
+        att_sums = att_sums.clamp(min=1.0)  # prevents division by zero on empty sequences
         scores = masked_scores.div(att_sums)
 
         # apply attention weights
@@ -130,10 +128,10 @@ class MultitokenAttentionEmbed(nn.Module):
         # but attention_net will use the actual sequence_lengths with zeros
         # https://github.com/pytorch/pytorch/issues/4582
         # https://github.com/pytorch/pytorch/issues/50192
-        sequence_lengths_no_zero = [max(sl, 1) for sl in sequence_lengths]
+        sequence_lengths_no_zero = sequence_lengths.clamp(min=1)
 
         packed_x = nn.utils.rnn.pack_padded_sequence(
-            x, sequence_lengths_no_zero, batch_first=True, enforce_sorted=False
+            x, sequence_lengths_no_zero.cpu(), batch_first=True, enforce_sorted=False
         )
         packed_h, __ = self.gru(packed_x)
         h, __ = nn.utils.rnn.pad_packed_sequence(packed_h, batch_first=True)
@@ -147,26 +145,23 @@ class MultitokenAvgEmbed(nn.Module):
         self.embed_net = embed_net
 
     def forward(self, x, sequence_lengths, **kwargs):
-        max_len = x.size(1)
-        scores = torch.full((max_len,), 1 / max_len)
-        if x.data.is_cuda:
-            scores = scores.cuda()
-
         x_list = x.unbind(dim=1)
         x_list = [self.embed_net(x) for x in x_list]
         x = torch.stack(x_list, dim=1)
 
         # Compute a mask for the attention on the padded sequences
         # See e.g. https://discuss.pytorch.org/t/self-attention-on-words-and-masking/5671/5
-        idxes = torch.arange(0, max_len, out=torch.LongTensor(max_len)).unsqueeze(0)
-        mask = (idxes < torch.LongTensor(sequence_lengths).unsqueeze(1)).float()
-        if x.data.is_cuda:
-            mask = mask.cuda()
+        max_sequence_len = x.size(1)
+        scores = torch.full(
+            (max_sequence_len,), 1 / max_sequence_len, dtype=torch.float32, device=x.device
+        )
+        idxes = torch.arange(0, max_sequence_len, dtype=torch.int64, device=x.device).unsqueeze(0)
+        mask = (idxes < sequence_lengths.unsqueeze(1)).float()
 
         # apply mask and renormalize
         masked_scores = scores * mask
         att_sums = masked_scores.sum(dim=1, keepdim=True)  # sums per sequence
-        att_sums[att_sums == 0] = 1.0  # prevents division by zero on empty sequences
+        att_sums = att_sums.clamp(min=1.0)  # prevents division by zero on empty sequences
         scores = masked_scores.div(att_sums)
 
         # compute average
@@ -188,17 +183,13 @@ class EntityAvgPoolNet(nn.Module):
 
     def forward(self, field_embedding_dict, sequence_length_dict):
         if self.weights is not None:
-            field_embedding_list = list(field_embedding_dict.values())
-            x = torch.stack(field_embedding_list, dim=1)
+            x = torch.stack(list(field_embedding_dict.values()), dim=1)
 
             # zero empty strings and sequences
-            field_mask = torch.stack(
-                [torch.tensor(ls, device=x.device) for ls in sequence_length_dict.values()],
-                dim=1,
-            )
+            field_mask = torch.stack(list(sequence_length_dict.values()), dim=1)
             x = x * field_mask.unsqueeze(dim=-1)
 
-            x = F.normalize(x, dim=2)
+            x = F.normalize(x, dim=-1)
             return F.normalize((x * self.weights.unsqueeze(-1).expand_as(x)).sum(axis=1), dim=1)
         else:
             return F.normalize(list(field_embedding_dict.values())[0], dim=1)

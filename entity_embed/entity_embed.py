@@ -8,6 +8,7 @@ from pytorch_metric_learning.distances import DotProductSimilarity
 from pytorch_metric_learning.losses import SupConLoss
 from tqdm.auto import tqdm
 
+from .data_utils import utils
 from .data_utils.datasets import RecordDataset
 from .early_stopping import EarlyStoppingMinEpochs, ModelCheckpointMinEpochs
 from .evaluation import f1_score, pair_entity_ratio, precision_and_recall
@@ -72,6 +73,9 @@ class _BaseEmbed(pl.LightningModule):
         self.index_search_kwargs = index_search_kwargs
 
     def forward(self, tensor_dict, sequence_length_dict):
+        tensor_dict = utils.tensor_dict_to_device(tensor_dict, device=self.device)
+        sequence_length_dict = utils.tensor_dict_to_device(sequence_length_dict, device=self.device)
+
         return self.blocker_net(tensor_dict, sequence_length_dict)
 
     def _warn_if_empty_indices_tuple(self, indices_tuple, batch_idx):
@@ -216,7 +220,6 @@ class _BaseEmbed(pl.LightningModule):
     def _evaluate_metrics(self, set_name, dataloader, record_dict, pos_pair_set):
         embedding_batch_list = []
         for tensor_dict, sequence_length_dict in dataloader:
-            tensor_dict = {field: t.to(self.device) for field, t in tensor_dict.items()}
             embeddings = self(tensor_dict, sequence_length_dict)
             embedding_batch_list.append(embeddings)
 
@@ -280,7 +283,6 @@ class _BaseEmbed(pl.LightningModule):
         ) as p_bar:
             vector_list = []
             for tensor_dict, sequence_length_dict in record_loader:
-                tensor_dict = {field: t.to(self.device) for field, t in tensor_dict.items()}
                 embeddings = self(tensor_dict, sequence_length_dict)
                 vector_list.extend(v.data.numpy() for v in embeddings.cpu().unbind())
                 p_bar.update(1)

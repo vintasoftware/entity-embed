@@ -27,6 +27,7 @@ def _collate_tensor_dict(record_batch, record_numericalizer):
             tensor_dict[field] = nn.utils.rnn.pad_sequence(tensor_dict[field], batch_first=True)
         else:
             tensor_dict[field] = default_collate(tensor_dict[field])
+        sequence_length_dict[field] = default_collate(sequence_length_dict[field])
     return tensor_dict, sequence_length_dict
 
 
