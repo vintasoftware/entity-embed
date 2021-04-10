@@ -172,8 +172,11 @@ class MultitokenAvgEmbed(nn.Module):
 
 
 class EntityAvgPoolNet(nn.Module):
-    def __init__(self, field_config_dict):
+    def __init__(self, field_config_dict, embedding_size):
         super().__init__()
+
+        self.norm = nn.LayerNorm(embedding_size)
+
         if len(field_config_dict) > 1:
             self.weights = nn.Parameter(
                 torch.full((len(field_config_dict),), 1 / len(field_config_dict))
@@ -189,7 +192,9 @@ class EntityAvgPoolNet(nn.Module):
             field_mask = torch.stack(list(sequence_length_dict.values()), dim=1)
             x = x * field_mask.unsqueeze(dim=-1)
 
-            x = F.normalize(x, dim=-1)
+            # layer norm
+            x = self.norm(x)
+
             return F.normalize((x * self.weights.unsqueeze(-1).expand_as(x)).sum(axis=1), dim=1)
         else:
             return F.normalize(list(field_embedding_dict.values())[0], dim=1)
@@ -264,7 +269,9 @@ class BlockerNet(nn.Module):
         self.field_embed_net = FieldsEmbedNet(
             field_config_dict=field_config_dict, embedding_size=embedding_size
         )
-        self.avg_pool_net = EntityAvgPoolNet(field_config_dict)
+        self.avg_pool_net = EntityAvgPoolNet(
+            field_config_dict=field_config_dict, embedding_size=embedding_size
+        )
 
     def forward(self, tensor_dict, sequence_length_dict):
         field_embedding_dict = self.field_embed_net(
