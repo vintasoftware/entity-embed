@@ -35,9 +35,8 @@ class ClusterDataset(Dataset):
     def __init__(
         self,
         record_dict,
+        cluster_field,
         record_numericalizer,
-        cluster_dict,
-        cluster_mapping,
         batch_size,
         max_cluster_size_in_batch,
         random_seed,
@@ -45,38 +44,17 @@ class ClusterDataset(Dataset):
         self.record_dict = record_dict
         self.record_numericalizer = record_numericalizer
         self.batch_size = batch_size
+        cluster_dict = utils.record_dict_to_cluster_dict(record_dict, cluster_field)
+        self.cluster_mapping = {
+            id_: cluster_id for cluster_id, cluster in cluster_dict.items() for id_ in cluster
+        }
         self.cluster_list = cluster_dict.values()
         self.singleton_id_list = [cluster[0] for cluster in self.cluster_list if len(cluster) == 1]
-        self.cluster_mapping = cluster_mapping
         self.batch_size = batch_size
         self.max_cluster_size_in_batch = max(max_cluster_size_in_batch, 2)
         self.rnd = random.Random(random_seed)
 
         self.id_batch_list = self._compute_id_batch_list()
-
-    @classmethod
-    def from_cluster_dict(
-        cls,
-        record_dict,
-        cluster_field,
-        record_numericalizer,
-        batch_size,
-        max_cluster_size_in_batch,
-        random_seed,
-    ):
-        cluster_dict = utils.record_dict_to_cluster_dict(record_dict, cluster_field)
-        cluster_mapping = {
-            id_: cluster_id for cluster_id, cluster in cluster_dict.items() for id_ in cluster
-        }
-        return ClusterDataset(
-            record_dict=record_dict,
-            record_numericalizer=record_numericalizer,
-            cluster_dict=cluster_dict,
-            cluster_mapping=cluster_mapping,
-            batch_size=batch_size,
-            max_cluster_size_in_batch=max_cluster_size_in_batch,
-            random_seed=random_seed,
-        )
 
     def _compute_id_batch_list(self):
         # copy cluster_list and singleton_id_list
