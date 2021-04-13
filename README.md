@@ -2,6 +2,7 @@
 
 [![PyPi version](https://img.shields.io/pypi/v/entity-embed.svg)](https://pypi.python.org/pypi/entity-embed)
 [![PyPI - Python Version](https://img.shields.io/pypi/pyversions/entity-embed)](https://pypi.org/project/entity-embed/)
+[![CI](https://github.com/vintasoftware/entity-embed/actions/workflows/ci.yml/badge.svg)](https://github.com/vintasoftware/entity-embed/actions/workflows/ci.yml)
 [![Documentation Status](https://readthedocs.org/projects/entity-embed/badge/?version=latest)](https://entity-embed.readthedocs.io/en/latest/?badge=latest)
 [![codecov](https://codecov.io/gh/vintasoftware/entity-embed/branch/main/graph/badge.svg?token=4BW63JN071)](https://codecov.io/gh/vintasoftware/entity-embed)
 [![License: MIT](https://img.shields.io/github/license/vintasoftware/django-react-boilerplate.svg)](LICENSE.txt)
