@@ -49,4 +49,4 @@ jobs:
       if: ${{ matrix.os == 'ubuntu-latest' && matrix.python-version == '3.9' && matrix.pytorch-version == '1.8' }}
       run: coveralls
       env:
-        github-token: ${{ secrets.GITHUB_TOKEN }}
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
