@@ -47,6 +47,6 @@ jobs:
         if-no-files-found: error
     - name: Coveralls
       if: ${{ matrix.os == 'ubuntu-latest' && matrix.python-version == '3.9' && matrix.pytorch-version == '1.8' }}
-      run: coveralls
+      run: coveralls --service=github
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
