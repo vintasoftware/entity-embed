@@ -334,6 +334,7 @@ class EntityEmbed(_BaseEmbed):
         index_build_kwargs=None,
         index_search_kwargs=None,
         show_progress=True,
+        return_vector_dict=False,
     ):
         vector_dict = self.predict(
             record_dict=record_dict,
@@ -347,7 +348,10 @@ class EntityEmbed(_BaseEmbed):
         found_pair_set = ann_index.search_pairs(
             k=ann_k, sim_threshold=sim_threshold, index_search_kwargs=index_search_kwargs
         )
-        return found_pair_set
+        if return_vector_dict:
+            return found_pair_set, vector_dict
+        else:
+            return found_pair_set
 
 
 class LinkageEmbed(_BaseEmbed):
@@ -445,6 +449,7 @@ class LinkageEmbed(_BaseEmbed):
         index_build_kwargs=None,
         index_search_kwargs=None,
         show_progress=True,
+        return_vector_dict=False,
     ):
         left_vector_dict, right_vector_dict = self.predict(
             record_dict=record_dict,
@@ -465,4 +470,7 @@ class LinkageEmbed(_BaseEmbed):
             left_source=self.left_source,
             index_search_kwargs=index_search_kwargs,
         )
-        return found_pair_set
+        if return_vector_dict:
+            return found_pair_set, {**left_vector_dict, **right_vector_dict}
+        else:
+            return found_pair_set
