@@ -365,7 +365,10 @@ def _load_model(kwargs):
     else:
         model_cls = EntityEmbed
 
-    return model_cls.load_from_checkpoint(kwargs["model_save_filepath"], datamodule=None)
+    model = model_cls.load_from_checkpoint(kwargs["model_save_filepath"], datamodule=None)
+    if torch.cuda.is_available():
+        model = model.to(torch.device("cuda"))
+    return model
 
 
 def _predict_pairs(record_dict, model, kwargs):

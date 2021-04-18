@@ -186,13 +186,8 @@ class EntityAvgPoolNet(nn.Module):
 
     def forward(self, field_embedding_dict, sequence_length_dict):
         if self.weights is not None:
-            x = torch.stack(list(field_embedding_dict.values()), dim=1)
-
-            # zero empty strings and sequences
-            field_mask = torch.stack(list(sequence_length_dict.values()), dim=1)
-            x = x * field_mask.unsqueeze(dim=-1)
-
             # layer norm
+            x = torch.stack(list(field_embedding_dict.values()), dim=1)
             x = self.norm(x)
 
             return F.normalize((x * self.weights.unsqueeze(-1).expand_as(x)).sum(axis=1), dim=1)
@@ -246,14 +241,18 @@ class FieldsEmbedNet(nn.Module):
                 self.embed_net_dict[field] = embed_net
 
     def forward(self, tensor_dict, sequence_length_dict):
-        field_embedding_dict = {}
+        field_embeddings = []
 
         for field, embed_net in self.embed_net_dict.items():
-            field_embedding = embed_net(
-                tensor_dict[field], sequence_lengths=sequence_length_dict[field]
-            )
-            field_embedding_dict[field] = field_embedding
+            embedding = embed_net(tensor_dict[field], sequence_lengths=sequence_length_dict[field])
+            field_embeddings.append(embedding)
 
+        # zero empty strings and sequences
+        field_embeddings = torch.stack(field_embeddings, dim=1)
+        field_mask = torch.stack(list(sequence_length_dict.values()), dim=1)
+        field_embeddings = field_embeddings * field_mask.unsqueeze(dim=2)
+
+        field_embedding_dict = dict(zip(self.embed_net_dict.keys(), field_embeddings.unbind(dim=1)))
         return field_embedding_dict
 
 
@@ -273,13 +272,17 @@ class BlockerNet(nn.Module):
             field_config_dict=field_config_dict, embedding_size=embedding_size
         )
 
-    def forward(self, tensor_dict, sequence_length_dict):
+    def forward(self, tensor_dict, sequence_length_dict, return_field_embeddings=False):
         field_embedding_dict = self.field_embed_net(
             tensor_dict=tensor_dict, sequence_length_dict=sequence_length_dict
         )
-        return self.avg_pool_net(
+        avg_embedding = self.avg_pool_net(
             field_embedding_dict=field_embedding_dict, sequence_length_dict=sequence_length_dict
         )
+        if return_field_embeddings:
+            return field_embedding_dict, avg_embedding
+        else:
+            return avg_embedding
 
     def fix_pool_weights(self):
         """

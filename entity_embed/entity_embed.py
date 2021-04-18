@@ -72,11 +72,11 @@ class _BaseEmbed(pl.LightningModule):
         self.index_build_kwargs = index_build_kwargs
         self.index_search_kwargs = index_search_kwargs
 
-    def forward(self, tensor_dict, sequence_length_dict):
+    def forward(self, tensor_dict, sequence_length_dict, return_field_embeddings=False):
         tensor_dict = utils.tensor_dict_to_device(tensor_dict, device=self.device)
         sequence_length_dict = utils.tensor_dict_to_device(sequence_length_dict, device=self.device)
 
-        return self.blocker_net(tensor_dict, sequence_length_dict)
+        return self.blocker_net(tensor_dict, sequence_length_dict, return_field_embeddings)
 
     def _warn_if_empty_indices_tuple(self, indices_tuple, batch_idx):
         with torch.no_grad():
@@ -211,6 +211,7 @@ class _BaseEmbed(pl.LightningModule):
         )
         self.blocker_net = None
         best_model = self.load_from_checkpoint(trainer.checkpoint_callback.best_model_path)
+        best_model = best_model.to(self.device)
         self.blocker_net = best_model.blocker_net
         return trainer
 
@@ -255,15 +256,7 @@ class _BaseEmbed(pl.LightningModule):
         )
         return metric_dict
 
-    def predict(
-        self,
-        record_dict,
-        batch_size,
-        loader_kwargs=None,
-        show_progress=True,
-    ):
-        self.freeze()
-
+    def _get_record_loader(self, record_dict, batch_size, loader_kwargs):
         record_dataset = RecordDataset(
             record_numericalizer=self.record_numericalizer,
             record_dict=record_dict,
@@ -277,18 +270,53 @@ class _BaseEmbed(pl.LightningModule):
             if loader_kwargs
             else {"num_workers": os.cpu_count(), "multiprocessing_context": "fork"},
         )
+        return record_loader
+
+    def predict(
+        self,
+        record_dict,
+        batch_size,
+        loader_kwargs=None,
+        show_progress=True,
+        return_field_embeddings=False,
+    ):
+        self.freeze()
+        record_loader = self._get_record_loader(record_dict, batch_size, loader_kwargs)
 
         with tqdm(
             total=len(record_loader), desc="# batch embedding", disable=not show_progress
         ) as p_bar:
             vector_list = []
+            if return_field_embeddings:
+                field_vector_dict = {
+                    field: [] for field in self.blocker_net.field_config_dict.keys()
+                }
+            else:
+                field_vector_dict = None
+
             for tensor_dict, sequence_length_dict in record_loader:
-                embeddings = self(tensor_dict, sequence_length_dict)
-                vector_list.extend(v.data.numpy() for v in embeddings.cpu().unbind())
+                result = self(tensor_dict, sequence_length_dict, return_field_embeddings)
+                if return_field_embeddings:
+                    field_embeddings_dict, avg_embeddings = result
+                    for field, field_embeddings in field_embeddings_dict.items():
+                        field_vector_dict[field].extend(
+                            v.data.numpy() for v in field_embeddings.cpu().unbind()
+                        )
+                else:
+                    avg_embeddings = result
+
+                vector_list.extend(v.data.numpy() for v in avg_embeddings.cpu().unbind())
                 p_bar.update(1)
 
         vector_dict = dict(zip(record_dict.keys(), vector_list))
-        return vector_dict
+        if return_field_embeddings:
+            field_vector_dict = {
+                id_: dict(zip(field_vector_dict.keys(), field_values))
+                for id_, *field_values in zip(record_dict.keys(), *field_vector_dict.values())
+            }
+            return vector_dict, field_vector_dict
+        else:
+            return vector_dict
 
 
 class EntityEmbed(_BaseEmbed):
@@ -334,22 +362,29 @@ class EntityEmbed(_BaseEmbed):
         index_build_kwargs=None,
         index_search_kwargs=None,
         show_progress=True,
-        return_vector_dict=False,
+        return_field_embeddings=False,
     ):
-        vector_dict = self.predict(
+        result = self.predict(
             record_dict=record_dict,
             batch_size=batch_size,
             loader_kwargs=loader_kwargs,
             show_progress=show_progress,
+            return_field_embeddings=return_field_embeddings,
         )
+        if return_field_embeddings:
+            vector_dict, field_vector_dict = result
+        else:
+            vector_dict = result
+
         ann_index = ANNEntityIndex(embedding_size=self.embedding_size)
         ann_index.insert_vector_dict(vector_dict)
         ann_index.build(index_build_kwargs=index_build_kwargs)
         found_pair_set = ann_index.search_pairs(
             k=ann_k, sim_threshold=sim_threshold, index_search_kwargs=index_search_kwargs
         )
-        if return_vector_dict:
-            return found_pair_set, vector_dict
+
+        if return_field_embeddings:
+            return found_pair_set, field_vector_dict
         else:
             return found_pair_set
 
@@ -417,27 +452,54 @@ class LinkageEmbed(_BaseEmbed):
         metric_dict = dict(sorted(metric_dict.items(), key=lambda kv: kv[0]))
         return metric_dict
 
+    def _separate_left_right_vector_dict(self, record_dict, vector_dict):
+        left_vector_dict = {}
+        right_vector_dict = {}
+
+        for (id_, record), vector in zip(record_dict.items(), vector_dict.values()):
+            if record[self.source_field] == self.left_source:
+                left_vector_dict[id_] = vector
+            else:
+                right_vector_dict[id_] = vector
+
+        return left_vector_dict, right_vector_dict
+
     def predict(
         self,
         record_dict,
         batch_size,
         loader_kwargs=None,
         show_progress=True,
+        return_field_embeddings=False,
     ):
-        vector_dict = super().predict(
+        result = super().predict(
             record_dict=record_dict,
             batch_size=batch_size,
             loader_kwargs=loader_kwargs,
             show_progress=show_progress,
+            return_field_embeddings=return_field_embeddings,
         )
-        left_vector_dict = {}
-        right_vector_dict = {}
-        for (id_, record), vector in zip(record_dict.items(), vector_dict.values()):
-            if record[self.source_field] == self.left_source:
-                left_vector_dict[id_] = vector
-            else:
-                right_vector_dict[id_] = vector
-        return left_vector_dict, right_vector_dict
+        if return_field_embeddings:
+            vector_dict, field_vector_dict = result
+            left_field_vector_dict, right_field_vector_dict = self._separate_left_right_vector_dict(
+                record_dict, field_vector_dict
+            )
+        else:
+            vector_dict = result
+
+        left_vector_dict, right_vector_dict = self._separate_left_right_vector_dict(
+            record_dict, vector_dict
+        )
+
+        if return_field_embeddings:
+            return (
+                left_vector_dict,
+                right_vector_dict,
+                left_field_vector_dict,
+                right_field_vector_dict,
+            )
+        else:
+            return left_vector_dict, right_vector_dict
 
     def predict_pairs(
         self,
@@ -449,14 +511,25 @@ class LinkageEmbed(_BaseEmbed):
         index_build_kwargs=None,
         index_search_kwargs=None,
         show_progress=True,
-        return_vector_dict=False,
+        return_field_embeddings=False,
     ):
-        left_vector_dict, right_vector_dict = self.predict(
+        result = self.predict(
             record_dict=record_dict,
             batch_size=batch_size,
             loader_kwargs=loader_kwargs,
             show_progress=show_progress,
+            return_field_embeddings=return_field_embeddings,
         )
+        if return_field_embeddings:
+            (
+                left_vector_dict,
+                right_vector_dict,
+                left_field_vector_dict,
+                right_field_vector_dict,
+            ) = result
+        else:
+            left_vector_dict, right_vector_dict = result
+
         ann_index = ANNLinkageIndex(embedding_size=self.embedding_size)
         ann_index.insert_vector_dict(
             left_vector_dict=left_vector_dict, right_vector_dict=right_vector_dict
@@ -470,7 +543,8 @@ class LinkageEmbed(_BaseEmbed):
             left_source=self.left_source,
             index_search_kwargs=index_search_kwargs,
         )
-        if return_vector_dict:
-            return found_pair_set, {**left_vector_dict, **right_vector_dict}
+
+        if return_field_embeddings:
+            return found_pair_set, left_field_vector_dict, right_field_vector_dict
         else:
             return found_pair_set
