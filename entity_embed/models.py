@@ -103,7 +103,7 @@ class MaskedAttention(nn.Module):
         weighted = torch.mul(x, scores.unsqueeze(-1).expand_as(x))
         representations = weighted.sum(dim=1)
 
-        return representations
+        return representations, scores
 
 
 class MultitokenAttentionEmbed(nn.Module):
@@ -119,7 +119,7 @@ class MultitokenAttentionEmbed(nn.Module):
         )
         self.attention_net = MaskedAttention(embedding_size=embed_net.embedding_size)
 
-    def forward(self, x, sequence_lengths, **kwargs):
+    def _forward(self, x, sequence_lengths):
         x_tokens = x.unbind(dim=1)
         x_tokens = [self.embed_net(x) for x in x_tokens]
         x = torch.stack(x_tokens, dim=1)
@@ -136,6 +136,10 @@ class MultitokenAttentionEmbed(nn.Module):
         packed_h, __ = self.gru(packed_x)
         h, __ = nn.utils.rnn.pad_packed_sequence(packed_h, batch_first=True)
         return self.attention_net(h, x, sequence_lengths=sequence_lengths)
+
+    def forward(self, x, sequence_lengths, **kwargs):
+        embeddings, __ = self._forward(x, sequence_lengths)
+        return embeddings
 
 
 class MultitokenAvgEmbed(nn.Module):

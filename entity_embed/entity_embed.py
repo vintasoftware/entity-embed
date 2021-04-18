@@ -318,6 +318,36 @@ class _BaseEmbed(pl.LightningModule):
         else:
             return vector_dict
 
+    def interpret_attention(
+        self,
+        record_dict,
+        batch_size,
+        field,
+        loader_kwargs=None,
+        show_progress=True,
+    ):
+        self.freeze()
+        record_loader = self._get_record_loader(record_dict, batch_size, loader_kwargs)
+
+        with tqdm(
+            total=len(record_loader), desc="# batch embedding", disable=not show_progress
+        ) as p_bar:
+            attn_scores_list = []
+
+            for tensor_dict, sequence_length_dict in record_loader:
+                field_tensor = tensor_dict[field].to(self.device)
+                sequence_lengths = sequence_length_dict[field].to(self.device)
+
+                (__, attn_scores) = self.blocker_net.field_embed_net.embed_net_dict[field]._forward(
+                    field_tensor, sequence_lengths
+                )
+
+                attn_scores_list.extend(v.data.numpy() for v in attn_scores.cpu().unbind())
+                p_bar.update(1)
+
+        attn_scores_dict = dict(zip(record_dict.keys(), attn_scores_list))
+        return attn_scores_dict
+
 
 class EntityEmbed(_BaseEmbed):
     def _evaluate_with_ann(self, set_name, record_dict, embedding_batch_list, pos_pair_set):
