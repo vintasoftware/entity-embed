@@ -44,22 +44,6 @@ def record_dict_to_cluster_dict(record_dict, cluster_field):
     return dict(cluster_dict)  # convert to dict to avoid defaultdict
 
 
-def cluster_mapping_to_cluster_dict(cluster_mapping):
-    cluster_dict = defaultdict(list)
-    for id_, cluster_id in cluster_mapping.items():
-        if not isinstance(cluster_id, int):
-            raise ValueError(
-                "cluster_field values must always be an int, "
-                f"found {type(cluster_id)} at id_={id_}"
-            )
-        cluster_dict[cluster_id].append(id_)
-
-    # sort to always have smaller id on left of pair tuple
-    for c in cluster_dict.values():
-        c.sort()
-    return dict(cluster_dict)  # convert to dict to avoid defaultdict
-
-
 def cluster_dict_to_id_pairs(cluster_dict, left_id_set=None, right_id_set=None):
     if left_id_set is None and right_id_set is None:
         return set(
@@ -80,13 +64,6 @@ def cluster_dict_to_id_pairs(cluster_dict, left_id_set=None, right_id_set=None):
                     continue
                 pair_set.add(pair)
         return pair_set
-
-
-def cluster_mapping_to_id_pairs(cluster_mapping, left_id_set, right_id_set):
-    cluster_dict = cluster_mapping_to_cluster_dict(cluster_mapping)
-    return cluster_dict_to_id_pairs(
-        cluster_dict, left_id_set=left_id_set, right_id_set=right_id_set
-    )
 
 
 def count_cluster_dict_pairs(cluster_dict):
