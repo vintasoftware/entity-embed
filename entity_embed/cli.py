@@ -368,6 +368,8 @@ def _load_model(kwargs):
     model = model_cls.load_from_checkpoint(kwargs["model_save_filepath"], datamodule=None)
     if torch.cuda.is_available():
         model = model.to(torch.device("cuda"))
+    else:
+        model = model.to(torch.device("cpu"))
     return model
 
 

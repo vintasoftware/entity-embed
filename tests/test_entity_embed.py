@@ -152,9 +152,8 @@ def test_fit(
 ):
     model = EntityEmbed(record_numericalizer=record_numericalizer)
     datamodule = mock.Mock()
-    mock_load.return_value.blocker_net = EntityEmbed(
-        record_numericalizer=record_numericalizer
-    )  # other model, best model
+    best_model = EntityEmbed(record_numericalizer=record_numericalizer)  # other model, best model
+    mock_load.return_value.to.return_value.blocker_net = best_model
 
     trainer = model.fit(
         datamodule=datamodule,
@@ -199,7 +198,7 @@ def test_fit(
         logger=mock_tb_logger.return_value,
     )
     mock_trainer.return_value.fit.assert_called_once_with(model, datamodule)
-    assert model.blocker_net == mock_load.return_value.blocker_net
+    assert model.blocker_net == best_model
     assert trainer == mock_trainer.return_value
 
 
