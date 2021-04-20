@@ -211,7 +211,7 @@ With the index built, we can now search on it and find the candidate duplicate p
 
 ``found_pair_set`` is a set of tuple ``id`` pairs with the smaller ``id`` always on the first position of the tuple.
 
-You must filter the ``found_pair_set`` to find the best matching pairs. One option is to use pairwise classifiers like the ones from `Python Record Linkage Toolkit <https://recordlinkage.readthedocs.io/en/latest/index.html>`_ .
+Remember you must filter the ``found_pair_set`` to find the best matching pairs. An example on how to do that for the Record Linkage case is available at `notebooks/End-to-End-Matching-Example.ipynb <https://github.com/vintasoftware/entity-embed/blob/main/notebooks/End-to-End-Matching-Example.ipynb>`_.
 
 .. _record_linkage:
 
@@ -315,6 +315,8 @@ With the index built, we can now search on it and find the candidate duplicate p
 
 Here, ``found_pair_set`` is again a set of tuple ``id`` pairs, but there's a catch: the first position of the tuple will always have the left dataset ``id`` s, while the second position will have the right dataset ``id`` s.
 
+To learn how to refilter ``found_pair_set`` to find the final matching pairs with good precision, check `notebooks/End-to-End-Matching-Example.ipynb <https://github.com/vintasoftware/entity-embed/blob/main/notebooks/End-to-End-Matching-Example.ipynb>`_.
+
 Examples
 --------
 
@@ -328,6 +330,7 @@ Then check these Jupyter Notebooks for step-by-step examples:
 
 - Deduplication, when you have a single dirty dataset with duplicates: `notebooks/Deduplication-Example.ipynb <https://github.com/vintasoftware/entity-embed/blob/main/notebooks/Deduplication-Example.ipynb>`_
 - Record Linkage, when you have multiple clean datasets you need to link: `notebooks/Record-Linkage-Example.ipynb <https://github.com/vintasoftware/entity-embed/blob/main/notebooks/Record-Linkage-Example.ipynb>`_
+- After you run the notebooks/Record-Linkage-Example.ipynb, you can check the `notebooks/End-to-End-Matching-Example.ipynb <https://github.com/vintasoftware/entity-embed/blob/main/notebooks/End-to-End-Matching-Example.ipynb>`_ to learn how to integrate Entity Embed with a pairwise classifier.
 
 More info
 ---------

@@ -11,7 +11,7 @@ Entity Embed allows you to transform entities like companies, products, etc. int
 
 Using Entity Embed, you can train a deep learning model to transform records into vectors in an N-dimensional embedding space. Thanks to a contrastive loss, those vectors are organized to keep similar records close and dissimilar records far apart in this embedding space. Embedding records enables [scalable ANN search](http://ann-benchmarks.com/index.html), which means finding thousands of candidate duplicate pairs of records per second per CPU.
 
-Entity Embed achieves Recall of ~0.99 with Pair-Entity ratio below 100 on a variety of datasets. **Entity Embed aims for high recall at the expense of precision. Therefore, this library is suited for the Blocking/Indexing stage of an Entity Resolution pipeline.**  A scalabale and noise-tolerant Blocking procedure is often the main bottleneck for performance and quality on Entity Resolution pipelines, so this library aims to solve that. Note the ANN search on embedded records returns several candidate pairs that must be filtered to find the best matching pairs, possibly with a pairwise classifier.
+Entity Embed achieves Recall of ~0.99 with Pair-Entity ratio below 100 on a variety of datasets. **Entity Embed aims for high recall at the expense of precision. Therefore, this library is suited for the Blocking/Indexing stage of an Entity Resolution pipeline.**  A scalabale and noise-tolerant Blocking procedure is often the main bottleneck for performance and quality on Entity Resolution pipelines, so this library aims to solve that. Note the ANN search on embedded records returns several candidate pairs that must be filtered to find the best matching pairs, possibly with a pairwise classifier (an [example](#Examples) for that is available).
 
 Entity Embed is based on and is a special case of the [AutoBlock model described by Amazon](https://www.amazon.science/publications/autoblock-a-hands-off-blocking-framework-for-entity-matching).
 
@@ -58,6 +58,7 @@ Then check the example Jupyter Notebooks:
 
 - Deduplication, when you have a single dirty dataset with duplicates: [notebooks/Deduplication-Example.ipynb](/notebooks/Deduplication-Example.ipynb)
 - Record Linkage, when you have multiple clean datasets you need to link: [notebooks/Record-Linkage-Example.ipynb](/notebooks/Record-Linkage-Example.ipynb)
+- After you run the notebooks/Record-Linkage-Example.ipynb, you can check the [notebooks/End-to-End-Matching-Example.ipynb](/notebooks/End-to-End-Matching-Example.ipynb) to learn how to integrate Entity Embed with a pairwise classifier.
 
 ## Releases
 
