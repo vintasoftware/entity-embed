@@ -7,7 +7,7 @@ from abc import ABC
 from typing import List
 from urllib.error import HTTPError
 
-from ..data_modules import DEFAULT_LEFT_SOURCE, DEFAULT_SOURCE_FIELD, LinkageDataModule
+from ..data_modules import DEFAULT_LEFT_SOURCE, DEFAULT_SOURCE_FIELD
 from ..data_utils import utils
 
 logger = logging.getLogger(__name__)
@@ -30,7 +30,6 @@ class DeepmatcherBenchmark(ABC):
         self.source_field = DEFAULT_SOURCE_FIELD
         self.left_source = DEFAULT_LEFT_SOURCE
         self.right_source = "right"
-        self.cluster_field = "cluster"
 
         self._download()
         self._extract_zip()
@@ -44,16 +43,6 @@ class DeepmatcherBenchmark(ABC):
         )
         self.test_pos_pair_set, self.test_neg_pair_set = self._read_pair_sets(
             pair_csv_path=self.test_csv_path
-        )
-
-        cluster_mapping, __ = utils.id_pairs_to_cluster_mapping_and_dict(
-            id_pairs=self.train_pos_pair_set | self.valid_pos_pair_set | self.test_pos_pair_set,
-            record_dict=self.record_dict,
-        )
-        utils.assign_clusters(
-            record_dict=self.record_dict,
-            cluster_field=self.cluster_field,
-            cluster_mapping=cluster_mapping,
         )
         self.train_record_dict = {
             id_: self.record_dict[id_]
@@ -137,21 +126,6 @@ class DeepmatcherBenchmark(ABC):
                     neg_pair_set.add((id_left, id_right))
 
         return pos_pair_set, neg_pair_set
-
-    def build_datamodule(self, record_numericalizer, batch_size, eval_batch_size, random_seed):
-        return LinkageDataModule(
-            train_record_dict=self.train_record_dict,
-            valid_record_dict=self.valid_record_dict,
-            test_record_dict=self.test_record_dict,
-            source_field=self.source_field,
-            left_source=self.left_source,
-            cluster_field=self.cluster_field,
-            record_numericalizer=record_numericalizer,
-            batch_size=batch_size,
-            eval_batch_size=eval_batch_size,
-            random_seed=random_seed,
-            check_for_common_records=False,
-        )
 
     def __repr__(self):
         return f"<{self.__class__.__name__}> from {self.url}"
