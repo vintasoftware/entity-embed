@@ -253,7 +253,7 @@ class FieldsEmbedNet(nn.Module):
 
         # zero empty strings and sequences
         field_embeddings = torch.stack(field_embeddings, dim=1)
-        field_mask = torch.stack(list(sequence_length_dict.values()), dim=1)
+        field_mask = torch.stack(list(sequence_length_dict.values()), dim=1).clamp(max=1)
         field_embeddings = field_embeddings * field_mask.unsqueeze(dim=-1)
 
         field_embedding_dict = dict(zip(self.embed_net_dict.keys(), field_embeddings.unbind(dim=1)))
