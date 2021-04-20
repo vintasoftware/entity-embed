@@ -155,7 +155,7 @@ To train, Entity Embed uses `pytorch-lightning Trainer <https://pytorch-lightnin
 
 Since Entity Embed is focused in recall, we'll use ``valid_recall_at_0.3`` for early stopping. But we'll set ``min_epochs = 5`` to avoid a very low precision.
 
-``0.3`` here is the threshold for cosine similarity of embedding vectors, so possible values are between -1 and 1. We're using a validation metric, and the training process will run validation on every epoch end due to ``check_val_every_n_epoch=1`` .
+``0.3`` here is the threshold for **cosine similarity of embedding vectors**, so possible values are between -1 and 1. We're using a validation metric, and the training process will run validation on every epoch end due to ``check_val_every_n_epoch=1`` .
 
 We also set ``tb_name`` and ``tb_save_dir`` to use Tensorboard. Run ``tensorboard --logdir notebooks/tb_logs`` to check the train and valid metrics during and after training::
 
@@ -173,7 +173,7 @@ We also set ``tb_name`` and ``tb_save_dir`` to use Tensorboard. Run ``tensorboar
 
     model.validate(datamodule)
 
-And we can check which fields are most important for the final embedding::
+And we can check which fields are most important for the final record embedding::
 
     model.get_pool_weights()
 
@@ -181,44 +181,40 @@ Again with the best validation model, we can check the performance on the test s
 
     model.test(datamodule)
 
-Indexing embeddings / Production run
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Finding candidate pairs
+~~~~~~~~~~~~~~~~~~~~~~~
 
 When running in production, you only have access to the trained ``model`` object and the production ``record_dict`` (without the true clusters filled, of course). You can get the embedding vectors of a production ``record_dict`` using the ``predict`` method::
 
     vector_dict = model.predict(
-        record_dict=production_record_dict,
+        record_dict=test_record_dict,
         batch_size=64
     )
 
-The ``vector_dict`` maps ``id`` s to numpy arrays. We can build an `ANNEntityIndex`, insert all embeddings from `vector_dict` on it, and build it::
+The ``vector_dict`` maps ``id`` s to numpy arrays of the record embeddings.
 
-    from entity_embed import ANNEntityIndex
+But what you usually want instead is the ANN pairs. You can get them with the ``predict_pairs`` method::
 
-    ann_index = ANNEntityIndex(embedding_size=model.embedding_size)
-    ann_index.insert_vector_dict(vector_dict)
-    ann_index.build()
-
-With the index built, we can now search on it and find the candidate duplicate pairs::
-
-    found_pair_set = ann_index.search_pairs(
-        k=100,
+    found_pair_set = model.predict_pairs(
+        record_dict=test_record_dict,
+        batch_size=64,
+        ann_k=100,
         sim_threshold=0.3,
     )
-
-.. note::
-    Even though we used the same ``k`` and one of the ``sim_threshold`` s from the model training, you're free to use any value you want here.
 
 ``found_pair_set`` is a set of tuple ``id`` pairs with the smaller ``id`` always on the first position of the tuple.
 
 Remember you must filter the ``found_pair_set`` to find the best matching pairs. An example on how to do that for the Record Linkage case is available at `notebooks/End-to-End-Matching-Example.ipynb <https://github.com/vintasoftware/entity-embed/blob/main/notebooks/End-to-End-Matching-Example.ipynb>`_.
+
+.. note::
+    Even though we used the same ``ann_k`` and one of the ``sim_threshold`` s from the model training, you're free to use any value you want here.
 
 .. _record_linkage:
 
 Record Linkage
 --------------
 
-The steps to perform Record Linkage are similar to the ones for :ref:`Deduplication <deduplication>`, but you must provide additional parameters and use different classes. Below we highlight only the differences:
+The steps to perform Record Linkage are similar to the ones for :ref:`Deduplication <deduplication>`, but you must provide additional parameters and use different classes. Below we highlight only the **differences**:
 
 Preparing the data
 ~~~~~~~~~~~~~~~~~~
@@ -282,8 +278,8 @@ Use the ``LinkageEmbed`` class to initialize the model object. Again, there are 
         left_source="left",
     )
 
-Indexing embeddings / Production run
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Finding candidate pairs
+~~~~~~~~~~~~~~~~~~~~~~~
 
 When calling ``predict``, you will now get two ``vector_dict`` s, one for each source dataset::
 
@@ -292,28 +288,16 @@ When calling ``predict``, you will now get two ``vector_dict`` s, one for each s
         batch_size=eval_batch_size
     )
 
-Now init an `ANNLinkageIndex`, insert all embeddings from both `test_left_vector_dict` and `test_right_vector_dict` on it, and build it::
+But the ``predict_pairs`` method works the same way::
 
-    from entity_embed import ANNLinkageIndex
-
-    ann_index = ANNLinkageIndex(embedding_size=model.embedding_size)
-    ann_index.insert_vector_dict(
-        left_vector_dict=test_left_vector_dict,
-        right_vector_dict=test_right_vector_dict,
-    )
-    ann_index.build()
-
-With the index built, we can now search on it and find the candidate duplicate pairs::
-
-    found_pair_set = ann_index.search_pairs(
-        k=ann_k,
+    found_pair_set = model.predict_pairs(
+        record_dict=test_record_dict,
+        batch_size=64,
+        ann_k=100,
         sim_threshold=0.3,
-        left_vector_dict=test_left_vector_dict,
-        right_vector_dict=test_right_vector_dict,
-        left_source=left_source,
     )
 
-Here, ``found_pair_set`` is again a set of tuple ``id`` pairs, but there's a catch: the first position of the tuple will always have the left dataset ``id`` s, while the second position will have the right dataset ``id`` s.
+For Record Linkage, ``found_pair_set`` is again a set of tuple ``id`` pairs, but there's a catch: the first position of the tuple will always have the left dataset ``id`` s, while the second position will have the right dataset ``id`` s.
 
 To learn how to refilter ``found_pair_set`` to find the final matching pairs with good precision, check `notebooks/End-to-End-Matching-Example.ipynb <https://github.com/vintasoftware/entity-embed/blob/main/notebooks/End-to-End-Matching-Example.ipynb>`_.
 
