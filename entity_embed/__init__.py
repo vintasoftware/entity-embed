@@ -12,7 +12,7 @@ from .indexes import *  # noqa: F401, F403
 
 __author__ = "Flávio Juvenal (Vinta Software)"
 __email__ = "flavio@vinta.com.br"
-__version__ = "0.0.2"
+__version__ = "0.0.3"
 
 # Good practice: https://docs.python-guide.org/writing/logging/#logging-in-a-library
 logging.getLogger(__name__).addHandler(logging.NullHandler())
