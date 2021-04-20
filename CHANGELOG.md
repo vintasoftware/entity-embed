@@ -6,7 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-...
+## 0.0.4 (2021-04-20)
+
+### Fixed
+
+- Fixed `field_mask` on `FieldsEmbedNet` by clamping values to 1. Before, this mask was multiplying field embeddings by the field length in tokens. Now, the correct behavior is implemented: multiply by 0 the empty fields, and by 1 the non-empty fields. This was only causing a minor decrease in F1 score, though.
 
 ## 0.0.3 (2021-04-20)
 
