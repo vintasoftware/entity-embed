@@ -396,7 +396,9 @@ def test_cli_train(
 @mock.patch("torch.manual_seed")
 @mock.patch("numpy.random.seed")
 @mock.patch("random.seed")
+@mock.patch("torch.cuda.is_available", return_value=False)
 def test_cli_predict(
+    mock_cuda_is_available,
     mock_random_seed,
     mock_np_random_seed,
     mock_torch_random_seed,
@@ -413,7 +415,8 @@ def test_cli_predict(
     with mock.patch(
         f"entity_embed.{expected_model_cls.__name__}.load_from_checkpoint"
     ) as model_load, caplog.at_level(logging.INFO):
-        model_load.return_value.predict_pairs.return_value = [(11, 12)]
+        predict_pairs_mock = model_load.return_value.to.return_value.predict_pairs
+        predict_pairs_mock.return_value = [(11, 12)]
         expected_output_json = tmp_path / f"labeled-{mode}.json"
 
         runner = CliRunner()
@@ -490,9 +493,12 @@ def test_cli_predict(
     mock_np_random_seed.assert_called_once_with(expected_args_dict["random_seed"])
     mock_torch_random_seed.assert_called_once_with(expected_args_dict["random_seed"])
 
+    # cuda asserts
+    mock_cuda_is_available.assert_called_once()
+
     # predict_pairs asserts
     expected_record_dict = {record["id"]: record for record in UNLABELED_RECORD_DICT_VALUES}
-    model_load.return_value.predict_pairs.assert_called_once_with(
+    predict_pairs_mock.assert_called_once_with(
         **{
             "record_dict": expected_record_dict,
             "batch_size": expected_args_dict["eval_batch_size"],

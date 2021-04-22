@@ -116,7 +116,7 @@ class SemanticStringNumericalizer:
         self.vocab = field_config.vocab
 
     def build_tensor(self, val):
-        # encoded_arr is a lookup_tensor like in
+        # t is a lookup_tensor like in
         # https://pytorch.org/tutorials/beginner/nlp/word_embeddings_tutorial.html
         t = torch.tensor(self.vocab[val], dtype=torch.long)
         return t, len(val)
