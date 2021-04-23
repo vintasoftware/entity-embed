@@ -298,19 +298,10 @@ class BlockerNet(nn.Module):
         with torch.no_grad():
             sd = self.avg_pool_net.state_dict()
             weights = sd["weights"]
-            one_tensor = torch.tensor([1.0]).to(weights.device)
-            if torch.any((weights < 0) | (weights > 1)) or not torch.isclose(
-                weights.sum(), one_tensor
-            ):
-                weights[weights < 0] = 0
-                weights_sum = weights.sum()
-                if weights_sum > 0:
-                    weights /= weights.sum()
-                else:
-                    print("Warning: all weights turned to 0. Setting all equal.")
-                    weights[[True] * len(weights)] = 1 / len(weights)
-                sd["weights"] = weights
-                self.avg_pool_net.load_state_dict(sd)
+            weights = weights.clamp(min=1e-5, max=1.0)
+            weights = weights / weights.sum()
+            sd["weights"] = weights
+            self.avg_pool_net.load_state_dict(sd)
 
     def get_pool_weights(self):
         with torch.no_grad():
