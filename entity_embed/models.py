@@ -41,13 +41,12 @@ class StringEmbedCNN(nn.Module):
         self.dense_net = nn.Sequential(*dense_layers)
 
     def forward(self, x, **kwargs):
-        x_len = len(x)
         x = x.view(x.size(0), 1, -1)
 
         x = F.relu(self.conv1(x))
         x = F.max_pool1d(x, kernel_size=2)
 
-        x = x.view(x_len, self.flat_size)
+        x = x.view(x.size(0), self.flat_size)
         x = self.dense_net(x)
 
         return x
