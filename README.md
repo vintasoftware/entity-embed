@@ -46,6 +46,14 @@ And others, see [requirements.txt](/requirements.txt).
 pip install entity-embed
 ```
 
+### For Conda users
+
+If you're using Conda, you must install PyTorch beforehand to have proper CUDA support. Inside the Conda environment, please run the following command **before** installing Entity Embed using `pip`:
+
+```
+conda install pytorch torchvision torchaudio cudatoolkit=11.1 -c pytorch -c conda-forge
+```
+
 ## Examples
 
 Run:

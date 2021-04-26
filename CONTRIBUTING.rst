@@ -59,17 +59,21 @@ Now, here's how to set up `entity-embed` for local development.
     $ cd entity-embed/
     $ python setup.py develop
 
-4. Install dev requirements::
+4. If you're using Conda instead of virtualenv, you must install PyTorch beforehand to have CUDA support::
+
+    $ conda install pytorch torchvision torchaudio cudatoolkit=11.1 -c pytorch -c conda-forge
+
+5. Install dev requirements (either on virtualenv or Conda)::
 
     $ pip install -r requirements-dev.txt
 
-5. Create a branch for local development::
+6. Create a branch for local development::
 
     $ git checkout -b name-of-your-bugfix-or-feature
 
    Now you can make your changes locally.
 
-6. When you're done making changes, check that your changes pass flake8 and the
+7. When you're done making changes, check that your changes pass flake8 and the
    tests, including testing other Python versions with tox::
 
     $ flake8 entity-embed tests
@@ -78,13 +82,13 @@ Now, here's how to set up `entity-embed` for local development.
 
    To get flake8 and tox, just pip install them into your virtualenv.
 
-7. Commit your changes and push your branch to GitHub::
+8. Commit your changes and push your branch to GitHub::
 
     $ git add .
     $ git commit -m "Your detailed description of your changes."
     $ git push origin name-of-your-bugfix-or-feature
 
-8. Submit a Pull Request through the GitHub website.
+9. Submit a Pull Request through the GitHub website.
 
 Pull Request Guidelines
 -----------------------
