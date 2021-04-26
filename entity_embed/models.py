@@ -95,7 +95,7 @@ class MaskedAttention(nn.Module):
         # apply mask and renormalize attention scores (weights)
         masked_scores = scores * mask
         att_sums = masked_scores.sum(dim=1, keepdim=True)  # sums per sequence
-        att_sums = att_sums.clamp(min=1.0)  # prevents division by zero on empty sequences
+        att_sums = att_sums.clamp(min=1e-5)  # prevents division by zero on empty sequences
         scores = masked_scores.div(att_sums)
 
         # apply attention weights
@@ -164,7 +164,7 @@ class MultitokenAvgEmbed(nn.Module):
         # apply mask and renormalize
         masked_scores = scores * mask
         att_sums = masked_scores.sum(dim=1, keepdim=True)  # sums per sequence
-        att_sums = att_sums.clamp(min=1.0)  # prevents division by zero on empty sequences
+        att_sums = att_sums.clamp(min=1e-5)  # prevents division by zero on empty sequences
         scores = masked_scores.div(att_sums)
 
         # compute average
