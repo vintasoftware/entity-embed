@@ -75,6 +75,10 @@ This package was created with [Cookiecutter](https://github.com/audreyr/cookiecu
 
 [Vinta Software](https://www.vintasoftware.com/) is always looking for exciting work, so if you need any commercial support, feel free to get in touch: contact@vinta.com.br
 
+## References
+
+- Zhang, W., Wei, H., Sisman, B., Dong, X. L., Faloutsos, C., & Page, D. (2020, January). AutoBlock: A hands-off blocking framework for entity matching. In *Proceedings of the 13th International Conference on Web Search and Data Mining* (pp. 744-752). [(pdf)](https://www.amazon.science/publications/autoblock-a-hands-off-blocking-framework-for-entity-matching)
+- Dai, X., Yan, X., Zhou, K., Wang, Y., Yang, H., & Cheng, J. (2020, July). Convolutional Embedding for Edit Distance. In *Proceedings of the 43rd International ACM SIGIR Conference on Research and Development in Information Retrieval* (pp. 599-608). [(pdf)](https://arxiv.org/abs/2001.11692) [(code)](https://github.com/xinyandai/string-embed/)
 
 ## Citations
 
