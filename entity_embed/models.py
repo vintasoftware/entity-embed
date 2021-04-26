@@ -41,13 +41,12 @@ class StringEmbedCNN(nn.Module):
         self.dense_net = nn.Sequential(*dense_layers)
 
     def forward(self, x, **kwargs):
-        x_len = len(x)
         x = x.view(x.size(0), 1, -1)
 
         x = F.relu(self.conv1(x))
         x = F.max_pool1d(x, kernel_size=2)
 
-        x = x.view(x_len, self.flat_size)
+        x = x.view(x.size(0), self.flat_size)
         x = self.dense_net(x)
 
         return x
@@ -96,7 +95,7 @@ class MaskedAttention(nn.Module):
         # apply mask and renormalize attention scores (weights)
         masked_scores = scores * mask
         att_sums = masked_scores.sum(dim=1, keepdim=True)  # sums per sequence
-        att_sums = att_sums.clamp(min=1.0)  # prevents division by zero on empty sequences
+        att_sums = att_sums.clamp(min=1e-5)  # prevents division by zero on empty sequences
         scores = masked_scores.div(att_sums)
 
         # apply attention weights
@@ -165,7 +164,7 @@ class MultitokenAvgEmbed(nn.Module):
         # apply mask and renormalize
         masked_scores = scores * mask
         att_sums = masked_scores.sum(dim=1, keepdim=True)  # sums per sequence
-        att_sums = att_sums.clamp(min=1.0)  # prevents division by zero on empty sequences
+        att_sums = att_sums.clamp(min=1e-5)  # prevents division by zero on empty sequences
         scores = masked_scores.div(att_sums)
 
         # compute average
@@ -298,19 +297,10 @@ class BlockerNet(nn.Module):
         with torch.no_grad():
             sd = self.avg_pool_net.state_dict()
             weights = sd["weights"]
-            one_tensor = torch.tensor([1.0]).to(weights.device)
-            if torch.any((weights < 0) | (weights > 1)) or not torch.isclose(
-                weights.sum(), one_tensor
-            ):
-                weights[weights < 0] = 0
-                weights_sum = weights.sum()
-                if weights_sum > 0:
-                    weights /= weights.sum()
-                else:
-                    print("Warning: all weights turned to 0. Setting all equal.")
-                    weights[[True] * len(weights)] = 1 / len(weights)
-                sd["weights"] = weights
-                self.avg_pool_net.load_state_dict(sd)
+            weights = weights.clamp(min=1e-5, max=1.0)
+            weights = weights / weights.sum()
+            sd["weights"] = weights
+            self.avg_pool_net.load_state_dict(sd)
 
     def get_pool_weights(self):
         with torch.no_grad():
