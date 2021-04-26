@@ -40,6 +40,14 @@ https://entity-embed.readthedocs.io
 
 And others, see [requirements.txt](/requirements.txt).
 
+## For Conda users
+
+If you're using Conda, you must install PyTorch beforehand to have proper CUDA support. Inside the Conda environment, please run the following command **before** installing other packages using `pip`:
+```
+conda install pytorch torchvision torchaudio cudatoolkit=11.1 -c pytorch -c conda-forge
+```
+After doing so, you can proceed with installing other packages as usual.
+
 ## Installation
 
 ```
