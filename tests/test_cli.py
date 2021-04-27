@@ -255,6 +255,8 @@ def test_cli_train(
                 42,
                 "--model_save_dir",
                 "trained-models",
+                "--use_gpu",
+                False,
             ],
         )
 
@@ -293,6 +295,7 @@ def test_cli_train(
         "random_seed": 42,
         "model_save_dir": "trained-models",
         "n_threads": 16,  # assigned
+        "use_gpu": False,
     }
     expected_field_config_name_dict = {
         "key": "name",
@@ -351,6 +354,7 @@ def test_cli_train(
         model_save_verbose=True,
         tb_save_dir=expected_args_dict["tb_save_dir"],
         tb_name=expected_args_dict["tb_name"],
+        use_gpu=expected_args_dict["use_gpu"],
     )
     datamodule = mock_model.return_value.fit.call_args[0][0]
 
