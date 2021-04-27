@@ -36,7 +36,6 @@ jobs:
         OS: ${{ matrix.os }}
         PYTHON: ${{ matrix.python-version }}
         PYTORCH: ${{ matrix.pytorch-version }}
-        TEST_DEVICE: "cpu"
       run: tox
     - name: Upload coverage.xml
       if: ${{ matrix.os == 'ubuntu-latest' && matrix.python-version == '3.9' && matrix.pytorch-version == '1.8' }}
