@@ -160,6 +160,7 @@ class _BaseEmbed(pl.LightningModule):
         model_save_verbose=False,
         tb_save_dir=None,
         tb_name=None,
+        use_gpu=True,
     ):
         if early_stop_mode is None:
             if "pair_entity_ratio_at" in early_stop_monitor:
@@ -184,13 +185,14 @@ class _BaseEmbed(pl.LightningModule):
             verbose=model_save_verbose,
         )
         trainer_args = {
-            "gpus": 1,
             "min_epochs": min_epochs,
             "max_epochs": max_epochs,
             "check_val_every_n_epoch": check_val_every_n_epoch,
             "callbacks": [early_stop_callback, checkpoint_callback],
             "reload_dataloaders_every_epoch": True,  # for shuffling ClusterDataset every epoch
         }
+        if use_gpu:
+            trainer_args["gpus"] = 1
 
         if tb_name and tb_save_dir:
             trainer_args["logger"] = TensorBoardLogger(

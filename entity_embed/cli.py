@@ -170,6 +170,7 @@ def _fit_model(model, datamodule, kwargs):
         model_save_verbose=True,
         tb_save_dir=kwargs["tb_save_dir"],
         tb_name=kwargs["tb_name"],
+        use_gpu=kwargs["use_gpu"],
     )
 
 
@@ -318,6 +319,7 @@ def _fit_model(model, datamodule, kwargs):
     help="Directory path where to save the best validation model checkpoint"
     " using PyTorch Lightning",
 )
+@click.option("--use_gpu", type=bool, default=True, help="Use GPU when training")
 def train(**kwargs):
     """
     Transform entities like companies, products, etc. into vectors
