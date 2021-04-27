@@ -26,6 +26,8 @@ jobs:
       with:
         path: ${{ env.pythonLocation }}
         key: ${{ matrix.os }}-${{ env.pythonLocation }}-${{ hashFiles('**/requirements.txt', '**/requirements-dev.txt') }}
+    - name: Upgrade pip
+      run: pip install -U pip
     - name: Install tox, tox-gh-actions and coveralls
       run: pip install tox==3.21.3 tox-gh-actions==2.4.0 coveralls==3.0.0
     - name: Lint using flake8
