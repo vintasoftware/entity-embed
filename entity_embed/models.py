@@ -1,3 +1,5 @@
+import math
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -10,7 +12,6 @@ class StringEmbedCNN(nn.Module):
     PyTorch nn.Module for embedding strings for fast edit distance computation,
     based on "Convolutional Embedding for Edit Distance (SIGIR 20)"
     (code: https://github.com/xinyandai/string-embed)
-
     The tensor shape expected here is produced by StringNumericalizer.
     """
 
@@ -22,33 +23,55 @@ class StringEmbedCNN(nn.Module):
         self.n_channels = field_config.n_channels
         self.embedding_size = embedding_size
 
-        self.conv1 = nn.Conv1d(
-            in_channels=1,
-            out_channels=self.n_channels,
-            kernel_size=3,
-            stride=1,
-            padding=1,
-            bias=False,
-        )
+        # n_convs is solution of (max_str_len / 2 ** n_convs = 16) for n_convs
+        # use "x / (2 ^ c) = 16 solve c" on https://www.wolframalpha.com/
+        n_convs = max(math.ceil((math.log(self.max_str_len) / math.log(2)) - 4), 1)
+        convs = []
+        for i in range(n_convs):
+            convs.append(
+                nn.Conv1d(
+                    in_channels=1 if i == 0 else self.n_channels,
+                    out_channels=self.n_channels,
+                    kernel_size=3,
+                    stride=1,
+                    padding=1,
+                    bias=False,
+                )
+            )
+            convs.append(nn.ReLU())
+            convs.append(
+                nn.Conv1d(
+                    in_channels=self.n_channels,
+                    out_channels=self.n_channels,
+                    kernel_size=2,
+                    stride=2,
+                    padding=0,
+                    bias=False,
+                )
+            )
+        self.conv = nn.Sequential(*convs)
 
-        self.flat_size = (self.max_str_len // 2) * self.alphabet_len * self.n_channels
-        if self.flat_size == 0:
-            raise ValueError("Too small alphabet, self.flat_size == 0")
-
+        self.flat_size = self._compute_conv_flat_size()
         dense_layers = [nn.Linear(self.flat_size, self.embedding_size)]
         if field_config.embed_dropout_p:
             dense_layers.append(nn.Dropout(p=field_config.embed_dropout_p))
         self.dense_net = nn.Sequential(*dense_layers)
 
+    def _compute_conv_flat_size(self):
+        with torch.no_grad():
+            bsz = 1
+            in_shape = (self.alphabet_len, self.max_str_len)
+            input = torch.rand(bsz, *in_shape)
+            input = input.view(bsz, 1, -1)
+            output_feat = self.conv(input)
+            flat_size = output_feat.view(bsz, -1).size(1)
+            return flat_size
+
     def forward(self, x, **kwargs):
         x = x.view(x.size(0), 1, -1)
-
-        x = F.relu(self.conv1(x))
-        x = F.max_pool1d(x, kernel_size=2)
-
+        x = self.conv(x)
         x = x.view(x.size(0), self.flat_size)
         x = self.dense_net(x)
-
         return x
 
 
