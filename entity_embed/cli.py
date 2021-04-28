@@ -368,7 +368,7 @@ def _load_model(kwargs):
         model_cls = EntityEmbed
 
     model = model_cls.load_from_checkpoint(kwargs["model_save_filepath"], datamodule=None)
-    if torch.cuda.is_available() and kwargs["use_gpu"]:
+    if kwargs["use_gpu"]:
         model = model.to(torch.device("cuda"))
     else:
         model = model.to(torch.device("cpu"))

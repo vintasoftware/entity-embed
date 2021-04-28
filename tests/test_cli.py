@@ -400,9 +400,9 @@ def test_cli_train(
 @mock.patch("torch.manual_seed")
 @mock.patch("numpy.random.seed")
 @mock.patch("random.seed")
-@mock.patch("torch.cuda.is_available", return_value=False)
+@mock.patch("torch.device")
 def test_cli_predict(
-    mock_cuda_is_available,
+    mock_torch_device,
     mock_random_seed,
     mock_np_random_seed,
     mock_torch_random_seed,
@@ -465,6 +465,8 @@ def test_cli_predict(
                 42,
                 "--output_json",
                 expected_output_json,
+                "--use_gpu",
+                False,
             ],
         )
 
@@ -498,7 +500,7 @@ def test_cli_predict(
     mock_torch_random_seed.assert_called_once_with(expected_args_dict["random_seed"])
 
     # cuda asserts
-    mock_cuda_is_available.assert_called_once()
+    mock_torch_device.assert_called_once_with("cpu")
 
     # predict_pairs asserts
     expected_record_dict = {record["id"]: record for record in UNLABELED_RECORD_DICT_VALUES}
