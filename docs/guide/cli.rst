@@ -100,7 +100,8 @@ Deduplication Train
         --ef_construction 150 \
         --ef_search -1 \
         --random_seed 42 \
-        --model_save_dir trained-models/er/
+        --model_save_dir trained-models/er/ \
+        --use_gpu 1
 
 Deduplication Predict
 ~~~~~~~~~~~~~~~~~~~~~
@@ -121,7 +122,8 @@ Deduplication Predict
         --ef_construction 150 \
         --ef_search -1 \
         --random_seed 42 \
-        --output_json example-data/er-prediction.json
+        --output_json example-data/er-prediction.json \
+        --use_gpu 1
 
 Record Linkage Train
 ~~~~~~~~~~~~~~~~~~~~
@@ -162,7 +164,8 @@ Record Linkage Train
         --ef_construction 150 \
         --ef_search -1 \
         --random_seed 42 \
-        --model_save_dir trained-models/rl/
+        --model_save_dir trained-models/rl/ \
+        --use_gpu 1
 
 Record Linkage Predict
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -185,4 +188,5 @@ Record Linkage Predict
         --ef_construction 150 \
         --ef_search -1 \
         --random_seed 42 \
-        --output_json example-data/rl-prediction.json
+        --output_json example-data/rl-prediction.json \
+        --use_gpu 1
