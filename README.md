@@ -68,6 +68,10 @@ Then check the example Jupyter Notebooks:
 - Record Linkage, when you have multiple clean datasets you need to link: [notebooks/Record-Linkage-Example.ipynb](/notebooks/Record-Linkage-Example.ipynb)
 - After you run the notebooks/Record-Linkage-Example.ipynb, you can check the [notebooks/End-to-End-Matching-Example.ipynb](/notebooks/End-to-End-Matching-Example.ipynb) to learn how to integrate Entity Embed with a pairwise classifier.
 
+### Colab
+
+Please check [notebooks/google-colab/](https://github.com/vintasoftware/entity-embed/tree/main/notebooks/google-colab/).
+
 ## Releases
 
 See [CHANGELOG.md](/CHANGELOG.md).
