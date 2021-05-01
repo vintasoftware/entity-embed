@@ -89,10 +89,18 @@ class _BaseEmbed(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         tensor_dict, sequence_length_dict, labels = batch
         embeddings = self.blocker_net(tensor_dict, sequence_length_dict)
-        if self.miner:
+        if isinstance(labels, (list, tuple)):  # pairwise dataset
+            if self.miner:
+                logger.warning(
+                    "Ignoring miner, using pairwise dataset. Please set miner_cls to None"
+                )
+            indices_tuple = labels
+            # labels are not used if indices_tuple is provided in GenericPairLoss
+            labels = torch.zeros(embeddings.size(0), device=embeddings.device)
+        elif self.miner:  # cluster dataset
             indices_tuple = self.miner(embeddings, labels)
             self._warn_if_empty_indices_tuple(indices_tuple, batch_idx)
-        else:
+        else:  # cluster dataset
             indices_tuple = None
         loss = self.loss_fn(embeddings, labels, indices_tuple=indices_tuple)
 

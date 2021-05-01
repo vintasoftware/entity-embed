@@ -2,7 +2,9 @@ import logging
 import random
 
 import more_itertools
+import torch
 import torch.nn as nn
+from ordered_set import OrderedSet
 from torch.utils.data import Dataset
 from torch.utils.data._utils.collate import default_collate
 
@@ -43,7 +45,6 @@ class ClusterDataset(Dataset):
     ):
         self.record_dict = record_dict
         self.record_numericalizer = record_numericalizer
-        self.batch_size = batch_size
         cluster_dict = utils.record_dict_to_cluster_dict(record_dict, cluster_field)
         self.cluster_mapping = {
             id_: cluster_id for cluster_id, cluster in cluster_dict.items() for id_ in cluster
@@ -110,6 +111,98 @@ class ClusterDataset(Dataset):
         )
         label_list = [self.cluster_mapping[id_] for id_ in id_batch]
         return tensor_dict, sequence_length_dict, default_collate(label_list)
+
+    def __len__(self):
+        return len(self.id_batch_list)
+
+
+class PairwiseDataset(Dataset):
+    def __init__(
+        self,
+        record_dict,
+        pos_pair_set,
+        neg_pair_set,
+        record_numericalizer,
+        batch_size,
+        random_seed,
+    ):
+        self.record_dict = record_dict
+        self.record_numericalizer = record_numericalizer
+        self.batch_size = batch_size
+        self.pos_pair_set = pos_pair_set
+        pos_id_set = OrderedSet(id_ for pair in pos_pair_set for id_ in pair)
+        pos_id_set = sorted(pos_id_set)
+        self.pos_id_to_neg_set = {id_: OrderedSet() for id_ in pos_id_set}
+        for pair in neg_pair_set:
+            id_left, id_right = pair
+            for pos_id, neg_id in [(id_left, id_right), (id_right, id_left)]:
+                if pos_id in self.pos_id_to_neg_set:
+                    self.pos_id_to_neg_set[pos_id].add(neg_id)
+        rnd = random.Random(random_seed)
+
+        id_batch_list, indices_tuple_list = self._compute_id_batch_list()
+        batches = list(zip(id_batch_list, indices_tuple_list))
+        rnd.shuffle(batches)
+        self.id_batch_list, self.indices_tuple_list = zip(*batches)
+
+    def _compute_id_batch_list(self):
+        # copy pos_pair_set
+        pos_pair_list = list(self.pos_pair_set)
+
+        # prepare batches
+        id_batch_list = []
+        indices_tuple_list = []
+        while pos_pair_list:
+            id_batch = []
+            anchor_pos, pos, anchor_neg, neg = [], [], [], []
+
+            # For both ids in the pos pair, get all neg ones for those ids.
+            # Prepare add all those ids batch. Keep adding until batch is full.
+            # Use self.batch_size - 1 to see if it's full
+            # because if there's only 1 id left to fill the batch
+            # there's no room for an additional pos pair
+            while len(id_batch) < self.batch_size - 1 and pos_pair_list:
+                (id_left, id_right) = pos_pair_list.pop()
+
+                idx = len(id_batch)
+                id_batch_part = (
+                    [id_left, id_right]
+                    + list(self.pos_id_to_neg_set[id_left])
+                    + list(self.pos_id_to_neg_set[id_right])
+                )
+                pos_len = 2
+                left_neg_len = len(self.pos_id_to_neg_set[id_left])
+                right_neg_len = len(self.pos_id_to_neg_set[id_right])
+                anchor_pos_part = [idx, idx + 1]
+                pos_part = [idx + 1, idx]
+                anchor_neg_part = [idx] * left_neg_len + [idx + 1] * right_neg_len
+                neg_part = (list(range(idx + pos_len, idx + pos_len + left_neg_len))) + list(
+                    range(
+                        idx + pos_len + left_neg_len,
+                        idx + pos_len + left_neg_len + right_neg_len,
+                    )
+                )
+
+                id_batch.extend(id_batch_part)
+                anchor_pos.extend(anchor_pos_part)
+                pos.extend(pos_part)
+                anchor_neg.extend(anchor_neg_part)
+                neg.extend(neg_part)
+
+            id_batch_list.append(id_batch)
+            indices_tuple_list.append((anchor_pos, pos, anchor_neg, neg))
+
+        return id_batch_list, indices_tuple_list
+
+    def __getitem__(self, idx):
+        id_batch = self.id_batch_list[idx]
+        record_batch = [self.record_dict[id_] for id_ in id_batch]
+        tensor_dict, sequence_length_dict = _collate_tensor_dict(
+            record_batch=record_batch,
+            record_numericalizer=self.record_numericalizer,
+        )
+        indices_tuple = tuple(torch.LongTensor(x) for x in self.indices_tuple_list[idx])
+        return tensor_dict, sequence_length_dict, indices_tuple
 
     def __len__(self):
         return len(self.id_batch_list)
