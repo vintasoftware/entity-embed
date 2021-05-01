@@ -129,7 +129,8 @@ class PairwiseDataset(Dataset):
         self.record_dict = record_dict
         self.record_numericalizer = record_numericalizer
         self.batch_size = batch_size
-        self.pos_pair_set = pos_pair_set
+        self.pos_pair_set = utils.connected_id_pairs(pos_pair_set)
+        neg_pair_set = utils.connected_id_pairs(neg_pair_set)
         pos_id_set = OrderedSet(id_ for pair in pos_pair_set for id_ in pair)
         pos_id_set = sorted(pos_id_set)
         self.pos_id_to_neg_set = {id_: OrderedSet() for id_ in pos_id_set}
@@ -165,23 +166,14 @@ class PairwiseDataset(Dataset):
                 (id_left, id_right) = pos_pair_list.pop()
 
                 idx = len(id_batch)
-                id_batch_part = (
-                    [id_left, id_right]
-                    + list(self.pos_id_to_neg_set[id_left])
-                    + list(self.pos_id_to_neg_set[id_right])
-                )
-                pos_len = 2
-                left_neg_len = len(self.pos_id_to_neg_set[id_left])
-                right_neg_len = len(self.pos_id_to_neg_set[id_right])
+                neg_id_set_part = (
+                    self.pos_id_to_neg_set[id_left] | self.pos_id_to_neg_set[id_right]
+                )[: self.batch_size - 2]
+                id_batch_part = [id_left, id_right, *neg_id_set_part]
                 anchor_pos_part = [idx, idx + 1]
                 pos_part = [idx + 1, idx]
-                anchor_neg_part = [idx] * left_neg_len + [idx + 1] * right_neg_len
-                neg_part = (list(range(idx + pos_len, idx + pos_len + left_neg_len))) + list(
-                    range(
-                        idx + pos_len + left_neg_len,
-                        idx + pos_len + left_neg_len + right_neg_len,
-                    )
-                )
+                anchor_neg_part = [idx] * len(neg_id_set_part) + [idx + 1] * len(neg_id_set_part)
+                neg_part = list(range(idx + 2, idx + len(id_batch_part))) * 2
 
                 id_batch.extend(id_batch_part)
                 anchor_pos.extend(anchor_pos_part)
@@ -201,7 +193,7 @@ class PairwiseDataset(Dataset):
             record_batch=record_batch,
             record_numericalizer=self.record_numericalizer,
         )
-        indices_tuple = tuple(torch.LongTensor(x) for x in self.indices_tuple_list[idx])
+        indices_tuple = [torch.LongTensor(x) for x in self.indices_tuple_list[idx]]
         return tensor_dict, sequence_length_dict, indices_tuple
 
     def __len__(self):
