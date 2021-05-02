@@ -4,7 +4,7 @@ import pytorch_lightning as pl
 import torch
 
 from .data_utils import utils
-from .data_utils.datasets import ClusterDataset, PairwiseDataset, RecordDataset
+from .data_utils.datasets import ClusterDataset, RecordDataset
 from .helpers import build_loader_kwargs
 
 logger = logging.getLogger(__name__)
@@ -267,117 +267,6 @@ class LinkageDataModule(pl.LightningDataModule):
             **self.train_loader_kwargs,
         )
         return train_cluster_loader
-
-    def val_dataloader(self):
-        valid_record_dataset = RecordDataset(
-            record_dict=self.valid_record_dict,
-            record_numericalizer=self.record_numericalizer,
-            batch_size=self.eval_batch_size,
-        )
-        valid_record_loader = torch.utils.data.DataLoader(
-            valid_record_dataset,
-            batch_size=None,  # batch size is set on RecordDataset
-            shuffle=False,
-            **self.eval_loader_kwargs,
-        )
-        return valid_record_loader
-
-    def test_dataloader(self):
-        test_record_dataset = RecordDataset(
-            record_dict=self.test_record_dict,
-            record_numericalizer=self.record_numericalizer,
-            batch_size=self.eval_batch_size,
-        )
-        test_record_loader = torch.utils.data.DataLoader(
-            test_record_dataset,
-            batch_size=None,  # batch size is set on RecordDataset
-            shuffle=False,
-            **self.eval_loader_kwargs,
-        )
-        return test_record_loader
-
-
-class PairwiseLinkageDataModule(pl.LightningDataModule):
-    def __init__(
-        self,
-        train_record_dict,
-        valid_record_dict,
-        test_record_dict,
-        source_field,
-        left_source,
-        train_pos_pair_set,
-        train_neg_pair_set,
-        valid_pos_pair_set,
-        valid_neg_pair_set,
-        test_pos_pair_set,
-        test_neg_pair_set,
-        record_numericalizer,
-        batch_size,
-        eval_batch_size,
-        train_loader_kwargs=None,
-        eval_loader_kwargs=None,
-        random_seed=42,
-        check_for_common_records=True,
-    ):
-        super().__init__()
-
-        if check_for_common_records:
-            _check_for_common_records(
-                train_record_dict,
-                valid_record_dict,
-                test_record_dict,
-            )
-
-        self.record_numericalizer = record_numericalizer
-        self.batch_size = batch_size
-        self.eval_batch_size = eval_batch_size
-        self.train_loader_kwargs = build_loader_kwargs(train_loader_kwargs)
-        self.eval_loader_kwargs = build_loader_kwargs(eval_loader_kwargs)
-        self.random_seed = random_seed
-        self.train_record_dict = train_record_dict
-        self.valid_record_dict = valid_record_dict
-        self.test_record_dict = test_record_dict
-        self.source_field = source_field
-        self.left_source = left_source
-
-        self.train_pos_pair_set = train_pos_pair_set
-        self.train_neg_pair_set = train_neg_pair_set
-        self.valid_pos_pair_set = valid_pos_pair_set
-        self.valid_neg_pair_set = valid_neg_pair_set
-        self.test_pos_pair_set = test_pos_pair_set
-        self.test_neg_pair_set = test_neg_pair_set
-
-    def setup(self, stage=None):
-        if stage == "fit":
-            logger.info("Train positive pair count: %s", len(self.train_pos_pair_set))
-            logger.info("Train negative pair count: %s", len(self.train_neg_pair_set))
-            logger.info("Valid positive pair count: %s", len(self.valid_pos_pair_set))
-            logger.info("Valid positive pair count: %s", len(self.valid_neg_pair_set))
-        elif stage == "test":
-            logger.info("Test positive pair count: %s", len(self.test_pos_pair_set))
-            logger.info("Test positive pair count: %s", len(self.test_neg_pair_set))
-
-    def train_dataloader(self):
-        train_pairwise_dataset = PairwiseDataset(
-            record_dict=self.train_record_dict,
-            pos_pair_set=self.train_pos_pair_set,
-            neg_pair_set=self.train_neg_pair_set,
-            record_numericalizer=self.record_numericalizer,
-            batch_size=self.batch_size,
-            # Combined with reload_dataloaders_every_epoch on Trainer,
-            # this re-shuffles training batches every epoch,
-            # therefore improving contrastive learning:
-            random_seed=(
-                self.random_seed + self.trainer.current_epoch if self.trainer else self.random_seed
-            ),
-        )
-        train_pairwise_loader = torch.utils.data.DataLoader(
-            train_pairwise_dataset,
-            batch_size=None,  # batch size is set on PairwiseDataset
-            shuffle=False,  # shuffling is implemented on PairwiseDataset
-            **self.train_loader_kwargs,
-        )
-        return train_pairwise_loader
 
     def val_dataloader(self):
         valid_record_dataset = RecordDataset(

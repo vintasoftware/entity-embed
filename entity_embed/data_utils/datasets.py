@@ -3,7 +3,6 @@ import random
 
 import more_itertools
 import torch.nn as nn
-from ordered_set import OrderedSet
 from torch.utils.data import Dataset
 from torch.utils.data._utils.collate import default_collate
 
@@ -109,83 +108,6 @@ class ClusterDataset(Dataset):
             record_numericalizer=self.record_numericalizer,
         )
         label_list = [self.cluster_mapping[id_] for id_ in id_batch]
-        return tensor_dict, sequence_length_dict, default_collate(label_list)
-
-    def __len__(self):
-        return len(self.id_batch_list)
-
-
-class PairwiseDataset(Dataset):
-    def __init__(
-        self,
-        record_dict,
-        pos_pair_set,
-        neg_pair_set,
-        record_numericalizer,
-        batch_size,
-        random_seed,
-    ):
-        self.record_dict = record_dict
-        self.record_numericalizer = record_numericalizer
-        self.batch_size = batch_size
-        self.pos_pair_set = utils.connected_id_pairs(pos_pair_set)
-        self.rnd = random.Random(random_seed)
-
-        pos_id_set = OrderedSet(id_ for pair in pos_pair_set for id_ in pair)
-        self.pos_id_to_neg_set = {id_: OrderedSet() for id_ in pos_id_set}
-        for pair in neg_pair_set:
-            id_left, id_right = pair
-            for pos_id, neg_id in [(id_left, id_right), (id_right, id_left)]:
-                if pos_id in self.pos_id_to_neg_set:
-                    self.pos_id_to_neg_set[pos_id].add(neg_id)
-
-        self.id_batch_list, self.label_batch_list = self._compute_id_batch_list()
-
-    def _compute_id_batch_list(self):
-        # copy pos_pair_set and shuffle
-        pos_pair_list = list(self.pos_pair_set)
-        self.rnd.shuffle(pos_pair_list)
-
-        # prepare batches
-        id_batch_list = []
-        label_batch_list = []
-        while pos_pair_list:
-            id_batch = []
-            label_batch = []
-
-            # Until batch is full, get a pos pair,
-            # and for both ids in the pos pair, get all neg ids.
-            # Use self.batch_size - 1 to see if it's full
-            # because if there's only 1 id left to fill the batch
-            # there's no room for an additional pos pair
-            while len(id_batch) < self.batch_size - 1 and pos_pair_list:
-                (id_left, id_right) = pos_pair_list.pop()
-
-                idx = len(id_batch)
-                neg_id_list = list(
-                    self.pos_id_to_neg_set[id_left] | self.pos_id_to_neg_set[id_right]
-                )
-                if len(neg_id_list) > self.batch_size - 2:
-                    self.rnd.sample(neg_id_list, self.batch_size - 2)
-                id_batch_part = [id_left, id_right, *neg_id_list]
-                label_batch_part = [idx, idx, *range(idx + 1, idx + 1 + len(neg_id_list))]
-
-                id_batch.extend(id_batch_part)
-                label_batch.extend(label_batch_part)
-
-            id_batch_list.append(id_batch)
-            label_batch_list.append(label_batch)
-
-        return id_batch_list, label_batch_list
-
-    def __getitem__(self, idx):
-        id_batch = self.id_batch_list[idx]
-        record_batch = [self.record_dict[id_] for id_ in id_batch]
-        tensor_dict, sequence_length_dict = _collate_tensor_dict(
-            record_batch=record_batch,
-            record_numericalizer=self.record_numericalizer,
-        )
-        label_list = self.label_batch_list[idx]
         return tensor_dict, sequence_length_dict, default_collate(label_list)
 
     def __len__(self):
