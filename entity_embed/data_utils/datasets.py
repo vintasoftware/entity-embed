@@ -2,7 +2,6 @@ import logging
 import random
 
 import more_itertools
-import torch
 import torch.nn as nn
 from ordered_set import OrderedSet
 from torch.utils.data import Dataset
@@ -131,20 +130,20 @@ class PairwiseDataset(Dataset):
         self.batch_size = batch_size
         self.pos_pair_set = utils.connected_id_pairs(pos_pair_set)
         neg_pair_set = utils.connected_id_pairs(neg_pair_set)
+        rnd = random.Random(random_seed)
+
         pos_id_set = OrderedSet(id_ for pair in pos_pair_set for id_ in pair)
-        pos_id_set = sorted(pos_id_set)
         self.pos_id_to_neg_set = {id_: OrderedSet() for id_ in pos_id_set}
         for pair in neg_pair_set:
             id_left, id_right = pair
             for pos_id, neg_id in [(id_left, id_right), (id_right, id_left)]:
                 if pos_id in self.pos_id_to_neg_set:
                     self.pos_id_to_neg_set[pos_id].add(neg_id)
-        rnd = random.Random(random_seed)
 
-        id_batch_list, indices_tuple_list = self._compute_id_batch_list()
-        batches = list(zip(id_batch_list, indices_tuple_list))
+        id_batch_list, label_batch_list = self._compute_id_batch_list()
+        batches = list(zip(id_batch_list, label_batch_list))
         rnd.shuffle(batches)
-        self.id_batch_list, self.indices_tuple_list = zip(*batches)
+        self.id_batch_list, self.label_batch_list = zip(*batches)
 
     def _compute_id_batch_list(self):
         # copy pos_pair_set
@@ -152,13 +151,13 @@ class PairwiseDataset(Dataset):
 
         # prepare batches
         id_batch_list = []
-        indices_tuple_list = []
+        label_batch_list = []
         while pos_pair_list:
             id_batch = []
-            anchor_pos, pos, anchor_neg, neg = [], [], [], []
+            label_batch = []
 
-            # For both ids in the pos pair, get all neg ones for those ids.
-            # Prepare add all those ids batch. Keep adding until batch is full.
+            # Until batch is full, get a pos pair,
+            # and for both ids in the pos pair, get all neg ids.
             # Use self.batch_size - 1 to see if it's full
             # because if there's only 1 id left to fill the batch
             # there's no room for an additional pos pair
@@ -170,21 +169,15 @@ class PairwiseDataset(Dataset):
                     self.pos_id_to_neg_set[id_left] | self.pos_id_to_neg_set[id_right]
                 )[: self.batch_size - 2]
                 id_batch_part = [id_left, id_right, *neg_id_set_part]
-                anchor_pos_part = [idx, idx + 1]
-                pos_part = [idx + 1, idx]
-                anchor_neg_part = [idx] * len(neg_id_set_part) + [idx + 1] * len(neg_id_set_part)
-                neg_part = list(range(idx + 2, idx + len(id_batch_part))) * 2
+                label_batch_part = [idx, idx, *range(idx + 1, idx + 1 + len(neg_id_set_part))]
 
                 id_batch.extend(id_batch_part)
-                anchor_pos.extend(anchor_pos_part)
-                pos.extend(pos_part)
-                anchor_neg.extend(anchor_neg_part)
-                neg.extend(neg_part)
+                label_batch.extend(label_batch_part)
 
             id_batch_list.append(id_batch)
-            indices_tuple_list.append((anchor_pos, pos, anchor_neg, neg))
+            label_batch_list.append(label_batch)
 
-        return id_batch_list, indices_tuple_list
+        return id_batch_list, label_batch_list
 
     def __getitem__(self, idx):
         id_batch = self.id_batch_list[idx]
@@ -193,8 +186,8 @@ class PairwiseDataset(Dataset):
             record_batch=record_batch,
             record_numericalizer=self.record_numericalizer,
         )
-        indices_tuple = [torch.LongTensor(x) for x in self.indices_tuple_list[idx]]
-        return tensor_dict, sequence_length_dict, indices_tuple
+        label_list = self.label_batch_list[idx]
+        return tensor_dict, sequence_length_dict, default_collate(label_list)
 
     def __len__(self):
         return len(self.id_batch_list)
