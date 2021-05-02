@@ -129,8 +129,7 @@ class PairwiseDataset(Dataset):
         self.record_numericalizer = record_numericalizer
         self.batch_size = batch_size
         self.pos_pair_set = utils.connected_id_pairs(pos_pair_set)
-        neg_pair_set = utils.connected_id_pairs(neg_pair_set)
-        rnd = random.Random(random_seed)
+        self.rnd = random.Random(random_seed)
 
         pos_id_set = OrderedSet(id_ for pair in pos_pair_set for id_ in pair)
         self.pos_id_to_neg_set = {id_: OrderedSet() for id_ in pos_id_set}
@@ -140,14 +139,12 @@ class PairwiseDataset(Dataset):
                 if pos_id in self.pos_id_to_neg_set:
                     self.pos_id_to_neg_set[pos_id].add(neg_id)
 
-        id_batch_list, label_batch_list = self._compute_id_batch_list()
-        batches = list(zip(id_batch_list, label_batch_list))
-        rnd.shuffle(batches)
-        self.id_batch_list, self.label_batch_list = zip(*batches)
+        self.id_batch_list, self.label_batch_list = self._compute_id_batch_list()
 
     def _compute_id_batch_list(self):
-        # copy pos_pair_set
+        # copy pos_pair_set and shuffle
         pos_pair_list = list(self.pos_pair_set)
+        self.rnd.shuffle(pos_pair_list)
 
         # prepare batches
         id_batch_list = []
@@ -165,11 +162,13 @@ class PairwiseDataset(Dataset):
                 (id_left, id_right) = pos_pair_list.pop()
 
                 idx = len(id_batch)
-                neg_id_set_part = (
+                neg_id_list = list(
                     self.pos_id_to_neg_set[id_left] | self.pos_id_to_neg_set[id_right]
-                )[: self.batch_size - 2]
-                id_batch_part = [id_left, id_right, *neg_id_set_part]
-                label_batch_part = [idx, idx, *range(idx + 1, idx + 1 + len(neg_id_set_part))]
+                )
+                if len(neg_id_list) > self.batch_size - 2:
+                    self.rnd.sample(neg_id_list, self.batch_size - 2)
+                id_batch_part = [id_left, id_right, *neg_id_list]
+                label_batch_part = [idx, idx, *range(idx + 1, idx + 1 + len(neg_id_list))]
 
                 id_batch.extend(id_batch_part)
                 label_batch.extend(label_batch_part)
