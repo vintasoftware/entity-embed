@@ -1,4 +1,3 @@
-import copy
 import csv
 import logging
 import os
@@ -47,27 +46,24 @@ class DeepmatcherBenchmark(ABC):
             pair_csv_path=self.test_csv_path
         )
         self.train_record_dict = {
-            id_: copy.copy(self.record_dict[id_])
+            id_: self.record_dict[id_]
             for pair in self.train_pos_pair_set | self.train_neg_pair_set
             for id_ in pair
         }
         self.valid_record_dict = {
-            id_: copy.copy(self.record_dict[id_])
+            id_: self.record_dict[id_]
             for pair in self.valid_pos_pair_set | self.valid_neg_pair_set
             for id_ in pair
         }
         self.test_record_dict = {
-            id_: copy.copy(self.record_dict[id_])
+            id_: self.record_dict[id_]
             for pair in self.test_pos_pair_set | self.test_neg_pair_set
             for id_ in pair
         }
 
-        for id_pairs, record_dict in zip(
-            [self.train_pos_pair_set, self.valid_pos_pair_set, self.test_pos_pair_set],
-            [self.train_record_dict, self.valid_record_dict, self.test_record_dict],
-        ):
-            cluster_mapping, __ = utils.id_pairs_to_cluster_mapping_and_dict(id_pairs, record_dict)
-            utils.assign_clusters(record_dict, self.cluster_field, cluster_mapping)
+        id_pairs = self.train_pos_pair_set | self.valid_pos_pair_set | self.test_pos_pair_set
+        cluster_mapping, __ = utils.id_pairs_to_cluster_mapping_and_dict(id_pairs, self.record_dict)
+        utils.assign_clusters(self.record_dict, self.cluster_field, cluster_mapping)
 
     @property
     def local_dir_path(self) -> str:
