@@ -1,8 +1,10 @@
+import itertools
 import logging
 import random
 
 import more_itertools
 import torch.nn as nn
+from ordered_set import OrderedSet
 from torch.utils.data import Dataset
 from torch.utils.data._utils.collate import default_collate
 
@@ -69,6 +71,7 @@ class ClusterDataset(Dataset):
 
         # randomize cluster order
         self.rnd.shuffle(cluster_list)
+        self.rnd.shuffle(singleton_id_list)
 
         # prepare batches using both clusters and singletons
         id_batch_list = []
@@ -112,6 +115,32 @@ class ClusterDataset(Dataset):
 
     def __len__(self):
         return len(self.id_batch_list)
+
+
+class PairwiseDataset(ClusterDataset):
+    def __init__(
+        self,
+        record_dict,
+        pos_pair_set,
+        neg_pair_set,
+        record_numericalizer,
+        batch_size,
+        max_cluster_size_in_batch,
+        random_seed,
+    ):
+        self.record_dict = record_dict
+        self.record_numericalizer = record_numericalizer
+        self.pos_pair_set = pos_pair_set
+        self.cluster_mapping, cluster_dict = utils.id_pairs_to_cluster_mapping_and_dict(
+            self.pos_pair_set, self.record_dict
+        )
+        self.cluster_list = cluster_dict.values()
+        self.singleton_id_list = [cluster[0] for cluster in self.cluster_list if len(cluster) == 1]
+        self.batch_size = batch_size
+        self.max_cluster_size_in_batch = max(max_cluster_size_in_batch, 2)
+        self.rnd = random.Random(random_seed)
+
+        self.id_batch_list = self._compute_id_batch_list()
 
 
 class RecordDataset(Dataset):

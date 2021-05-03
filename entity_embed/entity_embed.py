@@ -57,10 +57,10 @@ class _BaseEmbed(pl.LightningModule):
             field_config_dict=self.record_numericalizer.field_config_dict,
             embedding_size=self.embedding_size,
         )
-        self.loss_fn = loss_cls(**loss_kwargs if loss_kwargs else {"temperature": 0.1})
+        self.loss_fn = loss_cls(**loss_kwargs if loss_kwargs is not None else {"temperature": 0.1})
         if miner_cls:
             self.miner = miner_cls(
-                **miner_kwargs if miner_kwargs else {"distance": DotProductSimilarity()}
+                **miner_kwargs if miner_kwargs is not None else {"distance": DotProductSimilarity()}
             )
         else:
             self.miner = None

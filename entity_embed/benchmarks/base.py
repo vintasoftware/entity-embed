@@ -7,7 +7,7 @@ from abc import ABC
 from typing import List
 from urllib.error import HTTPError
 
-from ..data_modules import DEFAULT_LEFT_SOURCE, DEFAULT_SOURCE_FIELD, LinkageDataModule
+from ..data_modules import DEFAULT_LEFT_SOURCE, DEFAULT_SOURCE_FIELD, PairwiseLinkageDataModule
 from ..data_utils import utils
 
 logger = logging.getLogger(__name__)
@@ -30,7 +30,6 @@ class DeepmatcherBenchmark(ABC):
         self.source_field = DEFAULT_SOURCE_FIELD
         self.left_source = DEFAULT_LEFT_SOURCE
         self.right_source = "right"
-        self.cluster_field = "cluster"
 
         self._download()
         self._extract_zip()
@@ -60,10 +59,6 @@ class DeepmatcherBenchmark(ABC):
             for pair in self.test_pos_pair_set | self.test_neg_pair_set
             for id_ in pair
         }
-
-        id_pairs = self.train_pos_pair_set | self.valid_pos_pair_set | self.test_pos_pair_set
-        cluster_mapping, __ = utils.id_pairs_to_cluster_mapping_and_dict(id_pairs, self.record_dict)
-        utils.assign_clusters(self.record_dict, self.cluster_field, cluster_mapping)
 
     @property
     def local_dir_path(self) -> str:
@@ -133,13 +128,18 @@ class DeepmatcherBenchmark(ABC):
         return pos_pair_set, neg_pair_set
 
     def build_datamodule(self, record_numericalizer, batch_size, eval_batch_size, random_seed):
-        return LinkageDataModule(
+        return PairwiseLinkageDataModule(
             train_record_dict=self.train_record_dict,
             valid_record_dict=self.valid_record_dict,
             test_record_dict=self.test_record_dict,
             source_field=self.source_field,
             left_source=self.left_source,
-            cluster_field=self.cluster_field,
+            train_pos_pair_set=self.train_pos_pair_set,
+            train_neg_pair_set=self.train_neg_pair_set,
+            valid_pos_pair_set=self.valid_pos_pair_set,
+            valid_neg_pair_set=self.valid_neg_pair_set,
+            test_pos_pair_set=self.test_pos_pair_set,
+            test_neg_pair_set=self.test_neg_pair_set,
             record_numericalizer=record_numericalizer,
             batch_size=batch_size,
             eval_batch_size=eval_batch_size,
