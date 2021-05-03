@@ -256,7 +256,7 @@ class FieldsEmbedNet(nn.Module):
         field_embeddings = field_embeddings * field_mask.unsqueeze(dim=-1)
 
         field_embedding_dict = dict(zip(self.embed_net_dict.keys(), field_embeddings.unbind(dim=1)))
-        return field_embedding_dict
+        return field_embedding_dict, field_mask
 
 
 class BlockerNet(nn.Module):
@@ -276,7 +276,7 @@ class BlockerNet(nn.Module):
         )
 
     def forward(self, tensor_dict, sequence_length_dict, return_field_embeddings=False):
-        field_embedding_dict = self.field_embed_net(
+        field_embedding_dict, __ = self.field_embed_net(
             tensor_dict=tensor_dict, sequence_length_dict=sequence_length_dict
         )
         avg_embedding = self.avg_pool_net(
@@ -314,3 +314,79 @@ class BlockerNet(nn.Module):
                     self.avg_pool_net.state_dict()["weights"],
                 )
             }
+
+
+class MatcherNet(nn.Module):
+    def __init__(
+        self, field_config_dict, embedding_size, transformer_dropout_p=0.1, n_transformer_layers=1
+    ):
+        super().__init__()
+        self.field_config_dict = field_config_dict
+        self.embedding_size = embedding_size
+        self.field_embed_net = FieldsEmbedNet(
+            field_config_dict=field_config_dict, embedding_size=embedding_size
+        )
+
+        self.hidden_size = self.embedding_size * len(self.field_config_dict)
+        self.norm = nn.LayerNorm(embedding_size)
+        self.num_heads = 5
+        transformer_encoder_layer = nn.TransformerEncoderLayer(
+            d_model=self.embedding_size,
+            nhead=self.num_heads,
+            dim_feedforward=self.hidden_size,
+            dropout=transformer_dropout_p,
+        )
+        self.transformer_encoder = nn.TransformerEncoder(
+            transformer_encoder_layer, num_layers=n_transformer_layers
+        )
+        self.match_dense_net = nn.Sequential(
+            nn.Linear(self.hidden_size * 2, self.hidden_size),
+            nn.ReLU(),
+            nn.Linear(self.hidden_size, 1),
+        )
+
+    def forward(
+        self,
+        tensor_dict_left,
+        sequence_length_dict_left,
+        tensor_dict_right,
+        sequence_length_dict_right,
+    ):
+        # left
+        field_embedding_dict_left, field_mask_left = self.field_embed_net(
+            tensor_dict=tensor_dict_left, sequence_length_dict=sequence_length_dict_left
+        )
+        x_left = torch.stack(list(field_embedding_dict_left.values()), dim=1)
+
+        # right
+        field_embedding_dict_right, field_mask_right = self.field_embed_net(
+            tensor_dict=tensor_dict_right, sequence_length_dict=sequence_length_dict_right
+        )
+        x_right = torch.stack(list(field_embedding_dict_right.values()), dim=1)
+
+        # pair (left-right)
+        x = torch.cat((x_left, x_right), dim=1)
+        field_mask = torch.cat((field_mask_left, field_mask_right), dim=1)
+        n_fields = field_mask_left.size(1)
+
+        # normalize
+        x = F.normalize(x, dim=-1)
+
+        # prepare attn_mask using empty strings and sequences
+        field_mask = field_mask.float()
+        attn_mask = field_mask.unsqueeze(dim=2) @ field_mask.unsqueeze(dim=1)
+        attn_mask[:, :n_fields, :n_fields] = 0
+        attn_mask[:, n_fields:, n_fields:] = 0
+        attn_mask = attn_mask + torch.diag(torch.ones(attn_mask.size(-1), device=field_mask.device))
+        attn_mask = attn_mask.bool().logical_not()
+        attn_mask = attn_mask.repeat_interleave(self.num_heads, dim=0)
+
+        # transformer
+        x = x.transpose(1, 0)
+        x = self.transformer_encoder(x, mask=attn_mask)
+        x = x.transpose(1, 0)
+
+        # matcher
+        x = self.match_dense_net(x.reshape(x.size(0), -1))
+
+        return x.view(-1)

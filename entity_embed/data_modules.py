@@ -364,7 +364,6 @@ class PairwiseLinkageDataModule(pl.LightningDataModule):
             neg_pair_set=self.train_neg_pair_set,
             record_numericalizer=self.record_numericalizer,
             batch_size=self.batch_size,
-            max_cluster_size_in_batch=self.batch_size // 3,
             # Combined with reload_dataloaders_every_epoch on Trainer,
             # this re-shuffles training batches every epoch,
             # therefore improving contrastive learning:
@@ -381,29 +380,35 @@ class PairwiseLinkageDataModule(pl.LightningDataModule):
         return train_pairwise_loader
 
     def val_dataloader(self):
-        valid_record_dataset = RecordDataset(
+        valid_pairwise_dataset = PairwiseDataset(
             record_dict=self.valid_record_dict,
+            pos_pair_set=self.valid_pos_pair_set,
+            neg_pair_set=self.valid_neg_pair_set,
             record_numericalizer=self.record_numericalizer,
-            batch_size=self.eval_batch_size,
+            batch_size=self.batch_size,
+            random_seed=None,
         )
-        valid_record_loader = torch.utils.data.DataLoader(
-            valid_record_dataset,
-            batch_size=None,  # batch size is set on RecordDataset
+        valid_pairwise_loader = torch.utils.data.DataLoader(
+            valid_pairwise_dataset,
+            batch_size=None,  # batch size is set on PairwiseDataset
             shuffle=False,
             **self.eval_loader_kwargs,
         )
-        return valid_record_loader
+        return valid_pairwise_loader
 
     def test_dataloader(self):
-        test_record_dataset = RecordDataset(
+        test_pairwise_dataset = PairwiseDataset(
             record_dict=self.test_record_dict,
+            pos_pair_set=self.test_pos_pair_set,
+            neg_pair_set=self.test_neg_pair_set,
             record_numericalizer=self.record_numericalizer,
-            batch_size=self.eval_batch_size,
+            batch_size=self.batch_size,
+            random_seed=None,
         )
-        test_record_loader = torch.utils.data.DataLoader(
-            test_record_dataset,
-            batch_size=None,  # batch size is set on RecordDataset
+        test_pairwise_loader = torch.utils.data.DataLoader(
+            test_pairwise_dataset,
+            batch_size=None,  # batch size is set on PairwiseDataset
             shuffle=False,
             **self.eval_loader_kwargs,
         )
-        return test_record_loader
+        return test_pairwise_loader
