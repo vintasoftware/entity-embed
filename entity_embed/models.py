@@ -338,7 +338,11 @@ class MatcherNet(nn.Module):
         self.transformer_encoder = nn.TransformerEncoder(
             transformer_encoder_layer, num_layers=n_transformer_layers
         )
-        self.match_dense_net = nn.Linear(self.hidden_size, 1)
+        self.match_dense_net = nn.Sequential(
+            nn.Linear(self.hidden_size * 2, self.hidden_size),
+            nn.ReLU(),
+            nn.Linear(self.hidden_size, 1),
+        )
 
     def _forward_one_side(
         self,
@@ -380,5 +384,7 @@ class MatcherNet(nn.Module):
         embed_right = self._forward_one_side(
             tensor_dict=tensor_dict_right, sequence_length_dict=sequence_length_dict_right
         )
-        embed_pair = torch.abs(embed_left - embed_right)
+        embed_pair = torch.cat(
+            (torch.abs(embed_left - embed_right), embed_left * embed_right), dim=1
+        )
         return self.match_dense_net(embed_pair).view(-1)
