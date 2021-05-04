@@ -1,5 +1,4 @@
 import logging
-import math
 import random
 
 import more_itertools
@@ -139,9 +138,9 @@ class PairwiseDataset(Dataset):
         self.pair_batch_list, self.label_batch_list = self._compute_pair_label_batch_list()
 
     def _compute_pair_label_batch_list(self):
-        # copy pos_pair_set and neg_pair_set
-        pos_pair_list = list(self.pos_pair_set)
-        neg_pair_list = list(self.neg_pair_set)
+        # copy deterministically pos_pair_set and neg_pair_set
+        pos_pair_list = sorted(self.pos_pair_set)
+        neg_pair_list = sorted(self.neg_pair_set)
 
         # shuffle lists
         if self.rnd:
