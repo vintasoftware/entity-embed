@@ -328,7 +328,6 @@ class MatcherNet(nn.Module):
         )
 
         self.hidden_size = self.embedding_size * len(self.field_config_dict)
-        self.norm = nn.LayerNorm(embedding_size)
         self.num_heads = 5
         transformer_encoder_layer = nn.TransformerEncoderLayer(
             d_model=self.embedding_size,
@@ -351,8 +350,8 @@ class MatcherNet(nn.Module):
         )
         x = torch.stack(list(field_embedding_dict.values()), dim=1)
 
-        # layer norm
-        x = self.norm(x)
+        # normalize
+        x = F.normalize(x, dim=-1)
 
         # prepare attn_mask using empty strings and sequences
         field_mask = field_mask.float()
