@@ -24,9 +24,8 @@ The ``field_config_dict`` holds the definition of the field types your network w
         },
         'title_semantic': {
             'key': 'title',
-            'field_type': "SEMANTIC_MULTITOKEN",
+            'field_type': "SEMANTIC",
             'tokenizer': "entity_embed.default_tokenizer",
-            'vocab': "fasttext.en.300d",
         },
         'artist': {
             'field_type': "MULTITOKEN",
@@ -42,9 +41,8 @@ The ``field_config_dict`` holds the definition of the field types your network w
         },
         'album_semantic': {
             'key': 'album',
-            'field_type': "SEMANTIC_MULTITOKEN",
+            'field_type': "SEMANTIC",
             'tokenizer': "entity_embed.default_tokenizer",
-            'vocab': "fasttext.en.300d",
         }
     }
 
@@ -130,7 +128,7 @@ Use this field type when the string is made of a single token. This field type u
 
 Use this in fields like: product category, song genre, etc.
 
-SEMANTIC_MULTITOKEN
+SEMANTIC
 ~~~~~~~~~~~~~~~~~~~
 
 Use this field type when the string is made of multiple tokens. This field type uses the pre-trained embeddings of ``vocab``.
@@ -140,7 +138,7 @@ Use this in fields like: company name, product name, product description, etc.
 Tokenizer
 ---------
 
-MULTITOKEN and SEMANTIC_MULTITOKEN fields need a tokenizer function that receives a string a returns a list of strings. The default tokenizer function is ``entity_embed.default_tokenizer``, which simply splits the string on all symbols::
+MULTITOKEN and SEMANTIC fields need a tokenizer function that receives a string a returns a list of strings. The default tokenizer function is ``entity_embed.default_tokenizer``, which simply splits the string on all symbols::
 
     >> entity_embed.default_tokenizer("vinta-software_ltda 2021")
 
@@ -160,9 +158,8 @@ Use ``key`` to derive multiple field types from the same record field. When ``ke
         },
         'title_semantic': {
             'key': 'title',
-            'field_type': "SEMANTIC_MULTITOKEN",
+            'field_type': "SEMANTIC",
             'tokenizer': "entity_embed.default_tokenizer",
-            'vocab': "fasttext.en.300d",
         }
     }
 

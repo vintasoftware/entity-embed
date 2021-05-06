@@ -108,7 +108,7 @@ def field_config_dict():
         },
         "name_semantic": {
             "key": "name",
-            "field_type": "SEMANTIC_MULTITOKEN",
+            "field_type": "SEMANTIC",
             "tokenizer": "entity_embed.default_tokenizer",
             "vocab": "fasttext.en.300d",
         },
