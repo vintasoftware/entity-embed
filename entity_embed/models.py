@@ -208,7 +208,7 @@ class EntityAvgPoolNet(nn.Module):
         else:
             self.weights = None
 
-    def forward(self, field_embedding_dict, sequence_length_dict):
+    def forward(self, field_embedding_dict, **kwargs):
         if self.weights is not None:
             # layer norm
             x = torch.stack(list(field_embedding_dict.values()), dim=1)
@@ -340,26 +340,12 @@ class BlockerNet(nn.Module):
 
 
 class MatcherNet(nn.Module):
-    def __init__(
-        self, field_config_dict, embedding_size, transformer_dropout_p=0.1, n_transformer_layers=1
-    ):
+    def __init__(self, field_config_dict, embedding_size):
         super().__init__()
         self.field_config_dict = field_config_dict
         self.embedding_size = embedding_size
         self.field_embed_net = FieldsEmbedNet(
             field_config_dict=field_config_dict, embedding_size=embedding_size
-        )
-
-        self.hidden_size = self.embedding_size * len(self.field_config_dict)
-        self.num_heads = 5
-        transformer_encoder_layer = nn.TransformerEncoderLayer(
-            d_model=self.embedding_size,
-            nhead=self.num_heads,
-            dim_feedforward=self.hidden_size,
-            dropout=transformer_dropout_p,
-        )
-        self.transformer_encoder = nn.TransformerEncoder(
-            transformer_encoder_layer, num_layers=n_transformer_layers
         )
         self.match_dense_net = nn.Sequential(
             nn.Linear(self.hidden_size * 2, self.hidden_size),
@@ -372,25 +358,13 @@ class MatcherNet(nn.Module):
         tensor_dict,
         sequence_length_dict,
     ):
-        field_embedding_dict, field_mask = self.field_embed_net(
+        field_embedding_dict, __ = self.field_embed_net(
             tensor_dict=tensor_dict, sequence_length_dict=sequence_length_dict
         )
         x = torch.stack(list(field_embedding_dict.values()), dim=1)
 
         # normalize
         x = F.normalize(x, dim=-1)
-
-        # prepare attn_mask using empty strings and sequences
-        field_mask = field_mask.float()
-        attn_mask = field_mask.unsqueeze(dim=2) @ field_mask.unsqueeze(dim=1)
-        attn_mask = attn_mask + torch.diag(torch.ones(attn_mask.size(-1), device=field_mask.device))
-        attn_mask = attn_mask.bool().logical_not()
-        attn_mask = attn_mask.repeat_interleave(self.num_heads, dim=0)
-
-        # transformer
-        x = x.transpose(1, 0)
-        x = self.transformer_encoder(x, mask=attn_mask)
-        x = x.transpose(1, 0)
 
         return x.reshape(x.size(0), -1)
 

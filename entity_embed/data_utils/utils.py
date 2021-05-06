@@ -249,4 +249,4 @@ def subdict(d, keys):
 
 
 def tensor_dict_to_device(tensor_dict, device):
-    return {field: t.to(device) for field, t in tensor_dict.items()}
+    return {field: t.to(device) if t is not None else None for field, t in tensor_dict.items()}
