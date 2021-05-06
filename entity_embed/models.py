@@ -347,19 +347,18 @@ class MatcherNet(nn.Module):
         self.field_embed_net = FieldsEmbedNet(
             field_config_dict=field_config_dict, embedding_size=embedding_size
         )
+        self.hidden_size = self.embedding_size * len(self.field_config_dict)
         self.match_dense_net = nn.Sequential(
             nn.Linear(self.hidden_size * 2, self.hidden_size),
             nn.ReLU(),
             nn.Linear(self.hidden_size, 1),
         )
 
-    def _forward_one_side(
-        self,
-        tensor_dict,
-        sequence_length_dict,
-    ):
+    def _forward_one_side(self, tensor_dict, sequence_length_dict, transformer_attention_mask_dict):
         field_embedding_dict, __ = self.field_embed_net(
-            tensor_dict=tensor_dict, sequence_length_dict=sequence_length_dict
+            tensor_dict=tensor_dict,
+            sequence_length_dict=sequence_length_dict,
+            transformer_attention_mask_dict=transformer_attention_mask_dict,
         )
         x = torch.stack(list(field_embedding_dict.values()), dim=1)
 
@@ -372,14 +371,20 @@ class MatcherNet(nn.Module):
         self,
         tensor_dict_left,
         sequence_length_dict_left,
+        transformer_attention_mask_dict_left,
         tensor_dict_right,
         sequence_length_dict_right,
+        transformer_attention_mask_dict_right,
     ):
         embed_left = self._forward_one_side(
-            tensor_dict=tensor_dict_left, sequence_length_dict=sequence_length_dict_left
+            tensor_dict=tensor_dict_left,
+            sequence_length_dict=sequence_length_dict_left,
+            transformer_attention_mask_dict=transformer_attention_mask_dict_left,
         )
         embed_right = self._forward_one_side(
-            tensor_dict=tensor_dict_right, sequence_length_dict=sequence_length_dict_right
+            tensor_dict=tensor_dict_right,
+            sequence_length_dict=sequence_length_dict_right,
+            transformer_attention_mask_dict=transformer_attention_mask_dict_right,
         )
         embed_pair = torch.cat(
             (torch.abs(embed_left - embed_right), embed_left * embed_right), dim=1

@@ -593,40 +593,26 @@ class Matcher(pl.LightningModule):
         self,
         record_numericalizer,
         embedding_size=300,
-        optimizer_cls=torch.optim.Adam,
-        optimizer_kwargs=None,
-        learning_rate=0.001,
+        learning_rate=1e-5,
         sim_threshold_list=[0.3, 0.5, 0.7, 0.9],
     ):
         super().__init__()
         self.save_hyperparameters()
 
         self.record_numericalizer = record_numericalizer
-        for field_config in self.record_numericalizer.field_config_dict.values():
-            vocab = field_config.vocab
-            if vocab:
-                # We can assume that there's only one vocab type across the
-                # whole field_config_dict, so we can stop the loop once we've
-                # found a field_config with a vocab
-                valid_embedding_size = vocab.vectors.size(1)
-                if valid_embedding_size != embedding_size:
-                    raise ValueError(
-                        f"Invalid embedding_size={embedding_size}. "
-                        f"Expected {valid_embedding_size}, due to semantic fields."
-                    )
         self.embedding_size = embedding_size
         self.matcher_net = MatcherNet(
             field_config_dict=self.record_numericalizer.field_config_dict,
             embedding_size=self.embedding_size,
         )
         self.loss_fn = nn.BCEWithLogitsLoss()
-        self.optimizer_cls = optimizer_cls
         self.learning_rate = learning_rate
-        self.optimizer_kwargs = optimizer_kwargs if optimizer_kwargs is not None else {}
         self.sim_threshold_list = sim_threshold_list
 
-    def forward(self, tensor_dict, sequence_length_dict):
-        logits = self.matcher_net(tensor_dict, sequence_length_dict)
+    def forward(self, tensor_dict, sequence_length_dict, transformer_attention_mask_dict):
+        logits = self.matcher_net(
+            tensor_dict, sequence_length_dict, transformer_attention_mask_dict
+        )
         proba = logits.sigmoid()
         return proba
 
@@ -634,15 +620,19 @@ class Matcher(pl.LightningModule):
         (
             tensor_dict_left,
             sequence_length_dict_left,
+            transformer_attention_mask_dict_left,
             tensor_dict_right,
             sequence_length_dict_right,
+            transformer_attention_mask_dict_right,
             target,
         ) = batch
         logits = self.matcher_net(
             tensor_dict_left=tensor_dict_left,
             sequence_length_dict_left=sequence_length_dict_left,
+            transformer_attention_mask_dict_left=transformer_attention_mask_dict_left,
             tensor_dict_right=tensor_dict_right,
             sequence_length_dict_right=sequence_length_dict_right,
+            transformer_attention_mask_dict_right=transformer_attention_mask_dict_right,
         )
         loss = self.loss_fn(logits, target)
 
@@ -653,15 +643,19 @@ class Matcher(pl.LightningModule):
         (
             tensor_dict_left,
             sequence_length_dict_left,
+            transformer_attention_mask_dict_left,
             tensor_dict_right,
             sequence_length_dict_right,
+            transformer_attention_mask_dict_right,
             target,
         ) = batch
         logits = self.matcher_net(
             tensor_dict_left=tensor_dict_left,
             sequence_length_dict_left=sequence_length_dict_left,
+            transformer_attention_mask_dict_left=transformer_attention_mask_dict_left,
             tensor_dict_right=tensor_dict_right,
             sequence_length_dict_right=sequence_length_dict_right,
+            transformer_attention_mask_dict_right=transformer_attention_mask_dict_right,
         )
         return logits, target
 
@@ -700,15 +694,19 @@ class Matcher(pl.LightningModule):
         (
             tensor_dict_left,
             sequence_length_dict_left,
+            transformer_attention_mask_dict_left,
             tensor_dict_right,
             sequence_length_dict_right,
+            transformer_attention_mask_dict_right,
             target,
         ) = batch
         logits = self.matcher_net(
             tensor_dict_left=tensor_dict_left,
             sequence_length_dict_left=sequence_length_dict_left,
+            transformer_attention_mask_dict_left=transformer_attention_mask_dict_left,
             tensor_dict_right=tensor_dict_right,
             sequence_length_dict_right=sequence_length_dict_right,
+            transformer_attention_mask_dict_right=transformer_attention_mask_dict_right,
         )
         return logits, target
 
@@ -717,8 +715,35 @@ class Matcher(pl.LightningModule):
         self.log_dict(metric_dict)
 
     def configure_optimizers(self):
-        optimizer = self.optimizer_cls(
-            self.parameters(), lr=self.learning_rate, **self.optimizer_kwargs
+        named_parameters = list(self.named_parameters())
+        no_decay = ["bias", "LayerNorm.weight"]
+
+        optimizer_grouped_parameters = [
+            {
+                "params": [
+                    p
+                    for n, p in named_parameters
+                    if not any(nd in n for nd in no_decay) and "semantic" in n
+                ],
+                "weight_decay": 0.01,
+            },
+            {
+                "params": [
+                    p
+                    for n, p in named_parameters
+                    if any(nd in n for nd in no_decay) and "semantic" in n
+                ],
+                "weight_decay": 0.0,
+            },
+            {
+                "params": [p for n, p in named_parameters if "semantic" not in n],
+                "weight_decay": 0.0,
+                "lr": 0.001,
+            },
+        ]
+        optimizer = transformers.AdamW(
+            optimizer_grouped_parameters,
+            lr=self.learning_rate,
         )
         return optimizer
 
@@ -801,15 +826,19 @@ class Matcher(pl.LightningModule):
             (
                 tensor_dict_left,
                 sequence_length_dict_left,
+                transformer_attention_mask_dict_left,
                 tensor_dict_right,
                 sequence_length_dict_right,
+                transformer_attention_mask_dict_right,
                 target,
             ) = batch
             logits = self.matcher_net(
                 tensor_dict_left=tensor_dict_left,
                 sequence_length_dict_left=sequence_length_dict_left,
+                transformer_attention_mask_dict_left=transformer_attention_mask_dict_left,
                 tensor_dict_right=tensor_dict_right,
                 sequence_length_dict_right=sequence_length_dict_right,
+                transformer_attention_mask_dict_right=transformer_attention_mask_dict_right,
             )
             outputs.append((logits, target))
 

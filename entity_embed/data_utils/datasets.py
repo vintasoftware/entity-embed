@@ -193,19 +193,29 @@ class PairwiseDataset(Dataset):
         record_batch_right = [self.record_dict[id_] for id_ in id_batch_right]
         label_batch = self.label_batch_list[idx]
 
-        tensor_dict_left, sequence_length_dict_left = _collate_tensor_dict(
+        (
+            tensor_dict_left,
+            sequence_length_dict_left,
+            transformer_attention_mask_dict_left,
+        ) = _collate_tensor_dict(
             record_batch=record_batch_left,
             record_numericalizer=self.record_numericalizer,
         )
-        tensor_dict_right, sequence_length_dict_right = _collate_tensor_dict(
+        (
+            tensor_dict_right,
+            sequence_length_dict_right,
+            transformer_attention_mask_dict_right,
+        ) = _collate_tensor_dict(
             record_batch=record_batch_right,
             record_numericalizer=self.record_numericalizer,
         )
         return (
             tensor_dict_left,
             sequence_length_dict_left,
+            transformer_attention_mask_dict_left,
             tensor_dict_right,
             sequence_length_dict_right,
+            transformer_attention_mask_dict_right,
             default_collate(label_batch),
         )
 
