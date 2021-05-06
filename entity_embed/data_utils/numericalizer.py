@@ -2,63 +2,63 @@ import inspect
 import logging
 from dataclasses import dataclass
 from enum import Enum
-from typing import Callable, List
+from typing import Callable, List, Union
 
 import numpy as np
 import regex
 import torch
-from torchtext.vocab import Vocab
+from cached_property import cached_property
+from sentence_transformers import SentenceTransformer
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_ALPHABET = list("0123456789abcdefghijklmnopqrstuvwxyz!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~ ")
 
-AVAILABLE_VOCABS = [
-    "charngram.100d",
-    "fasttext.en.300d",
-    "fasttext.simple.300d",
-    "glove.42B.300d",
-    "glove.840B.300d",
-    "glove.twitter.27B.25d",
-    "glove.twitter.27B.50d",
-    "glove.twitter.27B.100d",
-    "glove.twitter.27B.200d",
-    "glove.6B.50d",
-    "glove.6B.100d",
-    "glove.6B.200d",
-    "glove.6B.300d",
-]
-
 
 class FieldType(Enum):
     STRING = "string"
     MULTITOKEN = "multitoken"
-    SEMANTIC_STRING = "semantic_string"
-    SEMANTIC_MULTITOKEN = "semantic_multitoken"
+    SEMANTIC = "semantic"
 
 
 @dataclass
 class FieldConfig:
-    key: str
+    key: Union[str, List[str]]
     field_type: FieldType
     tokenizer: Callable[[str], List[str]]
     alphabet: List[str]
     max_str_len: int
-    vocab: Vocab
     n_channels: int
     embed_dropout_p: float
     use_attention: bool
+    n_transformer_layers: int
 
     @property
     def is_multitoken(self):
         field_type = self.field_type
         if isinstance(field_type, str):
             field_type = FieldType[field_type]
-        return field_type in (FieldType.MULTITOKEN, FieldType.SEMANTIC_MULTITOKEN)
+        return field_type == FieldType.MULTITOKEN
+
+    @property
+    def is_semantic(self):
+        field_type = self.field_type
+        if isinstance(field_type, str):
+            field_type = FieldType[field_type]
+        return field_type == FieldType.SEMANTIC
+
+    @cached_property
+    def transformer_tokenizer(self):
+        return SentenceTransformer(
+            "stsb-distilbert-base",
+        ).tokenizer
 
     def __repr__(self):
         repr_dict = {}
         for k, v in self.__dict__.items():
+            if k == "transformer_tokenizer":
+                continue
+
             if isinstance(v, Callable):
                 repr_dict[k] = f"{inspect.getmodule(v).__name__}.{v.__name__}"
             else:
@@ -77,9 +77,30 @@ def default_tokenizer(val):
     return tokenizer_re.findall(val)
 
 
-class StringNumericalizer:
-    is_multitoken = False
+class SemanticNumericalizer:
+    def __init__(self, field, field_config):
+        self.field = field
+        self.keys = field_config.key
+        self.transformer_tokenizer = field_config.transformer_tokenizer
 
+    def build_tensor(self, val_list):
+        semantic_val_list = []
+        for key, val in zip(self.keys, val_list):
+            semantic_val_list.append("COL")
+            # force lowercase, avoids injection of special tokens
+            semantic_val_list.append(key.lower())
+            semantic_val_list.append("VAL")
+            # force lowercase, avoids injection of special tokens
+            semantic_val_list.append(val.lower())
+
+        semantic_str = " ".join(semantic_val_list)
+        t = self.transformer_tokenizer.encode(
+            semantic_str, padding=False, add_special_tokens=True, return_tensors="pt"
+        ).view(-1)
+        return t, len(val_list)
+
+
+class StringNumericalizer:
     def __init__(self, field, field_config):
         self.field = field
         self.alphabet = field_config.alphabet
@@ -108,23 +129,7 @@ class StringNumericalizer:
         return t, len(val)
 
 
-class SemanticStringNumericalizer:
-    is_multitoken = False
-
-    def __init__(self, field, field_config):
-        self.field = field
-        self.vocab = field_config.vocab
-
-    def build_tensor(self, val):
-        # t is a lookup_tensor like in
-        # https://pytorch.org/tutorials/beginner/nlp/word_embeddings_tutorial.html
-        t = torch.tensor(self.vocab[val], dtype=torch.long)
-        return t, len(val)
-
-
 class MultitokenNumericalizer:
-    is_multitoken = True
-
     def __init__(self, field, field_config):
         self.field = field
         self.tokenizer = field_config.tokenizer
@@ -145,15 +150,6 @@ class MultitokenNumericalizer:
             return torch.stack([t]), 0
 
 
-class SemanticMultitokenNumericalizer(MultitokenNumericalizer):
-    def __init__(self, field, field_config):
-        self.field = field
-        self.tokenizer = field_config.tokenizer
-        self.string_numericalizer = SemanticStringNumericalizer(
-            field=field, field_config=field_config
-        )
-
-
 class RecordNumericalizer:
     def __init__(
         self,
@@ -170,8 +166,13 @@ class RecordNumericalizer:
         for field, numericalizer in self.field_to_numericalizer.items():
             # Get the key from the FieldConfig object for the
             # cases where the field is different from the record's key
-            key = self.field_config_dict[field].key
-            t, sequence_length = numericalizer.build_tensor(record[key])
+            field_config = self.field_config_dict[field]
+            key = field_config.key
+
+            if field_config.is_semantic:
+                t, sequence_length = numericalizer.build_tensor([record[k] for k in key])
+            else:
+                t, sequence_length = numericalizer.build_tensor(record[key])
             tensor_dict[field] = t
             sequence_length_dict[field] = sequence_length
 

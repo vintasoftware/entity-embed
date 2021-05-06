@@ -1,7 +1,7 @@
 import itertools
 import logging
 import random
-from collections import Counter, defaultdict
+from collections import defaultdict
 
 from ordered_set import OrderedSet
 
@@ -198,14 +198,6 @@ def compute_max_str_len(field_val_gen, is_multitoken, tokenizer):
         actual_max_str_len += 1
 
     return actual_max_str_len
-
-
-def compute_vocab_counter(field_val_gen, tokenizer):
-    vocab_counter = Counter()
-    for field_val in field_val_gen:
-        tokens = tokenizer(field_val)
-        vocab_counter.update(tokens)
-    return vocab_counter
 
 
 def id_pairs_to_cluster_mapping_and_dict(id_pairs, record_dict):

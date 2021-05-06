@@ -3,6 +3,7 @@ import os
 
 import pytorch_lightning as pl
 import torch
+import transformers
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_metric_learning.distances import DotProductSimilarity
 from pytorch_metric_learning.losses import SupConLoss
@@ -28,9 +29,7 @@ class _BaseEmbed(pl.LightningModule):
         loss_kwargs=None,
         miner_cls=None,
         miner_kwargs=None,
-        optimizer_cls=torch.optim.Adam,
-        learning_rate=0.001,
-        optimizer_kwargs=None,
+        learning_rate=1e-5,
         ann_k=10,
         sim_threshold_list=[0.3, 0.5, 0.7],
         index_build_kwargs=None,
@@ -41,18 +40,6 @@ class _BaseEmbed(pl.LightningModule):
         self.save_hyperparameters()
 
         self.record_numericalizer = record_numericalizer
-        for field_config in self.record_numericalizer.field_config_dict.values():
-            vocab = field_config.vocab
-            if vocab:
-                # We can assume that there's only one vocab type across the
-                # whole field_config_dict, so we can stop the loop once we've
-                # found a field_config with a vocab
-                valid_embedding_size = vocab.vectors.size(1)
-                if valid_embedding_size != embedding_size:
-                    raise ValueError(
-                        f"Invalid embedding_size={embedding_size}. "
-                        f"Expected {valid_embedding_size}, due to semantic fields."
-                    )
         self.embedding_size = embedding_size
         self.blocker_net = BlockerNet(
             field_config_dict=self.record_numericalizer.field_config_dict,
@@ -65,19 +52,31 @@ class _BaseEmbed(pl.LightningModule):
             )
         else:
             self.miner = None
-        self.optimizer_cls = optimizer_cls
         self.learning_rate = learning_rate
-        self.optimizer_kwargs = optimizer_kwargs if optimizer_kwargs is not None else {}
         self.ann_k = ann_k
         self.sim_threshold_list = sim_threshold_list
         self.index_build_kwargs = index_build_kwargs
         self.index_search_kwargs = index_search_kwargs
 
-    def forward(self, tensor_dict, sequence_length_dict, return_field_embeddings=False):
+    def forward(
+        self,
+        tensor_dict,
+        sequence_length_dict,
+        transformer_attention_mask_dict,
+        return_field_embeddings=False,
+    ):
         tensor_dict = utils.tensor_dict_to_device(tensor_dict, device=self.device)
         sequence_length_dict = utils.tensor_dict_to_device(sequence_length_dict, device=self.device)
+        transformer_attention_mask_dict = utils.tensor_dict_to_device(
+            transformer_attention_mask_dict, device=self.device
+        )
 
-        return self.blocker_net(tensor_dict, sequence_length_dict, return_field_embeddings)
+        return self.blocker_net(
+            tensor_dict,
+            sequence_length_dict,
+            transformer_attention_mask_dict,
+            return_field_embeddings,
+        )
 
     def _warn_if_empty_indices_tuple(self, indices_tuple, batch_idx):
         with torch.no_grad():
@@ -88,8 +87,10 @@ class _BaseEmbed(pl.LightningModule):
                 )
 
     def training_step(self, batch, batch_idx):
-        tensor_dict, sequence_length_dict, labels = batch
-        embeddings = self.blocker_net(tensor_dict, sequence_length_dict)
+        tensor_dict, sequence_length_dict, transformer_attention_mask_dict, labels = batch
+        embeddings = self.blocker_net(
+            tensor_dict, sequence_length_dict, transformer_attention_mask_dict
+        )
         if self.miner:
             indices_tuple = self.miner(embeddings, labels)
             self._warn_if_empty_indices_tuple(indices_tuple, batch_idx)
@@ -110,8 +111,10 @@ class _BaseEmbed(pl.LightningModule):
         )
 
     def validation_step(self, batch, batch_idx):
-        tensor_dict, sequence_length_dict = batch
-        embedding_batch = self.blocker_net(tensor_dict, sequence_length_dict)
+        tensor_dict, sequence_length_dict, transformer_attention_mask_dict = batch
+        embedding_batch = self.blocker_net(
+            tensor_dict, sequence_length_dict, transformer_attention_mask_dict
+        )
         return embedding_batch
 
     def validation_epoch_end(self, outputs):
@@ -124,8 +127,8 @@ class _BaseEmbed(pl.LightningModule):
         self.log_dict(metric_dict)
 
     def test_step(self, batch, batch_idx):
-        tensor_dict, sequence_length_dict = batch
-        return self.blocker_net(tensor_dict, sequence_length_dict)
+        tensor_dict, sequence_length_dict, transformer_attention_mask_dict = batch
+        return self.blocker_net(tensor_dict, sequence_length_dict, transformer_attention_mask_dict)
 
     def test_epoch_end(self, outputs):
         metric_dict = self._evaluate_with_ann(
@@ -137,8 +140,35 @@ class _BaseEmbed(pl.LightningModule):
         self.log_dict(metric_dict)
 
     def configure_optimizers(self):
-        optimizer = self.optimizer_cls(
-            self.parameters(), lr=self.learning_rate, **self.optimizer_kwargs
+        named_parameters = list(self.named_parameters())
+        no_decay = ["bias", "LayerNorm.weight"]
+
+        optimizer_grouped_parameters = [
+            {
+                "params": [
+                    p
+                    for n, p in named_parameters
+                    if not any(nd in n for nd in no_decay) and "semantic" in n
+                ],
+                "weight_decay": 0.01,
+            },
+            {
+                "params": [
+                    p
+                    for n, p in named_parameters
+                    if any(nd in n for nd in no_decay) and "semantic" in n
+                ],
+                "weight_decay": 0.0,
+            },
+            {
+                "params": [p for n, p in named_parameters if "semantic" not in n],
+                "weight_decay": 0.0,
+                "lr": 0.001,
+            },
+        ]
+        optimizer = transformers.AdamW(
+            optimizer_grouped_parameters,
+            lr=self.learning_rate,
         )
         return optimizer
 
@@ -223,8 +253,8 @@ class _BaseEmbed(pl.LightningModule):
 
     def _evaluate_metrics(self, set_name, dataloader, record_dict, pos_pair_set):
         embedding_batch_list = []
-        for tensor_dict, sequence_length_dict in dataloader:
-            embeddings = self(tensor_dict, sequence_length_dict)
+        for tensor_dict, sequence_length_dict, transformer_attention_mask_dict in dataloader:
+            embeddings = self(tensor_dict, sequence_length_dict, transformer_attention_mask_dict)
             embedding_batch_list.append(embeddings)
 
         metric_dict = self._evaluate_with_ann(
@@ -297,8 +327,13 @@ class _BaseEmbed(pl.LightningModule):
             else:
                 field_vector_dict = None
 
-            for tensor_dict, sequence_length_dict in record_loader:
-                result = self(tensor_dict, sequence_length_dict, return_field_embeddings)
+            for tensor_dict, sequence_length_dict, transformer_attention_mask_dict in record_loader:
+                result = self(
+                    tensor_dict,
+                    sequence_length_dict,
+                    transformer_attention_mask_dict,
+                    return_field_embeddings,
+                )
                 if return_field_embeddings:
                     field_embeddings_dict, avg_embeddings = result
                     for field, field_embeddings in field_embeddings_dict.items():
