@@ -127,7 +127,7 @@ class DeepmatcherBenchmark(ABC):
 
         return pos_pair_set, neg_pair_set
 
-    def build_datamodule(self, record_numericalizer, batch_size, eval_batch_size, random_seed):
+    def build_datamodule(self, pair_numericalizer, batch_size, eval_batch_size, random_seed):
         return PairwiseLinkageDataModule(
             train_record_dict=self.train_record_dict,
             valid_record_dict=self.valid_record_dict,
@@ -140,7 +140,7 @@ class DeepmatcherBenchmark(ABC):
             valid_neg_pair_set=self.valid_neg_pair_set,
             test_pos_pair_set=self.test_pos_pair_set,
             test_neg_pair_set=self.test_neg_pair_set,
-            record_numericalizer=record_numericalizer,
+            pair_numericalizer=pair_numericalizer,
             batch_size=batch_size,
             eval_batch_size=eval_batch_size,
             random_seed=random_seed,

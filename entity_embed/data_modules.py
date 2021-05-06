@@ -311,7 +311,7 @@ class PairwiseLinkageDataModule(pl.LightningDataModule):
         valid_neg_pair_set,
         test_pos_pair_set,
         test_neg_pair_set,
-        record_numericalizer,
+        pair_numericalizer,
         batch_size,
         eval_batch_size,
         train_loader_kwargs=None,
@@ -328,7 +328,7 @@ class PairwiseLinkageDataModule(pl.LightningDataModule):
                 test_record_dict,
             )
 
-        self.record_numericalizer = record_numericalizer
+        self.pair_numericalizer = pair_numericalizer
         self.batch_size = batch_size
         self.eval_batch_size = eval_batch_size
         self.train_loader_kwargs = build_loader_kwargs(train_loader_kwargs)
@@ -362,7 +362,7 @@ class PairwiseLinkageDataModule(pl.LightningDataModule):
             record_dict=self.train_record_dict,
             pos_pair_set=self.train_pos_pair_set,
             neg_pair_set=self.train_neg_pair_set,
-            record_numericalizer=self.record_numericalizer,
+            pair_numericalizer=self.pair_numericalizer,
             batch_size=self.batch_size,
             # Combined with reload_dataloaders_every_epoch on Trainer,
             # this re-shuffles training batches every epoch,
@@ -384,7 +384,7 @@ class PairwiseLinkageDataModule(pl.LightningDataModule):
             record_dict=self.valid_record_dict,
             pos_pair_set=self.valid_pos_pair_set,
             neg_pair_set=self.valid_neg_pair_set,
-            record_numericalizer=self.record_numericalizer,
+            pair_numericalizer=self.pair_numericalizer,
             batch_size=self.batch_size,
             random_seed=None,
         )
@@ -401,7 +401,7 @@ class PairwiseLinkageDataModule(pl.LightningDataModule):
             record_dict=self.test_record_dict,
             pos_pair_set=self.test_pos_pair_set,
             neg_pair_set=self.test_neg_pair_set,
-            record_numericalizer=self.record_numericalizer,
+            pair_numericalizer=self.pair_numericalizer,
             batch_size=self.batch_size,
             random_seed=None,
         )

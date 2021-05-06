@@ -340,53 +340,25 @@ class BlockerNet(nn.Module):
 
 
 class MatcherNet(nn.Module):
-    def __init__(self, field_config_dict, embedding_size):
+    def __init__(self, embedding_size, final_dropout_p):
         super().__init__()
-        self.field_config_dict = field_config_dict
         self.embedding_size = embedding_size
-        self.field_embed_net = FieldsEmbedNet(
-            field_config_dict=field_config_dict, embedding_size=embedding_size
-        )
-        self.hidden_size = self.embedding_size * len(self.field_config_dict)
-        self.match_dense_net = nn.Sequential(
-            nn.Linear(self.hidden_size * 2, self.hidden_size),
-            nn.ReLU(),
-            nn.Linear(self.hidden_size, 1),
-        )
+        self.transformer_net = SentenceTransformer("stsb-distilbert-base")
 
-    def _forward_one_side(self, tensor_dict, sequence_length_dict, transformer_attention_mask_dict):
-        field_embedding_dict, __ = self.field_embed_net(
-            tensor_dict=tensor_dict,
-            sequence_length_dict=sequence_length_dict,
-            transformer_attention_mask_dict=transformer_attention_mask_dict,
-        )
-        x = torch.stack(list(field_embedding_dict.values()), dim=1)
+        # Fix to use cls token, instead of mean of tokens
+        self.transformer_net[1].pooling_mode_cls_token = True
+        self.transformer_net[1].pooling_mode_mean_tokens = False
 
-        # normalize
-        x = F.normalize(x, dim=-1)
+        if final_dropout_p:
+            self.dropout = nn.Dropout(p=final_dropout_p)
+        else:
+            self.dropout = None
+        sentence_dim_size = self.transformer_net.get_sentence_embedding_dimension()
+        self.dense_net = nn.Linear(sentence_dim_size, 1)
 
-        return x.reshape(x.size(0), -1)
-
-    def forward(
-        self,
-        tensor_dict_left,
-        sequence_length_dict_left,
-        transformer_attention_mask_dict_left,
-        tensor_dict_right,
-        sequence_length_dict_right,
-        transformer_attention_mask_dict_right,
-    ):
-        embed_left = self._forward_one_side(
-            tensor_dict=tensor_dict_left,
-            sequence_length_dict=sequence_length_dict_left,
-            transformer_attention_mask_dict=transformer_attention_mask_dict_left,
-        )
-        embed_right = self._forward_one_side(
-            tensor_dict=tensor_dict_right,
-            sequence_length_dict=sequence_length_dict_right,
-            transformer_attention_mask_dict=transformer_attention_mask_dict_right,
-        )
-        embed_pair = torch.cat(
-            (torch.abs(embed_left - embed_right), embed_left * embed_right), dim=1
-        )
-        return self.match_dense_net(embed_pair).view(-1)
+    def forward(self, pair_tensor_batch):
+        t_outputs = self.transformer_net(pair_tensor_batch)
+        x = t_outputs["sentence_embedding"]
+        x = self.dropout(x)
+        x = self.dense_net(x)
+        return x.view(-1)
