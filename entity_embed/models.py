@@ -174,6 +174,21 @@ class MultitokenAvgEmbed(nn.Module):
         return representations
 
 
+class MLPPoolNet(nn.Module):
+    def __init__(self, field_config_dict, embedding_size):
+        super().__init__()
+
+        self.norm = nn.LayerNorm(embedding_size)
+        hidden_size = embedding_size * len(field_config_dict)
+        self.dense_net = nn.Linear(hidden_size, embedding_size)
+
+    def forward(self, field_embedding_dict, sequence_length_dict):
+        x = torch.stack(list(field_embedding_dict.values()), dim=1)
+        x = self.norm(x)
+        x = x.reshape(x.size(0), -1)
+        return self.dense_net(x)
+
+
 class EntityAvgPoolNet(nn.Module):
     def __init__(self, field_config_dict, embedding_size):
         super().__init__()
@@ -264,6 +279,7 @@ class BlockerNet(nn.Module):
         self,
         field_config_dict,
         embedding_size=300,
+        use_mlp_pool=True,
     ):
         super().__init__()
         self.field_config_dict = field_config_dict
@@ -271,46 +287,55 @@ class BlockerNet(nn.Module):
         self.field_embed_net = FieldsEmbedNet(
             field_config_dict=field_config_dict, embedding_size=embedding_size
         )
-        self.avg_pool_net = EntityAvgPoolNet(
-            field_config_dict=field_config_dict, embedding_size=embedding_size
-        )
+        self.use_mlp_pool = use_mlp_pool
+        if use_mlp_pool:
+            self.pool_net = MLPPoolNet(
+                field_config_dict=field_config_dict, embedding_size=embedding_size
+            )
+        else:
+            self.pool_net = EntityAvgPoolNet(
+                field_config_dict=field_config_dict, embedding_size=embedding_size
+            )
 
     def forward(self, tensor_dict, sequence_length_dict, return_field_embeddings=False):
         field_embedding_dict = self.field_embed_net(
             tensor_dict=tensor_dict, sequence_length_dict=sequence_length_dict
         )
-        avg_embedding = self.avg_pool_net(
+        embedding = self.pool_net(
             field_embedding_dict=field_embedding_dict, sequence_length_dict=sequence_length_dict
         )
         if return_field_embeddings:
-            return field_embedding_dict, avg_embedding
+            return field_embedding_dict, embedding
         else:
-            return avg_embedding
+            return embedding
 
     def fix_pool_weights(self):
         """
         Force pool weights between 0 and 1 and total sum as 1.
         """
-        if self.avg_pool_net.weights is None:
-            return
+        if self.use_mlp_pool or self.pool_net.weights is None:
+            return {}
 
         with torch.no_grad():
-            sd = self.avg_pool_net.state_dict()
+            sd = self.pool_net.state_dict()
             weights = sd["weights"]
             weights = weights.clamp(min=1e-5, max=1.0)
             weights = weights / weights.sum()
             sd["weights"] = weights
-            self.avg_pool_net.load_state_dict(sd)
+            self.pool_net.load_state_dict(sd)
 
     def get_pool_weights(self):
+        if self.use_mlp_pool:
+            return {}
+
         with torch.no_grad():
-            if self.avg_pool_net.weights is None:
+            if self.pool_net.weights is None:
                 return {list(self.field_config_dict.keys())[0]: 1.0}
 
             return {
                 field: float(weight)
                 for field, weight in zip(
                     self.field_config_dict.keys(),
-                    self.avg_pool_net.state_dict()["weights"],
+                    self.pool_net.state_dict()["weights"],
                 )
             }
