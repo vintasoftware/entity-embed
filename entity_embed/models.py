@@ -208,9 +208,9 @@ class EntityAvgPoolNet(nn.Module):
             x = torch.stack(list(field_embedding_dict.values()), dim=1)
             x = self.norm(x)
 
-            return F.normalize((x * self.weights.unsqueeze(-1).expand_as(x)).sum(axis=1), dim=1)
+            return (x * self.weights.unsqueeze(-1).expand_as(x)).sum(axis=1)
         else:
-            return F.normalize(list(field_embedding_dict.values())[0], dim=1)
+            return list(field_embedding_dict.values())[0]
 
 
 class FieldsEmbedNet(nn.Module):
@@ -279,7 +279,7 @@ class BlockerNet(nn.Module):
         self,
         field_config_dict,
         embedding_size=300,
-        use_mlp_pool=True,
+        use_mlp_pool=False,
     ):
         super().__init__()
         self.field_config_dict = field_config_dict

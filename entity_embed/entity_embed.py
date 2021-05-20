@@ -5,8 +5,6 @@ import pytorch_lightning as pl
 import torch
 import torch.nn.functional as F
 from pytorch_lightning.loggers import TensorBoardLogger
-from pytorch_metric_learning.distances import CosineSimilarity
-from pytorch_metric_learning.losses import SupConLoss
 from pytorch_metric_learning.utils import loss_and_miner_utils as lmu
 from tqdm.auto import tqdm
 
@@ -25,15 +23,11 @@ class _BaseEmbed(pl.LightningModule):
         self,
         record_numericalizer,
         embedding_size=300,
-        loss_cls=SupConLoss,
-        loss_kwargs=None,
-        miner_cls=None,
-        miner_kwargs=None,
         optimizer_cls=torch.optim.Adam,
         learning_rate=0.001,
         optimizer_kwargs=None,
         ann_k=10,
-        sim_threshold_list=[0.3, 0.5, 0.7],
+        sim_threshold_list=[0.4, 0.6, 0.8],
         index_build_kwargs=None,
         index_search_kwargs=None,
         **kwargs,
@@ -59,15 +53,8 @@ class _BaseEmbed(pl.LightningModule):
             field_config_dict=self.record_numericalizer.field_config_dict,
             embedding_size=self.embedding_size,
         )
-        self.loss_fn = loss_cls(**loss_kwargs if loss_kwargs else {"temperature": 0.1})
-        if miner_cls:
-            self.miner = miner_cls(
-                **miner_kwargs if miner_kwargs else {"distance": CosineSimilarity()}
-            )
-        else:
-            self.miner = None
-        self.lbda = 1
-        self.mu = 1
+        self.lbda = 25
+        self.mu = 25
         self.nu = 1
         self.small_val = 0.0001
         self.optimizer_cls = optimizer_cls
@@ -82,32 +69,21 @@ class _BaseEmbed(pl.LightningModule):
         tensor_dict = utils.tensor_dict_to_device(tensor_dict, device=self.device)
         sequence_length_dict = utils.tensor_dict_to_device(sequence_length_dict, device=self.device)
 
-        return self.blocker_net(tensor_dict, sequence_length_dict, return_field_embeddings)
-
-    def _warn_if_empty_indices_tuple(self, indices_tuple, batch_idx):
-        with torch.no_grad():
-            if all(t.nelement() == 0 for t in indices_tuple):
-                logger.warning(
-                    f"Found empty indices_tuple at self.current_epoch={self.current_epoch}, "
-                    f"batch_idx={batch_idx}"
-                )
+        return F.normalize(
+            self.blocker_net(tensor_dict, sequence_length_dict, return_field_embeddings), dim=-1
+        )
 
     def training_step(self, batch, batch_idx):
         tensor_dict, sequence_length_dict, labels = batch
         embeddings = self.blocker_net(tensor_dict, sequence_length_dict)
-        if self.miner:
-            indices_tuple = self.miner(embeddings, labels)
-            self._warn_if_empty_indices_tuple(indices_tuple, batch_idx)
-        else:
-            indices_tuple = None
 
         # invariance loss
-        sim_loss = self.loss_fn(embeddings, labels, indices_tuple=indices_tuple)
-
-        # variance loss
         anchor_idx, pos_idx, __, __ = lmu.get_all_pairs_indices(labels)
         z_a = embeddings[anchor_idx]
         z_b = embeddings[pos_idx]
+        inv_loss = F.mse_loss(z_a, z_b)
+
+        # variance loss
         std_z_a = torch.sqrt(z_a.var(dim=0) + self.small_val)
         std_z_b = torch.sqrt(z_b.var(dim=0) + self.small_val)
         std_loss = torch.mean(F.relu(1 - std_z_a)) + torch.mean(F.relu(1 - std_z_b))
@@ -123,9 +99,9 @@ class _BaseEmbed(pl.LightningModule):
             + cov_z_b.fill_diagonal_(0).pow_(2).sum() / D
         )
 
-        loss = self.lbda * sim_loss + self.mu * std_loss + self.nu * cov_loss
+        loss = self.lbda * inv_loss + self.mu * std_loss + self.nu * cov_loss
 
-        self.log("train_sim_loss", sim_loss)
+        self.log("train_inv_loss", inv_loss)
         self.log("train_std_loss", std_loss)
         self.log("train_cov_loss", cov_loss)
         self.log("train_loss", loss)

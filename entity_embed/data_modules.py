@@ -110,7 +110,6 @@ class DeduplicationDataModule(pl.LightningDataModule):
             cluster_field=self.cluster_field,
             record_numericalizer=self.record_numericalizer,
             batch_size=self.batch_size,
-            max_cluster_size_in_batch=self.batch_size // 3,
             # Combined with reload_dataloaders_every_epoch on Trainer,
             # this re-shuffles training batches every epoch,
             # therefore improving contrastive learning:
@@ -252,7 +251,6 @@ class LinkageDataModule(pl.LightningDataModule):
             cluster_field=self.cluster_field,
             record_numericalizer=self.record_numericalizer,
             batch_size=self.batch_size,
-            max_cluster_size_in_batch=self.batch_size // 3,
             # Combined with reload_dataloaders_every_epoch on Trainer,
             # this re-shuffles training batches every epoch,
             # therefore improving contrastive learning:
