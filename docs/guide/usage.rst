@@ -23,7 +23,7 @@ Let's learn first how to use Entity Embed for Deduplication. After that, we can 
 Preparing the data
 ~~~~~~~~~~~~~~~~~~
 
-Your data needs to represent a list of records as list of ``dict`` s. Those ``dict`` s must contain:
+Your data needs to represent a list of records as list of ``dicts``. Those ``dicts`` must contain:
 
 * an ``id`` to uniquely identify each record
 * a ``cluster`` key that indicates the true matching records (same real-world entity)
