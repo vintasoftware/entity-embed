@@ -23,7 +23,7 @@ Let's learn first how to use Entity Embed for Deduplication. After that, we can 
 Preparing the data
 ~~~~~~~~~~~~~~~~~~
 
-Your data needs to represent a list of records as list of ``dicts``. Those ``dicts`` must contain:
+Your data needs to represent a list of records as list of ``dict`` objects. Those must contain:
 
 * an ``id`` to uniquely identify each record
 * a ``cluster`` key that indicates the true matching records (same real-world entity)
@@ -59,7 +59,7 @@ That's called a ``record_dict`` across Entity Embed's API. Once you have your ``
         random_seed=42,
     )
 
-Note we're splitting the data on **clusters**, not records, so the record counts vary across the returned ``record_dict`` s.
+Note we're splitting the data on **clusters**, not records, so the record counts vary across ``train_record_dict``, ``valid_record_dict``, ``test_record_dict``.
 
 Defining the fields
 ~~~~~~~~~~~~~~~~~~~
@@ -191,7 +191,7 @@ When running in production, you only have access to the trained ``model`` object
         batch_size=64
     )
 
-The ``vector_dict`` maps ``id`` s to numpy arrays of the record embeddings.
+The ``vector_dict`` maps each ``id`` to a numpy array of the record embedding.
 
 But what you usually want instead is the ANN pairs. You can get them with the ``predict_pairs`` method::
 
@@ -207,7 +207,7 @@ But what you usually want instead is the ANN pairs. You can get them with the ``
 Remember you must filter the ``found_pair_set`` to find the best matching pairs. An example on how to do that for the Record Linkage case is available at `notebooks/End-to-End-Matching-Example.ipynb <https://github.com/vintasoftware/entity-embed/blob/main/notebooks/End-to-End-Matching-Example.ipynb>`_.
 
 .. note::
-    Even though we used the same ``ann_k`` and one of the ``sim_threshold`` s from the model training, you're free to use any value you want here.
+    Even though we used the same ``ann_k`` and one of the ``sim_threshold`` from the model training, you're free to use any value you want here.
 
 .. _record_linkage:
 
@@ -281,7 +281,7 @@ Use the ``LinkageEmbed`` class to initialize the model object. Again, there are 
 Finding candidate pairs
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-When calling ``predict``, you will now get two ``vector_dict`` s, one for each source dataset::
+When calling ``predict``, you will now get two ``vector_dict`` objects, one for each source dataset::
 
     test_left_vector_dict, test_right_vector_dict = model.predict(
         record_dict=test_record_dict,
@@ -297,7 +297,7 @@ But the ``predict_pairs`` method works the same way::
         sim_threshold=0.3,
     )
 
-For Record Linkage, ``found_pair_set`` is again a set of tuple ``id`` pairs, but there's a catch: the first position of the tuple will always have the left dataset ``id`` s, while the second position will have the right dataset ``id`` s.
+For Record Linkage, ``found_pair_set`` is again a set of tuple ``id`` pairs, but there's a catch: the first position of the tuple will always have a left dataset ``id``, while the second position will have a right dataset ``id``.
 
 To learn how to refilter ``found_pair_set`` to find the final matching pairs with good precision, check `notebooks/End-to-End-Matching-Example.ipynb <https://github.com/vintasoftware/entity-embed/blob/main/notebooks/End-to-End-Matching-Example.ipynb>`_.
 
