@@ -197,7 +197,7 @@ class _BaseEmbed(pl.LightningModule):
             "max_epochs": max_epochs,
             "check_val_every_n_epoch": check_val_every_n_epoch,
             "callbacks": [early_stop_callback, checkpoint_callback],
-            "reload_dataloaders_every_epoch": True,  # for shuffling ClusterDataset every epoch
+            "reload_dataloaders_every_epoch": True,  # for shuffling BlockDataset every epoch
         }
         if use_gpu:
             trainer_args["gpus"] = 1

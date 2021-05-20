@@ -7,8 +7,6 @@ import torch.nn as nn
 from torch.utils.data import Dataset
 from torch.utils.data._utils.collate import default_collate
 
-from . import utils
-
 logger = logging.getLogger(__name__)
 
 
@@ -32,11 +30,11 @@ def _collate_tensor_dict(record_batch, record_numericalizer):
     return tensor_dict, sequence_length_dict
 
 
-class ClusterDataset(Dataset):
+class BlockDataset(Dataset):
     def __init__(
         self,
         record_dict,
-        cluster_field,
+        pos_pair_set,
         record_numericalizer,
         batch_size,
         random_seed,
@@ -46,18 +44,22 @@ class ClusterDataset(Dataset):
         self.batch_size = batch_size
 
         if self.batch_size % 2 != 0:
-            raise ValueError("ClusterDataset batch_size must be divisble by 2")
+            raise ValueError("BlockDataset batch_size must be divisble by 2")
 
-        cluster_dict = utils.record_dict_to_cluster_dict(record_dict, cluster_field)
-        self.pos_pair_set = utils.cluster_dict_to_id_pairs(cluster_dict)
+        self.pos_pair_set = pos_pair_set
         self.rnd = random.Random(random_seed)
 
         self.id_batch_list = self._compute_id_batch_list()
 
     def _compute_id_batch_list(self):
-        pos_pair_list = list(self.pos_pair_set)
+        # First sort pos_pair_set to ensure deterministic order
+        pos_pair_list = sorted(self.pos_pair_set)
+        # Then shuffle
         self.rnd.shuffle(pos_pair_list)
+        # Collapse the pairs into sequential IDs.
+        # Records that represent a positive pairs will be consecutive.
         id_iter = more_itertools.collapse(pos_pair_list)
+        # Finally, divide into batches
         return list(more_itertools.chunked(id_iter, self.batch_size))
 
     def __getitem__(self, idx):
@@ -67,6 +69,7 @@ class ClusterDataset(Dataset):
             record_batch=record_batch,
             record_numericalizer=self.record_numericalizer,
         )
+        # Consecutive IDs are positive pairs
         label_list = torch.arange(0, len(id_batch) // 2).repeat_interleave(2)
         return tensor_dict, sequence_length_dict, label_list
 

@@ -66,6 +66,11 @@ def cluster_dict_to_id_pairs(cluster_dict, left_id_set=None, right_id_set=None):
         return pair_set
 
 
+def record_dict_to_id_pairs(record_dict, cluster_field, left_id_set=None, right_id_set=None):
+    cluster_dict = record_dict_to_cluster_dict(record_dict, cluster_field)
+    return cluster_dict_to_id_pairs(cluster_dict, left_id_set, right_id_set)
+
+
 def count_cluster_dict_pairs(cluster_dict):
     return sum(
         (len(cluster_id_list) * (len(cluster_id_list) - 1)) // 2
