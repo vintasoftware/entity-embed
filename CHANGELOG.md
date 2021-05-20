@@ -6,6 +6,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## 0.0.5 (2021-05-20)
+
+### Fixed
+
+- Fix clamping on `MaskedAttention` and `MultitokenAvgEmbed` to small value less than 1. That's the proper behavior to re-scale attentions that sum to less than 1 and ignore ones that sum to 0. This was only causing a minor decrease in F1 score, though.
+
+### Added
+
+- Add --use_gpu option to CLI (before it would always use a GPU if available)
+- Colab notebooks (see README)
+- Conda compatibility (see README)
+
+### Changed
+
+- Simplify `fix_pool_weights` code. Same behavior.
+
 ## 0.0.4 (2021-04-20)
 
 ### Fixed
