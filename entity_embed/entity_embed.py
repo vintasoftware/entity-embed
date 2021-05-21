@@ -7,6 +7,7 @@ import torch.nn.functional as F
 import transformers
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_metric_learning.utils import loss_and_miner_utils as lmu
+from torch import nn
 from tqdm.auto import tqdm
 
 from .data_utils import utils
@@ -14,7 +15,7 @@ from .data_utils.datasets import RecordDataset
 from .early_stopping import EarlyStoppingMinEpochs, ModelCheckpointMinEpochs
 from .evaluation import f1_score, pair_entity_ratio, precision_and_recall
 from .indexes import ANNEntityIndex, ANNLinkageIndex
-from .models import BlockerNet
+from .models import BlockerNet, MatcherNet
 
 logger = logging.getLogger(__name__)
 
@@ -364,36 +365,6 @@ class _BaseEmbed(pl.LightningModule):
         else:
             return vector_dict
 
-    def interpret_attention(
-        self,
-        record_dict,
-        batch_size,
-        field,
-        loader_kwargs=None,
-        show_progress=True,
-    ):
-        self.freeze()
-        record_loader = self._get_record_loader(record_dict, batch_size, loader_kwargs)
-
-        with tqdm(
-            total=len(record_loader), desc="# batch embedding", disable=not show_progress
-        ) as p_bar:
-            attn_scores_list = []
-
-            for tensor_dict, sequence_length_dict in record_loader:
-                field_tensor = tensor_dict[field].to(self.device)
-                sequence_lengths = sequence_length_dict[field].to(self.device)
-
-                (__, attn_scores) = self.blocker_net.field_embed_net.embed_net_dict[field]._forward(
-                    field_tensor, sequence_lengths
-                )
-
-                attn_scores_list.extend(v.data.numpy() for v in attn_scores.cpu().unbind())
-                p_bar.update(1)
-
-        attn_scores_dict = dict(zip(record_dict.keys(), attn_scores_list))
-        return attn_scores_dict
-
 
 class EntityEmbed(_BaseEmbed):
     def _evaluate_with_ann(self, set_name, record_dict, embedding_batch_list, pos_pair_set):
@@ -624,3 +595,206 @@ class LinkageEmbed(_BaseEmbed):
             return found_pair_set, left_field_vector_dict, right_field_vector_dict
         else:
             return found_pair_set
+
+
+class Matcher(pl.LightningModule):
+    def __init__(
+        self,
+        pair_numericalizer,
+        embedding_size=300,
+        final_dropout_p=0.1,
+        learning_rate=1e-5,
+        sim_threshold_list=[0.3, 0.5, 0.7, 0.9],
+    ):
+        super().__init__()
+        self.save_hyperparameters()
+
+        self.pair_numericalizer = pair_numericalizer
+        self.embedding_size = embedding_size
+        self.matcher_net = MatcherNet(
+            embedding_size=self.embedding_size, final_dropout_p=final_dropout_p
+        )
+        self.loss_fn = nn.BCEWithLogitsLoss()
+        self.learning_rate = learning_rate
+        self.sim_threshold_list = sim_threshold_list
+
+    def forward(self, pair_tensor_batch):
+        logits = self.matcher_net(pair_tensor_batch)
+        proba = logits.sigmoid()
+        return proba
+
+    def training_step(self, batch, batch_idx):
+        (pair_tensor_batch, target) = batch
+        logits = self.matcher_net(pair_tensor_batch)
+        loss = self.loss_fn(logits, target)
+
+        self.log("train_loss", loss)
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        (pair_tensor_batch, target) = batch
+        logits = self.matcher_net(pair_tensor_batch)
+        return logits, target
+
+    def _evaluate(self, set_name, outputs):
+        logits = torch.cat([logits for logits, target in outputs])
+        proba = logits.sigmoid()
+        target = torch.cat([target for logits, target in outputs])
+        target = target.bool()
+        metric_dict = {}
+
+        for sim_threshold in self.sim_threshold_list:
+            pred = proba >= sim_threshold
+            true_pos = (pred & target).sum().float()
+            false_pos = (pred & (~target)).sum().float()
+            false_neg = ((~pred) & target).sum().float()
+            precision = true_pos / (true_pos + false_pos + 1e-12)
+            recall = true_pos / (true_pos + false_neg + 1e-12)
+            f1 = (2 * precision * recall) / (precision + recall + 1e-12)
+
+            metric_dict.update(
+                {
+                    f"{set_name}_precision_at_{sim_threshold}": precision,
+                    f"{set_name}_recall_at_{sim_threshold}": recall,
+                    f"{set_name}_f1_at_{sim_threshold}": f1,
+                }
+            )
+
+        metric_dict = dict(sorted(metric_dict.items(), key=lambda kv: kv[0]))
+        return metric_dict
+
+    def validation_epoch_end(self, outputs):
+        metric_dict = self._evaluate(set_name="valid", outputs=outputs)
+        self.log_dict(metric_dict)
+
+    def test_step(self, batch, batch_idx):
+        (pair_tensor_batch, target) = batch
+        logits = self.matcher_net(pair_tensor_batch)
+        return logits, target
+
+    def test_epoch_end(self, outputs):
+        metric_dict = self._evaluate(set_name="test", outputs=outputs)
+        self.log_dict(metric_dict)
+
+    def configure_optimizers(self):
+        named_parameters = list(self.named_parameters())
+        no_decay = ["bias", "LayerNorm.weight"]
+
+        optimizer_grouped_parameters = [
+            {
+                "params": [p for n, p in named_parameters if not any(nd in n for nd in no_decay)],
+                "weight_decay": 0.01,
+            },
+            {
+                "params": [p for n, p in named_parameters if any(nd in n for nd in no_decay)],
+                "weight_decay": 0.0,
+            },
+        ]
+        optimizer = transformers.AdamW(
+            optimizer_grouped_parameters,
+            lr=self.learning_rate,
+        )
+        return optimizer
+
+    def fit(
+        self,
+        datamodule,
+        min_epochs=5,
+        max_epochs=100,
+        check_val_every_n_epoch=1,
+        early_stop_monitor="valid_f1_at_0.5",
+        early_stop_min_delta=0.0,
+        early_stop_patience=20,
+        early_stop_mode=None,
+        early_stop_verbose=True,
+        model_save_top_k=1,
+        model_save_dir=None,
+        model_save_verbose=False,
+        tb_save_dir=None,
+        tb_name=None,
+        use_gpu=True,
+    ):
+        if early_stop_mode is None:
+            if "pair_entity_ratio_at" in early_stop_monitor:
+                early_stop_mode = "min"
+            else:
+                early_stop_mode = "max"
+
+        early_stop_callback = EarlyStoppingMinEpochs(
+            min_epochs=min_epochs,
+            monitor=early_stop_monitor,
+            min_delta=early_stop_min_delta,
+            patience=early_stop_patience,
+            mode=early_stop_mode,
+            verbose=early_stop_verbose,
+        )
+        checkpoint_callback = ModelCheckpointMinEpochs(
+            min_epochs=min_epochs,
+            monitor=early_stop_monitor,
+            save_top_k=model_save_top_k,
+            mode=early_stop_mode,
+            dirpath=model_save_dir,
+            verbose=model_save_verbose,
+        )
+        trainer_args = {
+            "min_epochs": min_epochs,
+            "max_epochs": max_epochs,
+            "check_val_every_n_epoch": check_val_every_n_epoch,
+            "callbacks": [early_stop_callback, checkpoint_callback],
+            "reload_dataloaders_every_epoch": True,  # for shuffling ClusterDataset every epoch
+        }
+        if use_gpu:
+            trainer_args["gpus"] = 1
+
+        if tb_name and tb_save_dir:
+            trainer_args["logger"] = TensorBoardLogger(
+                tb_save_dir,
+                name=tb_name,
+            )
+        elif tb_name or tb_save_dir:
+            raise ValueError(
+                'Please provide both "tb_name" and "tb_save_dir" to enable '
+                "TensorBoardLogger or omit both to disable it"
+            )
+        trainer = pl.Trainer(**trainer_args)
+        trainer.fit(self, datamodule)
+
+        logger.info(
+            "Loading the best validation model from "
+            f"{trainer.checkpoint_callback.best_model_path}..."
+        )
+        self.matcher_net = None
+        best_model = self.load_from_checkpoint(trainer.checkpoint_callback.best_model_path)
+        best_model = best_model.to(self.device)
+        self.matcher_net = best_model.matcher_net
+        return trainer
+
+    def _evaluate_metrics(self, set_name, dataloader):
+        outputs = []
+        for batch in dataloader:
+            (pair_tensor_batch, target) = batch
+            logits = self.matcher_net(pair_tensor_batch)
+            outputs.append((logits, target))
+
+        metric_dict = self._evaluate(set_name=set_name, outputs=outputs)
+        return metric_dict
+
+    def validate(self, datamodule):
+        self.freeze()
+
+        metric_dict = self._evaluate_metrics(
+            set_name="valid",
+            dataloader=datamodule.val_dataloader(),
+        )
+        return metric_dict
+
+    def test(self, datamodule):
+        self.freeze()
+
+        datamodule.setup(stage="test")
+
+        metric_dict = self._evaluate_metrics(
+            set_name="test",
+            dataloader=datamodule.test_dataloader(),
+        )
+        return metric_dict

@@ -89,6 +89,80 @@ class BlockDataset(Dataset):
         return len(self.id_batch_list)
 
 
+class MatcherDataset(Dataset):
+    def __init__(
+        self,
+        record_dict,
+        pos_pair_set,
+        neg_pair_set,
+        pair_numericalizer,
+        batch_size,
+        random_seed,
+    ):
+        self.record_dict = record_dict
+        self.pair_numericalizer = pair_numericalizer
+        self.pos_pair_set = pos_pair_set
+        self.neg_pair_set = neg_pair_set
+        self.batch_size = batch_size
+        if random_seed is not None:
+            self.rnd = random.Random(random_seed)
+        else:
+            self.rnd = None
+
+        self.pair_batch_list, self.label_batch_list = self._compute_pair_label_batch_list()
+
+    def _compute_pair_label_batch_list(self):
+        # copy deterministically pos_pair_set and neg_pair_set
+        pos_pair_list = sorted(self.pos_pair_set)
+        neg_pair_list = sorted(self.neg_pair_set)
+
+        # shuffle lists
+        if self.rnd:
+            self.rnd.shuffle(pos_pair_list)
+            self.rnd.shuffle(neg_pair_list)
+
+        # divide batches following pos/neg proportion
+        pos_proportion = len(pos_pair_list) / (len(pos_pair_list) + len(neg_pair_list))
+        pos_per_batch = max(int(pos_proportion * self.batch_size), 2)
+        pair_batch_list = []
+        label_batch_list = []
+
+        while pos_pair_list or neg_pair_list:
+            curr_batch_pos_count = 0
+            pair_batch = []
+            label_batch = []
+            while len(pair_batch) < self.batch_size and (pos_pair_list or neg_pair_list):
+                if pos_pair_list and (curr_batch_pos_count < pos_per_batch or not neg_pair_list):
+                    pair_batch.append(pos_pair_list.pop())
+                    label_batch.append(1.0)
+                    curr_batch_pos_count += 1
+                else:
+                    pair_batch.append(neg_pair_list.pop())
+                    label_batch.append(0.0)
+
+            pair_batch_list.append(pair_batch)
+            label_batch_list.append(label_batch)
+
+        return pair_batch_list, label_batch_list
+
+    def __getitem__(self, idx):
+        id_batch_left, id_batch_right = list(zip(*self.pair_batch_list[idx]))
+        record_batch_left = [self.record_dict[id_] for id_ in id_batch_left]
+        record_batch_right = [self.record_dict[id_] for id_ in id_batch_right]
+        pair_tensor_batch = self.pair_numericalizer.build_tensor_batch(
+            record_batch_left, record_batch_right
+        )
+        label_batch = self.label_batch_list[idx]
+
+        return (
+            pair_tensor_batch,
+            default_collate(label_batch),
+        )
+
+    def __len__(self):
+        return len(self.pair_batch_list)
+
+
 class RecordDataset(Dataset):
     def __init__(self, record_dict, record_numericalizer, batch_size):
         self.record_numericalizer = record_numericalizer

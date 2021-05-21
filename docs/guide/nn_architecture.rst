@@ -27,7 +27,7 @@ Check ``entity_embed/data_utils/numericalizer.py``.
 Token Embedding
 ---------------
 
-For field types like ``SEMANTIC`` and ``SEMANTIC_MULTITOKEN``, the NN receives the index of the token embedding and uses a **pre-trained frozen embedding layer like fasttext** (using a `torchtext Vocab object <https://torchtext.readthedocs.io/en/latest/vocab.html#torchtext.vocab.Vocab.load_vectors>`_ ). This type of embedding approximates token strings with similar meanings.
+For field types like ``SEMANTIC`` and ``SEMANTIC``, the NN receives the index of the token embedding and uses a **pre-trained frozen embedding layer like fasttext** (using a `torchtext Vocab object <https://torchtext.readthedocs.io/en/latest/vocab.html#torchtext.vocab.Vocab.load_vectors>`_ ). This type of embedding approximates token strings with similar meanings.
 
 For field types like ``STRING`` and ``MULTITOKEN``, the NN receives a numericalization of the token as a 2D tensor with characters as rows and positions as columns. This is an one hot embedding that's processed by a **character-level 1D Convolutional NN** as the one described on the paper `Convolutional Embedding for Edit Distance <https://arxiv.org/abs/2001.11692>`_. This type of CNN is useful to approximate token strings with short edit-distances.
 
@@ -38,7 +38,7 @@ Check ``SemanticEmbedNet`` and ``StringEmbedCNN`` in ``entity_embed/models.py``.
 Field Embedding
 ---------------
 
-Note the previous step embedded the tokens, but a field can be composed by multiple tokens. That happens when using field types ``SEMANTIC_MULTITOKEN`` and ``MULTITOKEN``.
+Note the previous step embedded the tokens, but a field can be composed by multiple tokens. That happens when using field types ``SEMANTIC`` and ``MULTITOKEN``.
 
 With a sequence of token embeddings, this step uses by default a **GRU with Self-Attention** to summarize the multiple token embeddings into a single embedding. It's also possible to use simple averaging of token embeddings too when using ``use_attention: False`` in the field config.
 

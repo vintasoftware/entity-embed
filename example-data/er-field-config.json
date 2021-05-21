@@ -152,7 +152,7 @@
     },
     "title_semantic": {
         "key": "title",
-        "field_type": "SEMANTIC_MULTITOKEN",
+        "field_type": "SEMANTIC",
         "tokenizer": "entity_embed.default_tokenizer",
         "vocab": "fasttext.en.300d"
     },
@@ -310,7 +310,7 @@
     },
     "album_semantic": {
         "key": "album",
-        "field_type": "SEMANTIC_MULTITOKEN",
+        "field_type": "SEMANTIC",
         "tokenizer": "entity_embed.default_tokenizer",
         "vocab": "fasttext.en.300d"
     },

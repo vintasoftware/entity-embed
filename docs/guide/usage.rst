@@ -79,9 +79,8 @@ Then we define an ``field_config_dict`` . It defines :ref:`Field Types <field_ty
         },
         'title_semantic': {
             'key': 'title',
-            'field_type': "SEMANTIC_MULTITOKEN",
+            'field_type': "SEMANTIC",
             'tokenizer': "entity_embed.default_tokenizer",
-            'vocab': "fasttext.en.300d",
         },
         'artist': {
             'field_type': "MULTITOKEN",
@@ -97,9 +96,8 @@ Then we define an ``field_config_dict`` . It defines :ref:`Field Types <field_ty
         },
         'album_semantic': {
             'key': 'album',
-            'field_type': "SEMANTIC_MULTITOKEN",
+            'field_type': "SEMANTIC",
             'tokenizer': "entity_embed.default_tokenizer",
-            'vocab': "fasttext.en.300d",
         }
     }
 

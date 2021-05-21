@@ -3,7 +3,6 @@ from entity_embed.data_utils.utils import (
     Enumerator,
     cluster_dict_to_id_pairs,
     compute_max_str_len,
-    compute_vocab_counter,
     id_pairs_to_cluster_mapping_and_dict,
     record_dict_to_cluster_dict,
     split_clusters,
@@ -107,14 +106,6 @@ def test_compute_max_str_len_is_multitoken_with_tokenizer_that_doesnt_return_tok
     )
 
     assert max_str_len == 0
-
-
-def test_compute_vocab_counter(field_val_gen):
-    vocab_counter = compute_vocab_counter(
-        field_val_gen=field_val_gen,
-        tokenizer=lambda x: x.split(),
-    )
-    assert dict(vocab_counter) == {"foo": 2, "product": 2, "the": 1, "from": 1, "world": 1}
 
 
 def test_id_pairs_to_cluster_mapping_and_dict():

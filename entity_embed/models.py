@@ -223,7 +223,7 @@ class EntityAvgPoolNet(nn.Module):
         else:
             self.weights = None
 
-    def forward(self, field_embedding_dict, sequence_length_dict):
+    def forward(self, field_embedding_dict, **kwargs):
         if self.weights is not None:
             # layer norm
             x = torch.stack(list(field_embedding_dict.values()), dim=1)
@@ -286,7 +286,7 @@ class FieldsEmbedNet(nn.Module):
         field_embeddings = field_embeddings * field_mask.unsqueeze(dim=-1)
 
         field_embedding_dict = dict(zip(self.embed_net_dict.keys(), field_embeddings.unbind(dim=1)))
-        return field_embedding_dict
+        return field_embedding_dict, field_mask
 
 
 class BlockerNet(nn.Module):
@@ -319,7 +319,7 @@ class BlockerNet(nn.Module):
         transformer_attention_mask_dict,
         return_field_embeddings=False,
     ):
-        field_embedding_dict = self.field_embed_net(
+        field_embedding_dict, __ = self.field_embed_net(
             tensor_dict=tensor_dict,
             sequence_length_dict=sequence_length_dict,
             transformer_attention_mask_dict=transformer_attention_mask_dict,
@@ -362,3 +362,28 @@ class BlockerNet(nn.Module):
                     self.pool_net.state_dict()["weights"],
                 )
             }
+
+
+class MatcherNet(nn.Module):
+    def __init__(self, embedding_size, final_dropout_p):
+        super().__init__()
+        self.embedding_size = embedding_size
+        self.transformer_net = SentenceTransformer("stsb-distilbert-base")
+
+        # Fix to use cls token, instead of mean of tokens
+        self.transformer_net[1].pooling_mode_cls_token = True
+        self.transformer_net[1].pooling_mode_mean_tokens = False
+
+        if final_dropout_p:
+            self.dropout = nn.Dropout(p=final_dropout_p)
+        else:
+            self.dropout = None
+        sentence_dim_size = self.transformer_net.get_sentence_embedding_dimension()
+        self.dense_net = nn.Linear(sentence_dim_size, 1)
+
+    def forward(self, pair_tensor_batch):
+        t_outputs = self.transformer_net(pair_tensor_batch)
+        x = t_outputs["sentence_embedding"]
+        x = self.dropout(x)
+        x = self.dense_net(x)
+        return x.view(-1)

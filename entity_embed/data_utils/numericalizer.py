@@ -8,7 +8,7 @@ import numpy as np
 import regex
 import torch
 from cached_property import cached_property
-from sentence_transformers import SentenceTransformer
+from transformers import AutoTokenizer
 
 logger = logging.getLogger(__name__)
 
@@ -49,9 +49,7 @@ class FieldConfig:
 
     @cached_property
     def transformer_tokenizer(self):
-        return SentenceTransformer(
-            "stsb-distilbert-base",
-        ).tokenizer
+        return build_default_transformer_tokenizer()
 
     def __repr__(self):
         repr_dict = {}
@@ -75,6 +73,10 @@ tokenizer_re = regex.compile(r"[\w--_]+|[^[\w--_]\s]+", flags=regex.V1)
 
 def default_tokenizer(val):
     return tokenizer_re.findall(val)
+
+
+def build_default_transformer_tokenizer():
+    return AutoTokenizer.from_pretrained("distilbert-base-uncased")
 
 
 class SemanticNumericalizer:
@@ -180,3 +182,41 @@ class RecordNumericalizer:
 
     def __repr__(self):
         return f"<RecordNumericalizer with field_config_dict={self.field_config_dict}>"
+
+
+class PairNumericalizer:
+    def __init__(self, field_list):
+        self.field_list = field_list
+        self.transformer_tokenizer = build_default_transformer_tokenizer()
+
+    def _record_to_str(self, record):
+        val_list = []
+        for field in self.field_list:
+            val = record[field]
+            # add COL-VAL
+            val_list.append("COL")
+            # force lowercase, avoids injection of special tokens
+            val_list.append(field.lower())
+            val_list.append("VAL")
+            # force lowercase, avoids injection of special tokens
+            val_list.append(val.lower())
+
+        return " ".join(val_list)
+
+    def _record_batch_to_str_batch(self, record_batch):
+        return [self._record_to_str(record) for record in record_batch]
+
+    def build_tensor_batch(self, record_batch_left, record_batch_right):
+        str_batch_left = self._record_batch_to_str_batch(record_batch_left)
+        str_batch_right = self._record_batch_to_str_batch(record_batch_right)
+
+        return self.transformer_tokenizer(
+            text=str_batch_left,
+            text_pair=str_batch_right,
+            padding=True,
+            add_special_tokens=True,
+            return_tensors="pt",
+        )
+
+    def __repr__(self):
+        return f"<PairNumericalizer with field_list={self.field_list}>"

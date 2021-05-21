@@ -232,6 +232,18 @@ def id_pairs_to_cluster_mapping_and_dict(id_pairs, record_dict):
     return cluster_mapping, cluster_dict
 
 
+def connected_id_pairs(id_pairs):
+    uf = UnionFind()
+    uf.union_pairs(id_pairs)
+    cluster_dict = uf.component_dict()
+
+    # sort to always have smaller id on left of pair tuple
+    for c in cluster_dict.values():
+        c.sort()
+
+    return cluster_dict_to_id_pairs(cluster_dict)
+
+
 def assign_clusters(record_dict, cluster_field, cluster_mapping):
     for id_, record in record_dict.items():
         record[cluster_field] = cluster_mapping[id_]
