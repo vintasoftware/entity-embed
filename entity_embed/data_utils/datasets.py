@@ -112,16 +112,16 @@ class MatcherDataset(Dataset):
         self.pair_batch_list, self.label_batch_list = self._compute_pair_label_batch_list()
 
     def _compute_pair_label_batch_list(self):
-        # copy deterministically pos_pair_set and neg_pair_set
+        # First sort pos_pair_set and neg_pair_list to ensure deterministic order
         pos_pair_list = sorted(self.pos_pair_set)
         neg_pair_list = sorted(self.neg_pair_set)
 
-        # shuffle lists
+        # Shuffle lists
         if self.rnd:
             self.rnd.shuffle(pos_pair_list)
             self.rnd.shuffle(neg_pair_list)
 
-        # divide batches following pos/neg proportion
+        # Divide batches following pos/neg proportion
         pos_proportion = len(pos_pair_list) / (len(pos_pair_list) + len(neg_pair_list))
         pos_per_batch = max(int(pos_proportion * self.batch_size), 2)
         pair_batch_list = []
@@ -150,9 +150,9 @@ class MatcherDataset(Dataset):
         record_batch_left = [self.record_dict[id_] for id_ in id_batch_left]
         record_batch_right = [self.record_dict[id_] for id_ in id_batch_right]
         pair_tensor_batch = self.pair_numericalizer.build_tensor_batch(
-            record_batch_left, record_batch_right
+            record_batch_left + record_batch_right, record_batch_right + record_batch_left
         )
-        label_batch = self.label_batch_list[idx]
+        label_batch = self.label_batch_list[idx] * 2
 
         return (
             pair_tensor_batch,

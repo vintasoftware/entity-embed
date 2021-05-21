@@ -79,32 +79,37 @@ def build_default_transformer_tokenizer():
     return AutoTokenizer.from_pretrained("distilbert-base-uncased")
 
 
+def _record_to_str(keys, record):
+    val_list = []
+    for key in keys:
+        val = record[key]
+        # add COL-VAL
+        val_list.append("COL")
+        # force lowercase, avoids injection of special tokens
+        val_list.append(key.lower())
+        val_list.append("VAL")
+        # force lowercase, avoids injection of special tokens
+        val_list.append(val.lower())
+
+    return " ".join(val_list)
+
+
 class SemanticNumericalizer:
-    def __init__(self, field, field_config):
-        self.field = field
+    def __init__(self, field_config):
         self.keys = field_config.key
         self.transformer_tokenizer = field_config.transformer_tokenizer
 
-    def build_tensor(self, val_list):
-        semantic_val_list = []
-        for key, val in zip(self.keys, val_list):
-            semantic_val_list.append("COL")
-            # force lowercase, avoids injection of special tokens
-            semantic_val_list.append(key.lower())
-            semantic_val_list.append("VAL")
-            # force lowercase, avoids injection of special tokens
-            semantic_val_list.append(val.lower())
-
-        semantic_str = " ".join(semantic_val_list)
+    def build_tensor(self, record):
+        semantic_str = _record_to_str(self.keys, record)
         t = self.transformer_tokenizer.encode(
             semantic_str, padding=False, add_special_tokens=True, return_tensors="pt"
         ).view(-1)
-        return t, sum(len(val) for val in val_list)
+        return t, sum(len(record[key]) for key in self.keys)
 
 
 class StringNumericalizer:
-    def __init__(self, field, field_config):
-        self.field = field
+    def __init__(self, field_config):
+        self.key = field_config.key
         self.alphabet = field_config.alphabet
         self.max_str_len = field_config.max_str_len
         self.char_to_ord = {c: i for i, c in enumerate(self.alphabet)}
@@ -119,7 +124,7 @@ class StringNumericalizer:
                 logger.warning(f"Found out of alphabet char at val={val}, char={c}")
         return ord_encoded
 
-    def build_tensor(self, val):
+    def _build_tensor_from_val(self, val):
         # encoded_arr is a one hot encoded bidimensional tensor
         # with characters as rows and positions as columns.
         # This is the shape expected by StringEmbedCNN.
@@ -130,25 +135,32 @@ class StringNumericalizer:
         t = torch.from_numpy(encoded_arr)
         return t, len(val)
 
+    def build_tensor(self, record):
+        # encoded_arr is a one hot encoded bidimensional tensor
+        # with characters as rows and positions as columns.
+        # This is the shape expected by StringEmbedCNN.
+        val = record[self.key]
+        return self._build_tensor_from_val(val)
+
 
 class MultitokenNumericalizer:
-    def __init__(self, field, field_config):
-        self.field = field
+    def __init__(self, field_config):
+        self.key = field_config.key
         self.tokenizer = field_config.tokenizer
-        self.string_numericalizer = StringNumericalizer(field=field, field_config=field_config)
+        self.string_numericalizer = StringNumericalizer(field_config=field_config)
 
-    def build_tensor(self, val):
-        val_tokens = self.tokenizer(val)
+    def build_tensor(self, record):
+        val_tokens = self.tokenizer(record[self.key])
         t_list = []
         for v in val_tokens:
             if v != "":
-                t, __ = self.string_numericalizer.build_tensor(v)
+                t, __ = self.string_numericalizer._build_tensor_from_val(v)
                 t_list.append(t)
 
         if len(t_list) > 0:
             return torch.stack(t_list), len(t_list)
         else:
-            t, __ = self.string_numericalizer.build_tensor("")
+            t, __ = self.string_numericalizer._build_tensor_from_val("")
             return torch.stack([t]), 0
 
 
@@ -166,15 +178,7 @@ class RecordNumericalizer:
         sequence_length_dict = {}
 
         for field, numericalizer in self.field_to_numericalizer.items():
-            # Get the key from the FieldConfig object for the
-            # cases where the field is different from the record's key
-            field_config = self.field_config_dict[field]
-            key = field_config.key
-
-            if field_config.is_semantic:
-                t, sequence_length = numericalizer.build_tensor([record[k] for k in key])
-            else:
-                t, sequence_length = numericalizer.build_tensor(record[key])
+            t, sequence_length = numericalizer.build_tensor(record)
             tensor_dict[field] = t
             sequence_length_dict[field] = sequence_length
 
@@ -189,22 +193,8 @@ class PairNumericalizer:
         self.field_list = field_list
         self.transformer_tokenizer = build_default_transformer_tokenizer()
 
-    def _record_to_str(self, record):
-        val_list = []
-        for field in self.field_list:
-            val = record[field]
-            # add COL-VAL
-            val_list.append("COL")
-            # force lowercase, avoids injection of special tokens
-            val_list.append(field.lower())
-            val_list.append("VAL")
-            # force lowercase, avoids injection of special tokens
-            val_list.append(val.lower())
-
-        return " ".join(val_list)
-
     def _record_batch_to_str_batch(self, record_batch):
-        return [self._record_to_str(record) for record in record_batch]
+        return [_record_to_str(keys=self.field_list, record=record) for record in record_batch]
 
     def build_tensor_batch(self, record_batch_left, record_batch_right):
         str_batch_left = self._record_batch_to_str_batch(record_batch_left)

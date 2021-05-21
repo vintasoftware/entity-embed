@@ -38,7 +38,7 @@ class FieldConfigDictParser:
 
             field_config = cls._parse_field_config(field, field_config, record_list=record_list)
             parsed_field_config_dict[field] = field_config
-            field_to_numericalizer[field] = cls._build_field_numericalizer(field, field_config)
+            field_to_numericalizer[field] = cls._build_field_numericalizer(field_config)
         return RecordNumericalizer(parsed_field_config_dict, field_to_numericalizer)
 
     @classmethod
@@ -93,7 +93,7 @@ class FieldConfigDictParser:
         )
 
     @classmethod
-    def _build_field_numericalizer(cls, field, field_config: FieldConfig):
+    def _build_field_numericalizer(cls, field_config: FieldConfig):
         field_type = field_config.field_type
 
         field_type_to_numericalizer_cls = {
@@ -105,4 +105,4 @@ class FieldConfigDictParser:
         if numericalizer_cls is None:
             raise ValueError(f"Unexpected field_type={field_type}")  # pragma: no cover
 
-        return numericalizer_cls(field=field, field_config=field_config)
+        return numericalizer_cls(field_config=field_config)
