@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import transformers
+from sentence_transformers import SentenceTransformer
 
 from .data_utils.numericalizer import FieldType
 
@@ -57,13 +59,33 @@ class SemanticEmbedNet(nn.Module):
         super().__init__()
 
         self.embedding_size = embedding_size
-        self.dense_net = nn.Sequential(
-            nn.Embedding.from_pretrained(field_config.vocab.vectors),
-            nn.Dropout(p=field_config.embed_dropout_p),
-        )
+        self.transformer_net = SentenceTransformer("stsb-distilbert-base")
+        sentence_dim_size = self.transformer_net.get_sentence_embedding_dimension()
 
-    def forward(self, x, **kwargs):
-        return self.dense_net(x)
+        if field_config.n_transformer_layers is not None:
+            self.transformer_net[0].auto_model.transformer.layer = self.transformer_net[
+                0
+            ].auto_model.transformer.layer[: field_config.n_transformer_layers]
+
+        if field_config.embed_dropout_p:
+            self.dropout = nn.Dropout(p=field_config.embed_dropout_p)
+        else:
+            self.dropout = None
+        self.dense_net = nn.Linear(sentence_dim_size, embedding_size)
+
+    def forward(self, x, transformer_attention_mask, **kwargs):
+        # Based on Ditto's train_blocker.py: https://github.com/megagonlabs/ditto/
+        t_outputs = self.transformer_net(
+            transformers.BatchEncoding(
+                {"input_ids": x, "attention_mask": transformer_attention_mask}
+            )
+        )
+        x = t_outputs["sentence_embedding"]
+
+        x = self.dropout(x)
+        x = self.dense_net(x)
+
+        return x
 
 
 class MaskedAttention(nn.Module):
@@ -196,9 +218,8 @@ class EntityAvgPoolNet(nn.Module):
         self.norm = nn.LayerNorm(embedding_size)
 
         if len(field_config_dict) > 1:
-            self.weights = nn.Parameter(
-                torch.full((len(field_config_dict),), 1 / len(field_config_dict))
-            )
+            weights_len = len(field_config_dict)
+            self.weights = nn.Parameter(torch.full((weights_len,), 1 / weights_len))
         else:
             self.weights = None
 
@@ -225,45 +246,39 @@ class FieldsEmbedNet(nn.Module):
         self.embed_net_dict = nn.ModuleDict()
 
         for field, field_config in field_config_dict.items():
-            if field_config.field_type in (
-                FieldType.STRING,
-                FieldType.MULTITOKEN,
-            ):
+            if field_config.field_type == FieldType.MULTITOKEN:
                 embed_net = StringEmbedCNN(
                     field_config=field_config,
                     embedding_size=embedding_size,
                 )
-            elif field_config.field_type in (
-                FieldType.SEMANTIC_STRING,
-                FieldType.SEMANTIC_MULTITOKEN,
-            ):
-                embed_net = SemanticEmbedNet(
+
+                if field_config.use_attention:
+                    self.embed_net_dict[field] = MultitokenAttentionEmbed(embed_net)
+                else:
+                    self.embed_net_dict[field] = MultitokenAvgEmbed(embed_net)
+            elif field_config.field_type == FieldType.STRING:
+                self.embed_net_dict[field] = StringEmbedCNN(
+                    field_config=field_config,
+                    embedding_size=embedding_size,
+                )
+            elif field_config.field_type == FieldType.SEMANTIC:
+                self.embed_net_dict[field] = SemanticEmbedNet(
                     field_config=field_config,
                     embedding_size=embedding_size,
                 )
             else:
                 raise ValueError(f"Unexpected field_config.field_type={field_config.field_type}")
 
-            if field_config.field_type in (
-                FieldType.MULTITOKEN,
-                FieldType.SEMANTIC_MULTITOKEN,
-            ):
-                if field_config.use_attention:
-                    self.embed_net_dict[field] = MultitokenAttentionEmbed(embed_net)
-                else:
-                    self.embed_net_dict[field] = MultitokenAvgEmbed(embed_net)
-            elif field_config.field_type in (
-                FieldType.STRING,
-                FieldType.SEMANTIC_STRING,
-            ):
-                self.embed_net_dict[field] = embed_net
-
-    def forward(self, tensor_dict, sequence_length_dict):
+    def forward(self, tensor_dict, sequence_length_dict, transformer_attention_mask_dict):
         field_embeddings = []
 
         for field, embed_net in self.embed_net_dict.items():
-            embedding = embed_net(tensor_dict[field], sequence_lengths=sequence_length_dict[field])
-            field_embeddings.append(embedding)
+            field_embedding = embed_net(
+                tensor_dict[field],
+                sequence_lengths=sequence_length_dict[field],
+                transformer_attention_mask=transformer_attention_mask_dict[field],
+            )
+            field_embeddings.append(field_embedding)
 
         # zero empty strings and sequences
         field_embeddings = torch.stack(field_embeddings, dim=1)
@@ -297,9 +312,17 @@ class BlockerNet(nn.Module):
                 field_config_dict=field_config_dict, embedding_size=embedding_size
             )
 
-    def forward(self, tensor_dict, sequence_length_dict, return_field_embeddings=False):
+    def forward(
+        self,
+        tensor_dict,
+        sequence_length_dict,
+        transformer_attention_mask_dict,
+        return_field_embeddings=False,
+    ):
         field_embedding_dict = self.field_embed_net(
-            tensor_dict=tensor_dict, sequence_length_dict=sequence_length_dict
+            tensor_dict=tensor_dict,
+            sequence_length_dict=sequence_length_dict,
+            transformer_attention_mask_dict=transformer_attention_mask_dict,
         )
         embedding = self.pool_net(
             field_embedding_dict=field_embedding_dict, sequence_length_dict=sequence_length_dict

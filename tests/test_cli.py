@@ -303,7 +303,6 @@ def test_cli_train(
         "tokenizer": entity_embed.data_utils.numericalizer.default_tokenizer,
         "alphabet": entity_embed.data_utils.numericalizer.DEFAULT_ALPHABET,
         "max_str_len": 8,
-        "vocab": None,
         "n_channels": 8,
         "embed_dropout_p": 0.2,
         "use_attention": True,
