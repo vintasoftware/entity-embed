@@ -170,6 +170,7 @@ def _fit_model(model, datamodule, kwargs):
         model_save_verbose=True,
         tb_save_dir=kwargs["tb_save_dir"],
         tb_name=kwargs["tb_name"],
+        use_gpu=kwargs["use_gpu"],
     )
 
 
@@ -318,6 +319,7 @@ def _fit_model(model, datamodule, kwargs):
     help="Directory path where to save the best validation model checkpoint"
     " using PyTorch Lightning",
 )
+@click.option("--use_gpu", type=bool, default=True, help="Use GPU for training")
 def train(**kwargs):
     """
     Transform entities like companies, products, etc. into vectors
@@ -365,7 +367,12 @@ def _load_model(kwargs):
     else:
         model_cls = EntityEmbed
 
-    return model_cls.load_from_checkpoint(kwargs["model_save_filepath"], datamodule=None)
+    model = model_cls.load_from_checkpoint(kwargs["model_save_filepath"], datamodule=None)
+    if kwargs["use_gpu"]:
+        model = model.to(torch.device("cuda"))
+    else:
+        model = model.to(torch.device("cpu"))
+    return model
 
 
 def _predict_pairs(record_dict, model, kwargs):
@@ -499,6 +506,7 @@ def _write_json(found_pairs, kwargs):
     "Remember Entity Embed is focused on recall. "
     "You must use some classifier to filter these and find the best matching pairs.",
 )
+@click.option("--use_gpu", type=bool, default=True, help="Use GPU for predicting pairs")
 def predict(**kwargs):
     _fix_workers_kwargs(kwargs)
     _set_random_seeds(kwargs)

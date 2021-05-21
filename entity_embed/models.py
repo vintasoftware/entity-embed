@@ -43,13 +43,12 @@ class StringEmbedCNN(nn.Module):
         self.dense_net = nn.Sequential(*dense_layers)
 
     def forward(self, x, **kwargs):
-        x_len = len(x)
         x = x.view(x.size(0), 1, -1)
 
         x = F.relu(self.conv1(x))
         x = F.max_pool1d(x, kernel_size=2)
 
-        x = x.view(x_len, self.flat_size)
+        x = x.view(x.size(0), self.flat_size)
         x = self.dense_net(x)
 
         return x
@@ -111,23 +110,21 @@ class MaskedAttention(nn.Module):
 
         # Compute a mask for the attention on the padded sequences
         # See e.g. https://discuss.pytorch.org/t/self-attention-on-words-and-masking/5671/5
-        max_len = h.size(1)
-        idxes = torch.arange(0, max_len, out=torch.LongTensor(max_len)).unsqueeze(0)
-        mask = (idxes < torch.LongTensor(sequence_lengths).unsqueeze(1)).float()
-        if scores.data.is_cuda:
-            mask = mask.cuda()
+        max_sequence_len = h.size(1)
+        idxes = torch.arange(0, max_sequence_len, dtype=torch.int64, device=x.device).unsqueeze(0)
+        mask = (idxes < sequence_lengths.unsqueeze(1)).float()
 
         # apply mask and renormalize attention scores (weights)
         masked_scores = scores * mask
         att_sums = masked_scores.sum(dim=1, keepdim=True)  # sums per sequence
-        att_sums[att_sums == 0] = 1.0  # prevents division by zero on empty sequences
+        att_sums = att_sums.clamp(min=1e-5)  # prevents division by zero on empty sequences
         scores = masked_scores.div(att_sums)
 
         # apply attention weights
         weighted = torch.mul(x, scores.unsqueeze(-1).expand_as(x))
         representations = weighted.sum(dim=1)
 
-        return representations
+        return representations, scores
 
 
 class MultitokenAttentionEmbed(nn.Module):
@@ -143,7 +140,7 @@ class MultitokenAttentionEmbed(nn.Module):
         )
         self.attention_net = MaskedAttention(embedding_size=embed_net.embedding_size)
 
-    def forward(self, x, sequence_lengths, **kwargs):
+    def _forward(self, x, sequence_lengths):
         x_tokens = x.unbind(dim=1)
         x_tokens = [self.embed_net(x) for x in x_tokens]
         x = torch.stack(x_tokens, dim=1)
@@ -152,14 +149,18 @@ class MultitokenAttentionEmbed(nn.Module):
         # but attention_net will use the actual sequence_lengths with zeros
         # https://github.com/pytorch/pytorch/issues/4582
         # https://github.com/pytorch/pytorch/issues/50192
-        sequence_lengths_no_zero = [max(sl, 1) for sl in sequence_lengths]
+        sequence_lengths_no_zero = sequence_lengths.clamp(min=1)
 
         packed_x = nn.utils.rnn.pack_padded_sequence(
-            x, sequence_lengths_no_zero, batch_first=True, enforce_sorted=False
+            x, sequence_lengths_no_zero.cpu(), batch_first=True, enforce_sorted=False
         )
         packed_h, __ = self.gru(packed_x)
         h, __ = nn.utils.rnn.pad_packed_sequence(packed_h, batch_first=True)
         return self.attention_net(h, x, sequence_lengths=sequence_lengths)
+
+    def forward(self, x, sequence_lengths, **kwargs):
+        embeddings, __ = self._forward(x, sequence_lengths)
+        return embeddings
 
 
 class MultitokenAvgEmbed(nn.Module):
@@ -169,26 +170,23 @@ class MultitokenAvgEmbed(nn.Module):
         self.embed_net = embed_net
 
     def forward(self, x, sequence_lengths, **kwargs):
-        max_len = x.size(1)
-        scores = torch.full((max_len,), 1 / max_len)
-        if x.data.is_cuda:
-            scores = scores.cuda()
-
         x_list = x.unbind(dim=1)
         x_list = [self.embed_net(x) for x in x_list]
         x = torch.stack(x_list, dim=1)
 
         # Compute a mask for the attention on the padded sequences
         # See e.g. https://discuss.pytorch.org/t/self-attention-on-words-and-masking/5671/5
-        idxes = torch.arange(0, max_len, out=torch.LongTensor(max_len)).unsqueeze(0)
-        mask = (idxes < torch.LongTensor(sequence_lengths).unsqueeze(1)).float()
-        if x.data.is_cuda:
-            mask = mask.cuda()
+        max_sequence_len = x.size(1)
+        scores = torch.full(
+            (max_sequence_len,), 1 / max_sequence_len, dtype=torch.float32, device=x.device
+        )
+        idxes = torch.arange(0, max_sequence_len, dtype=torch.int64, device=x.device).unsqueeze(0)
+        mask = (idxes < sequence_lengths.unsqueeze(1)).float()
 
         # apply mask and renormalize
         masked_scores = scores * mask
         att_sums = masked_scores.sum(dim=1, keepdim=True)  # sums per sequence
-        att_sums[att_sums == 0] = 1.0  # prevents division by zero on empty sequences
+        att_sums = att_sums.clamp(min=1e-5)  # prevents division by zero on empty sequences
         scores = masked_scores.div(att_sums)
 
         # compute average
@@ -199,8 +197,11 @@ class MultitokenAvgEmbed(nn.Module):
 
 
 class EntityAvgPoolNet(nn.Module):
-    def __init__(self, field_config_dict):
+    def __init__(self, field_config_dict, embedding_size):
         super().__init__()
+
+        self.norm = nn.LayerNorm(embedding_size)
+
         if len(field_config_dict) > 1:
             weights_len = len(field_config_dict)
             self.weights = nn.Parameter(torch.full((weights_len,), 1 / weights_len))
@@ -209,17 +210,10 @@ class EntityAvgPoolNet(nn.Module):
 
     def forward(self, field_embedding_dict, sequence_length_dict):
         if self.weights is not None:
-            field_embedding_list = list(field_embedding_dict.values())
-            x = torch.stack(field_embedding_list, dim=1)
+            # layer norm
+            x = torch.stack(list(field_embedding_dict.values()), dim=1)
+            x = self.norm(x)
 
-            # zero empty strings and sequences
-            field_mask = torch.stack(
-                [torch.tensor(ls, device=x.device) for ls in sequence_length_dict.values()],
-                dim=1,
-            )
-            x = x * field_mask.unsqueeze(dim=-1)
-
-            x = F.normalize(x, dim=2)
             return F.normalize((x * self.weights.unsqueeze(-1).expand_as(x)).sum(axis=1), dim=1)
         else:
             return F.normalize(list(field_embedding_dict.values())[0], dim=1)
@@ -261,7 +255,7 @@ class FieldsEmbedNet(nn.Module):
                 raise ValueError(f"Unexpected field_config.field_type={field_config.field_type}")
 
     def forward(self, tensor_dict, sequence_length_dict, transformer_attention_mask_dict):
-        field_embedding_dict = {}
+        field_embeddings = []
 
         for field, embed_net in self.embed_net_dict.items():
             field_embedding = embed_net(
@@ -269,8 +263,14 @@ class FieldsEmbedNet(nn.Module):
                 sequence_lengths=sequence_length_dict[field],
                 transformer_attention_mask=transformer_attention_mask_dict[field],
             )
-            field_embedding_dict[field] = field_embedding
+            field_embeddings.append(field_embedding)
 
+        # zero empty strings and sequences
+        field_embeddings = torch.stack(field_embeddings, dim=1)
+        field_mask = torch.stack(list(sequence_length_dict.values()), dim=1).clamp(max=1)
+        field_embeddings = field_embeddings * field_mask.unsqueeze(dim=-1)
+
+        field_embedding_dict = dict(zip(self.embed_net_dict.keys(), field_embeddings.unbind(dim=1)))
         return field_embedding_dict
 
 
@@ -286,17 +286,29 @@ class BlockerNet(nn.Module):
         self.field_embed_net = FieldsEmbedNet(
             field_config_dict=field_config_dict, embedding_size=embedding_size
         )
-        self.avg_pool_net = EntityAvgPoolNet(field_config_dict)
+        self.avg_pool_net = EntityAvgPoolNet(
+            field_config_dict=field_config_dict, embedding_size=embedding_size
+        )
 
-    def forward(self, tensor_dict, sequence_length_dict, transformer_attention_mask_dict):
+    def forward(
+        self,
+        tensor_dict,
+        sequence_length_dict,
+        transformer_attention_mask_dict,
+        return_field_embeddings=False,
+    ):
         field_embedding_dict = self.field_embed_net(
             tensor_dict=tensor_dict,
             sequence_length_dict=sequence_length_dict,
             transformer_attention_mask_dict=transformer_attention_mask_dict,
         )
-        return self.avg_pool_net(
+        embedding = self.avg_pool_net(
             field_embedding_dict=field_embedding_dict, sequence_length_dict=sequence_length_dict
         )
+        if return_field_embeddings:
+            return field_embedding_dict, embedding
+        else:
+            return embedding
 
     def fix_pool_weights(self):
         """
@@ -308,19 +320,10 @@ class BlockerNet(nn.Module):
         with torch.no_grad():
             sd = self.avg_pool_net.state_dict()
             weights = sd["weights"]
-            one_tensor = torch.tensor([1.0]).to(weights.device)
-            if torch.any((weights < 0) | (weights > 1)) or not torch.isclose(
-                weights.sum(), one_tensor
-            ):
-                weights[weights < 0] = 0
-                weights_sum = weights.sum()
-                if weights_sum > 0:
-                    weights /= weights.sum()
-                else:
-                    print("Warning: all weights turned to 0. Setting all equal.")
-                    weights[[True] * len(weights)] = 1 / len(weights)
-                sd["weights"] = weights
-                self.avg_pool_net.load_state_dict(sd)
+            weights = weights.clamp(min=1e-5, max=1.0)
+            weights = weights / weights.sum()
+            sd["weights"] = weights
+            self.avg_pool_net.load_state_dict(sd)
 
     def get_pool_weights(self):
         with torch.no_grad():

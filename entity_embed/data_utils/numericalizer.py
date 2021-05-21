@@ -97,7 +97,7 @@ class SemanticNumericalizer:
         t = self.transformer_tokenizer.encode(
             semantic_str, padding=False, add_special_tokens=True, return_tensors="pt"
         ).view(-1)
-        return t, len(val_list)
+        return t, sum(len(val) for val in val_list)
 
 
 class StringNumericalizer:

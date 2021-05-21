@@ -2,15 +2,16 @@
 
 [![PyPi version](https://img.shields.io/pypi/v/entity-embed.svg)](https://pypi.python.org/pypi/entity-embed)
 [![PyPI - Python Version](https://img.shields.io/pypi/pyversions/entity-embed)](https://pypi.org/project/entity-embed/)
+[![CI](https://github.com/vintasoftware/entity-embed/actions/workflows/ci.yml/badge.svg)](https://github.com/vintasoftware/entity-embed/actions/workflows/ci.yml)
 [![Documentation Status](https://readthedocs.org/projects/entity-embed/badge/?version=latest)](https://entity-embed.readthedocs.io/en/latest/?badge=latest)
-[![codecov](https://codecov.io/gh/vintasoftware/entity-embed/branch/main/graph/badge.svg?token=4BW63JN071)](https://codecov.io/gh/vintasoftware/entity-embed)
+[![Coverage Status](https://coveralls.io/repos/github/vintasoftware/entity-embed/badge.svg?branch=main)](https://coveralls.io/github/vintasoftware/entity-embed?branch=main)
 [![License: MIT](https://img.shields.io/github/license/vintasoftware/django-react-boilerplate.svg)](LICENSE.txt)
 
 Entity Embed allows you to transform entities like companies, products, etc. into vectors to support **scalable Record Linkage / Entity Resolution using Approximate Nearest Neighbors**.
 
 Using Entity Embed, you can train a deep learning model to transform records into vectors in an N-dimensional embedding space. Thanks to a contrastive loss, those vectors are organized to keep similar records close and dissimilar records far apart in this embedding space. Embedding records enables [scalable ANN search](http://ann-benchmarks.com/index.html), which means finding thousands of candidate duplicate pairs of records per second per CPU.
 
-Entity Embed achieves Recall of ~0.99 with Pair-Entity ratio below 100 on a variety of datasets. **Entity Embed aims for high recall at the expense of precision. Therefore, this library is suited for the Blocking/Indexing stage of an Entity Resolution pipeline.**  A scalabale and noise-tolerant Blocking procedure is often the main bottleneck for performance and quality on Entity Resolution pipelines, so this library aims to solve that. Note the ANN search on embedded records returns several candidate pairs that must be filtered to find the best matching pairs, possibly with a pairwise classifier.
+Entity Embed achieves Recall of ~0.99 with Pair-Entity ratio below 100 on a variety of datasets. **Entity Embed aims for high recall at the expense of precision. Therefore, this library is suited for the Blocking/Indexing stage of an Entity Resolution pipeline.**  A scalabale and noise-tolerant Blocking procedure is often the main bottleneck for performance and quality on Entity Resolution pipelines, so this library aims to solve that. Note the ANN search on embedded records returns several candidate pairs that must be filtered to find the best matching pairs, possibly with a pairwise classifier (an [example](#Examples) for that is available).
 
 Entity Embed is based on and is a special case of the [AutoBlock model described by Amazon](https://www.amazon.science/publications/autoblock-a-hands-off-blocking-framework-for-entity-matching).
 
@@ -45,6 +46,14 @@ And others, see [requirements.txt](/requirements.txt).
 pip install entity-embed
 ```
 
+### For Conda users
+
+If you're using Conda, you must install PyTorch beforehand to have proper CUDA support. Inside the Conda environment, please run the following command **before** installing Entity Embed using `pip`:
+
+```
+conda install pytorch torchvision torchaudio cudatoolkit=11.1 -c pytorch -c conda-forge
+```
+
 ## Examples
 
 Run:
@@ -57,6 +66,11 @@ Then check the example Jupyter Notebooks:
 
 - Deduplication, when you have a single dirty dataset with duplicates: [notebooks/Deduplication-Example.ipynb](/notebooks/Deduplication-Example.ipynb)
 - Record Linkage, when you have multiple clean datasets you need to link: [notebooks/Record-Linkage-Example.ipynb](/notebooks/Record-Linkage-Example.ipynb)
+- After you run the notebooks/Record-Linkage-Example.ipynb, you can check the [notebooks/End-to-End-Matching-Example.ipynb](/notebooks/End-to-End-Matching-Example.ipynb) to learn how to integrate Entity Embed with a pairwise classifier.
+
+### Colab
+
+Please check [notebooks/google-colab/](https://github.com/vintasoftware/entity-embed/tree/main/notebooks/google-colab/).
 
 ## Releases
 
@@ -73,6 +87,10 @@ This package was created with [Cookiecutter](https://github.com/audreyr/cookiecu
 
 [Vinta Software](https://www.vintasoftware.com/) is always looking for exciting work, so if you need any commercial support, feel free to get in touch: contact@vinta.com.br
 
+## References
+
+- Zhang, W., Wei, H., Sisman, B., Dong, X. L., Faloutsos, C., & Page, D. (2020, January). AutoBlock: A hands-off blocking framework for entity matching. In *Proceedings of the 13th International Conference on Web Search and Data Mining* (pp. 744-752). [(pdf)](https://www.amazon.science/publications/autoblock-a-hands-off-blocking-framework-for-entity-matching)
+- Dai, X., Yan, X., Zhou, K., Wang, Y., Yang, H., & Cheng, J. (2020, July). Convolutional Embedding for Edit Distance. In *Proceedings of the 43rd International ACM SIGIR Conference on Research and Development in Information Retrieval* (pp. 599-608). [(pdf)](https://arxiv.org/abs/2001.11692) [(code)](https://github.com/xinyandai/string-embed/)
 
 ## Citations
 
@@ -85,8 +103,8 @@ BibTeX entry:
   title = {{Entity Embed}: Scalable Entity Resolution using Approximate Nearest Neighbors.},
   author = {Juvenal, Flávio and Vieira, Renato},
   url = {https://github.com/vintasoftware/entity-embed},
-  version = {0.0.2},
-  date = {2021-04-06},
+  version = {0.0.5},
+  date = {2021-04-20},
   year = {2021}
 }
 ```

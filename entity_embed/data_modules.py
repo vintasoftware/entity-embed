@@ -105,7 +105,7 @@ class DeduplicationDataModule(pl.LightningDataModule):
             logger.info("Test positive pair count: %s", len(self.test_pos_pair_set))
 
     def train_dataloader(self):
-        train_cluster_dataset = ClusterDataset.from_cluster_dict(
+        train_cluster_dataset = ClusterDataset(
             record_dict=self.train_record_dict,
             cluster_field=self.cluster_field,
             record_numericalizer=self.record_numericalizer,
@@ -114,9 +114,9 @@ class DeduplicationDataModule(pl.LightningDataModule):
             # Combined with reload_dataloaders_every_epoch on Trainer,
             # this re-shuffles training batches every epoch,
             # therefore improving contrastive learning:
-            random_seed=self.random_seed + self.trainer.current_epoch
-            if self.trainer
-            else self.random_seed,
+            random_seed=(
+                self.random_seed + self.trainer.current_epoch if self.trainer else self.random_seed
+            ),
         )
         train_cluster_loader = torch.utils.data.DataLoader(
             train_cluster_dataset,
@@ -247,7 +247,7 @@ class LinkageDataModule(pl.LightningDataModule):
             logger.info("Test positive pair count: %s", len(self.test_pos_pair_set))
 
     def train_dataloader(self):
-        train_cluster_dataset = ClusterDataset.from_cluster_dict(
+        train_cluster_dataset = ClusterDataset(
             record_dict=self.train_record_dict,
             cluster_field=self.cluster_field,
             record_numericalizer=self.record_numericalizer,
@@ -256,9 +256,9 @@ class LinkageDataModule(pl.LightningDataModule):
             # Combined with reload_dataloaders_every_epoch on Trainer,
             # this re-shuffles training batches every epoch,
             # therefore improving contrastive learning:
-            random_seed=self.random_seed + self.trainer.current_epoch
-            if self.trainer
-            else self.random_seed,
+            random_seed=(
+                self.random_seed + self.trainer.current_epoch if self.trainer else self.random_seed
+            ),
         )
         train_cluster_loader = torch.utils.data.DataLoader(
             train_cluster_dataset,
