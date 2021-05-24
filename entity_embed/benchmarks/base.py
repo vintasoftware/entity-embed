@@ -11,7 +11,7 @@ from ..data_modules import (
     DEFAULT_LEFT_SOURCE,
     DEFAULT_SOURCE_FIELD,
     LinkageDataModule,
-    MatcherLinkageDataModule,
+    MatcherDataModule,
 )
 from ..data_utils import utils
 
@@ -152,7 +152,7 @@ class DeepmatcherBenchmark(ABC):
     def build_matcher_datamodule(
         self, pair_numericalizer, batch_size, eval_batch_size, random_seed
     ):
-        return MatcherLinkageDataModule(
+        return MatcherDataModule(
             train_record_dict=self.train_record_dict,
             valid_record_dict=self.valid_record_dict,
             test_record_dict=self.test_record_dict,

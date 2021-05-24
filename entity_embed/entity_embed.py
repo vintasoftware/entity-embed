@@ -6,6 +6,7 @@ import torch
 import torch.nn.functional as F
 import transformers
 from pytorch_lightning.loggers import TensorBoardLogger
+from pytorch_metric_learning.losses import NTXentLoss
 from pytorch_metric_learning.utils import loss_and_miner_utils as lmu
 from torch import nn
 from tqdm.auto import tqdm
@@ -41,6 +42,7 @@ class _BaseEmbed(pl.LightningModule):
             field_config_dict=self.record_numericalizer.field_config_dict,
             embedding_size=self.embedding_size,
         )
+        self.sim_loss_fn = NTXentLoss()
         self.lbda = 25
         self.mu = 25
         self.nu = 1
@@ -80,6 +82,9 @@ class _BaseEmbed(pl.LightningModule):
             tensor_dict, sequence_length_dict, transformer_attention_mask_dict
         )
 
+        # similarity loss
+        sim_loss = self.sim_loss_fn(embeddings, labels)
+
         # invariance loss
         anchor_idx, pos_idx, __, __ = lmu.get_all_pairs_indices(labels)
         z_a = embeddings[anchor_idx]
@@ -102,8 +107,9 @@ class _BaseEmbed(pl.LightningModule):
             + cov_z_b.fill_diagonal_(0).pow_(2).sum() / D
         )
 
-        loss = self.lbda * inv_loss + self.mu * std_loss + self.nu * cov_loss
+        loss = self.lbda * sim_loss + self.lbda * inv_loss + self.mu * std_loss + self.nu * cov_loss
 
+        self.log("train_sim_loss", sim_loss)
         self.log("train_inv_loss", inv_loss)
         self.log("train_std_loss", std_loss)
         self.log("train_cov_loss", cov_loss)

@@ -98,6 +98,7 @@ class MatcherDataset(Dataset):
         pair_numericalizer,
         batch_size,
         random_seed,
+        add_symmetric=False,
     ):
         self.record_dict = record_dict
         self.pair_numericalizer = pair_numericalizer
@@ -108,6 +109,7 @@ class MatcherDataset(Dataset):
             self.rnd = random.Random(random_seed)
         else:
             self.rnd = None
+        self.add_symmetric = add_symmetric
 
         self.pair_batch_list, self.label_batch_list = self._compute_pair_label_batch_list()
 
@@ -149,10 +151,17 @@ class MatcherDataset(Dataset):
         id_batch_left, id_batch_right = list(zip(*self.pair_batch_list[idx]))
         record_batch_left = [self.record_dict[id_] for id_ in id_batch_left]
         record_batch_right = [self.record_dict[id_] for id_ in id_batch_right]
-        pair_tensor_batch = self.pair_numericalizer.build_tensor_batch(
-            record_batch_left + record_batch_right, record_batch_right + record_batch_left
-        )
-        label_batch = self.label_batch_list[idx] * 2
+
+        if self.add_symmetric:
+            pair_tensor_batch = self.pair_numericalizer.build_tensor_batch(
+                record_batch_left + record_batch_right, record_batch_right + record_batch_left
+            )
+            label_batch = self.label_batch_list[idx] * 2
+        else:
+            pair_tensor_batch = self.pair_numericalizer.build_tensor_batch(
+                record_batch_left, record_batch_right
+            )
+            label_batch = self.label_batch_list[idx]
 
         return (
             pair_tensor_batch,

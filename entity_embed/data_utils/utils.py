@@ -14,19 +14,6 @@ def Enumerator(start=0, initial=()):
     return defaultdict(itertools.count(start).__next__, initial)
 
 
-def record_dict_to_left_right_id_set(record_dict, source_field, left_source):
-    left_id_set = set()
-    right_id_set = set()
-
-    for id_, record in record_dict.items():
-        if record[source_field] == left_source:
-            left_id_set.add(id_)
-        else:
-            right_id_set.add(id_)
-
-    return left_id_set, right_id_set
-
-
 def record_dict_to_cluster_dict(record_dict, cluster_field):
     cluster_dict = defaultdict(list)
     for id_, record in record_dict.items():
@@ -44,31 +31,18 @@ def record_dict_to_cluster_dict(record_dict, cluster_field):
     return dict(cluster_dict)  # convert to dict to avoid defaultdict
 
 
-def cluster_dict_to_id_pairs(cluster_dict, left_id_set=None, right_id_set=None):
-    if left_id_set is None and right_id_set is None:
-        return set(
-            pair
-            for cluster_id_list in cluster_dict.values()
-            # sort to always have smaller id on left of pair tuple
-            for pair in itertools.combinations(sorted(cluster_id_list), 2)
-        )
-    else:
-        pair_set = set()
-        for cluster_id_list in cluster_dict.values():
-            for (id_left, id_right) in itertools.combinations(cluster_id_list, 2):
-                if id_right in left_id_set and id_left in right_id_set:
-                    pair = (id_right, id_left)
-                elif id_left in left_id_set and id_right in right_id_set:
-                    pair = (id_left, id_right)
-                else:  # ignore left-left and right-right pairs
-                    continue
-                pair_set.add(pair)
-        return pair_set
+def cluster_dict_to_id_pairs(cluster_dict):
+    return set(
+        pair
+        for cluster_id_list in cluster_dict.values()
+        # sort to always have smaller id on left of pair tuple
+        for pair in itertools.combinations(sorted(cluster_id_list), 2)
+    )
 
 
-def record_dict_to_id_pairs(record_dict, cluster_field, left_id_set=None, right_id_set=None):
+def record_dict_to_id_pairs(record_dict, cluster_field):
     cluster_dict = record_dict_to_cluster_dict(record_dict, cluster_field)
-    return cluster_dict_to_id_pairs(cluster_dict, left_id_set, right_id_set)
+    return cluster_dict_to_id_pairs(cluster_dict)
 
 
 def count_cluster_dict_pairs(cluster_dict):
@@ -230,18 +204,6 @@ def id_pairs_to_cluster_mapping_and_dict(id_pairs, record_dict):
         current_singleton_cluster_id += 1
 
     return cluster_mapping, cluster_dict
-
-
-def connected_id_pairs(id_pairs):
-    uf = UnionFind()
-    uf.union_pairs(id_pairs)
-    cluster_dict = uf.component_dict()
-
-    # sort to always have smaller id on left of pair tuple
-    for c in cluster_dict.values():
-        c.sort()
-
-    return cluster_dict_to_id_pairs(cluster_dict)
 
 
 def assign_clusters(record_dict, cluster_field, cluster_mapping):
