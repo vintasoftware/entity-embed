@@ -7,7 +7,7 @@ from abc import ABC
 from typing import List
 from urllib.error import HTTPError
 
-from ..data_modules import DEFAULT_LEFT_SOURCE, DEFAULT_SOURCE_FIELD
+from ..data_modules import DEFAULT_LEFT_SOURCE, DEFAULT_SOURCE_FIELD, LinkageDataModule
 from ..data_utils import utils
 
 logger = logging.getLogger(__name__)
@@ -127,5 +127,19 @@ class DeepmatcherBenchmark(ABC):
 
         return pos_pair_set, neg_pair_set
 
-    def __repr__(self):
-        return f"<{self.__class__.__name__}> from {self.url}"
+    def build_datamodule(self, record_numericalizer, batch_size, eval_batch_size, random_seed):
+        return LinkageDataModule(
+            train_record_dict=self.train_record_dict,
+            valid_record_dict=self.valid_record_dict,
+            test_record_dict=self.test_record_dict,
+            train_pos_pair_set=self.train_pos_pair_set,
+            valid_pos_pair_set=self.valid_pos_pair_set,
+            test_pos_pair_set=self.test_pos_pair_set,
+            source_field=self.source_field,
+            left_source=self.left_source,
+            record_numericalizer=record_numericalizer,
+            batch_size=batch_size,
+            eval_batch_size=eval_batch_size,
+            random_seed=random_seed,
+            check_for_common_records=False,
+        )
