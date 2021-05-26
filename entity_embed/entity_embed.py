@@ -155,6 +155,7 @@ class _BaseEmbed(pl.LightningModule):
             record_dict=self.trainer.datamodule.valid_record_dict,
             embedding_batch_list=outputs,
             pos_pair_set=self.trainer.datamodule.valid_pos_pair_set,
+            neg_pair_set=self.trainer.datamodule.valid_neg_pair_set,
         )
         self.log_dict(metric_dict)
 
@@ -168,6 +169,7 @@ class _BaseEmbed(pl.LightningModule):
             record_dict=self.trainer.datamodule.test_record_dict,
             embedding_batch_list=outputs,
             pos_pair_set=self.trainer.datamodule.test_pos_pair_set,
+            neg_pair_set=self.trainer.datamodule.test_neg_pair_set,
         )
         self.log_dict(metric_dict)
 
@@ -253,10 +255,17 @@ class _BaseEmbed(pl.LightningModule):
         self.blocker_net = best_model.blocker_net
         return trainer
 
-    def _evaluate_with_ann(self, set_name, record_dict, embedding_batch_list, pos_pair_set):
+    def _evaluate_with_ann(
+        self,
+        set_name,
+        record_dict,
+        embedding_batch_list,
+        pos_pair_set,
+        neg_pair_set,
+    ):
         raise NotImplementedError
 
-    def _evaluate_metrics(self, set_name, dataloader, record_dict, pos_pair_set):
+    def _evaluate_metrics(self, set_name, dataloader, record_dict, pos_pair_set, neg_pair_set):
         embedding_batch_list = []
         for tensor_dict, sequence_length_dict in dataloader:
             embeddings = self(tensor_dict, sequence_length_dict)
@@ -267,6 +276,7 @@ class _BaseEmbed(pl.LightningModule):
             record_dict=record_dict,
             embedding_batch_list=embedding_batch_list,
             pos_pair_set=pos_pair_set,
+            neg_pair_set=neg_pair_set,
         )
         return metric_dict
 
@@ -278,6 +288,7 @@ class _BaseEmbed(pl.LightningModule):
             dataloader=datamodule.val_dataloader(),
             record_dict=datamodule.valid_record_dict,
             pos_pair_set=datamodule.valid_pos_pair_set,
+            neg_pair_set=datamodule.valid_neg_pair_set,
         )
         return metric_dict
 
@@ -291,6 +302,7 @@ class _BaseEmbed(pl.LightningModule):
             dataloader=datamodule.test_dataloader(),
             record_dict=datamodule.test_record_dict,
             pos_pair_set=datamodule.test_pos_pair_set,
+            neg_pair_set=datamodule.test_neg_pair_set,
         )
         return metric_dict
 
@@ -388,7 +400,14 @@ class _BaseEmbed(pl.LightningModule):
 
 
 class EntityEmbed(_BaseEmbed):
-    def _evaluate_with_ann(self, set_name, record_dict, embedding_batch_list, pos_pair_set):
+    def _evaluate_with_ann(
+        self,
+        set_name,
+        record_dict,
+        embedding_batch_list,
+        pos_pair_set,
+        neg_pair_set,
+    ):
         vector_list = []
         for embedding_batch in embedding_batch_list:
             vector_list.extend(v.data.numpy() for v in embedding_batch.cpu().unbind())
@@ -406,14 +425,19 @@ class EntityEmbed(_BaseEmbed):
                 index_search_kwargs=self.index_search_kwargs,
             )
 
-            precision, recall = precision_and_recall(found_pair_set, pos_pair_set)
+            precision, recall = precision_and_recall(
+                found_pair_set, pos_pair_set, neg_pair_set=None
+            )
             metric_dict.update(
                 {
                     f"{set_name}_precision_at_{sim_threshold}": precision,
                     f"{set_name}_recall_at_{sim_threshold}": recall,
                     f"{set_name}_f1_at_{sim_threshold}": f1_score(precision, recall),
                     f"{set_name}_pair_entity_ratio_at_{sim_threshold}": pair_entity_ratio(
-                        len(found_pair_set), len(vector_list)
+                        found_pair_set=found_pair_set,
+                        vector_list=vector_list,
+                        pos_pair_set=pos_pair_set,
+                        neg_pair_set=neg_pair_set,
                     ),
                 }
             )
@@ -475,7 +499,14 @@ class LinkageEmbed(_BaseEmbed):
             **kwargs,
         )
 
-    def _evaluate_with_ann(self, set_name, record_dict, embedding_batch_list, pos_pair_set):
+    def _evaluate_with_ann(
+        self,
+        set_name,
+        record_dict,
+        embedding_batch_list,
+        pos_pair_set,
+        neg_pair_set,
+    ):
         vector_list = []
         for embedding_batch in embedding_batch_list:
             vector_list.extend(v.data.numpy() for v in embedding_batch.cpu().unbind())
@@ -506,14 +537,17 @@ class LinkageEmbed(_BaseEmbed):
                 index_search_kwargs=self.index_search_kwargs,
             )
 
-            precision, recall = precision_and_recall(found_pair_set, pos_pair_set)
+            precision, recall = precision_and_recall(found_pair_set, pos_pair_set, neg_pair_set)
             metric_dict.update(
                 {
                     f"{set_name}_precision_at_{sim_threshold}": precision,
                     f"{set_name}_recall_at_{sim_threshold}": recall,
                     f"{set_name}_f1_at_{sim_threshold}": f1_score(precision, recall),
                     f"{set_name}_pair_entity_ratio_at_{sim_threshold}": pair_entity_ratio(
-                        len(found_pair_set), len(vector_list)
+                        found_pair_set=found_pair_set,
+                        vector_list=vector_list,
+                        pos_pair_set=pos_pair_set,
+                        neg_pair_set=neg_pair_set,
                     ),
                 }
             )

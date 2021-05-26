@@ -76,20 +76,18 @@ class DeduplicationDataModule(pl.LightningDataModule):
         self._valid_pos_pair_set = utils.record_dict_to_id_pairs(valid_record_dict, cluster_field)
         self._test_pos_pair_set = utils.record_dict_to_id_pairs(test_record_dict, cluster_field)
 
-    def _set_pair_sets(self, stage):
+    def setup(self, stage=None):
         if stage == "fit":
             self.train_pos_pair_set = self._train_pos_pair_set
             self.valid_pos_pair_set = self._valid_pos_pair_set
-        elif stage == "test":
-            self.test_pos_pair_set = self._test_pos_pair_set
+            self.valid_neg_pair_set = None
 
-    def setup(self, stage=None):
-        self._set_pair_sets(stage)
-
-        if stage == "fit":
             logger.info("Train positive pair count: %s", len(self.train_pos_pair_set))
             logger.info("Valid positive pair count: %s", len(self.valid_pos_pair_set))
         elif stage == "test":
+            self.test_pos_pair_set = self._test_pos_pair_set
+            self.test_neg_pair_set = None
+
             logger.info("Test positive pair count: %s", len(self.test_pos_pair_set))
 
     def train_dataloader(self):
@@ -150,7 +148,9 @@ class LinkageDataModule(pl.LightningDataModule):
         test_record_dict,
         train_pos_pair_set,
         valid_pos_pair_set,
+        valid_neg_pair_set,
         test_pos_pair_set,
+        test_neg_pair_set,
         source_field,
         left_source,
         record_numericalizer,
@@ -184,23 +184,23 @@ class LinkageDataModule(pl.LightningDataModule):
 
         self._train_pos_pair_set = train_pos_pair_set
         self._valid_pos_pair_set = valid_pos_pair_set
+        self._valid_neg_pair_set = valid_neg_pair_set
         self._test_pos_pair_set = test_pos_pair_set
+        self._test_neg_pair_set = test_neg_pair_set
 
-    def _set_pair_sets(self, stage):
+    def setup(self, stage=None):
         if stage == "fit":
             self.train_pos_pair_set = self._train_pos_pair_set
             self.valid_pos_pair_set = self._valid_pos_pair_set
-        elif stage == "test":
-            self.test_pos_pair_set = self._test_pos_pair_set
+            self.valid_neg_pair_set = self._valid_neg_pair_set
 
-    def setup(self, stage=None):
-        self._set_pair_sets(stage)
-
-        if stage == "fit":
             logger.info("Train positive pair count: %s", len(self.train_pos_pair_set))
             logger.info("Valid positive pair count: %s", len(self.valid_pos_pair_set))
-            logger.info("Valid negative pair count: %s", len(self.valid_pos_pair_set))
+            logger.info("Valid negative pair count: %s", len(self.valid_neg_pair_set))
         elif stage == "test":
+            self.test_pos_pair_set = self._test_pos_pair_set
+            self.test_neg_pair_set = self._test_neg_pair_set
+
             logger.info("Test positive pair count: %s", len(self.test_pos_pair_set))
             logger.info("Test negative pair count: %s", len(self.test_pos_pair_set))
 
