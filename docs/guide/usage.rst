@@ -124,9 +124,9 @@ Building the model
 
 Under the hood, Entity Embed uses `pytorch-lightning <https://pytorch-lightning.readthedocs.io/en/latest/>`_, so we need to create a datamodule object::
 
-    from entity_embed import DeduplicationDataModule
+    from entity_embed import PairDataModule
 
-    datamodule = DeduplicationDataModule(
+    datamodule = PairDataModule(
         train_record_dict=train_record_dict,
         valid_record_dict=valid_record_dict,
         test_record_dict=test_record_dict,
@@ -247,11 +247,11 @@ On your data for Record Linkage, you must include a field on each record to info
 Building the model
 ~~~~~~~~~~~~~~~~~~
 
-Use the ``LinkageDataModule`` class to initialize the ``datamodule`` . Note there are two additional parameters here: ``source_field`` and ``left_source``::
+Use the ``PairDataModule`` class to initialize the ``datamodule`` . Note there are two additional parameters here: ``source_field`` and ``left_source``::
 
-    from entity_embed import LinkageDataModule
+    from entity_embed import PairDataModule
 
-    datamodule = LinkageDataModule(
+    datamodule = PairDataModule(
         train_record_dict=train_record_dict,
         valid_record_dict=valid_record_dict,
         test_record_dict=test_record_dict,

@@ -155,6 +155,59 @@ def split_record_dict_on_clusters(
     )
 
 
+def split_id_pairs(id_pairs, train_proportion, valid_proportion, random_seed):
+    rnd = random.Random(random_seed)
+
+    pairs_len = len(id_pairs)
+    train_len = int(train_proportion * pairs_len)
+    valid_len = int(valid_proportion * pairs_len)
+
+    id_pairs = OrderedSet(id_pairs)  # ensure deterministic order
+    train_pos_pair_set = OrderedSet(rnd.sample(list(id_pairs), train_len))
+    all_minus_train_set = id_pairs - train_pos_pair_set
+    valid_pos_pair_set = OrderedSet(rnd.sample(list(all_minus_train_set), valid_len))
+    test_pos_pair_set = all_minus_train_set - valid_pos_pair_set
+
+    logger.info(
+        "Positive pair counts (train, valid, test):"
+        + str(
+            (
+                len(train_pos_pair_set),
+                len(valid_pos_pair_set),
+                len(test_pos_pair_set),
+            )
+        )
+    )
+    return train_pos_pair_set, valid_pos_pair_set, test_pos_pair_set
+
+
+def split_record_dict_from_id_pairs(
+    record_dict,
+    train_pos_pair_set,
+    valid_pos_pair_set,
+    test_pos_pair_set,
+    valid_neg_pair_set=None,
+    train_neg_pair_set=None,
+    test_neg_pair_set=None,
+):
+    train_record_dict = {
+        id_: record_dict[id_]
+        for pair in train_pos_pair_set | (train_neg_pair_set or set())
+        for id_ in pair
+    }
+    valid_record_dict = {
+        id_: record_dict[id_]
+        for pair in valid_pos_pair_set | (valid_neg_pair_set or set())
+        for id_ in pair
+    }
+    test_record_dict = {
+        id_: record_dict[id_]
+        for pair in test_pos_pair_set | (test_neg_pair_set or set())
+        for id_ in pair
+    }
+    return train_record_dict, valid_record_dict, test_record_dict
+
+
 def compute_max_str_len(field_val_gen, is_multitoken, tokenizer):
     actual_max_str_len = 0
     for field_val in field_val_gen:

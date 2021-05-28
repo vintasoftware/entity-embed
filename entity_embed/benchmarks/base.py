@@ -7,7 +7,7 @@ from abc import ABC
 from typing import List
 from urllib.error import HTTPError
 
-from ..data_modules import DEFAULT_LEFT_SOURCE, DEFAULT_SOURCE_FIELD, LinkageDataModule
+from ..data_modules import DEFAULT_LEFT_SOURCE, DEFAULT_SOURCE_FIELD, PairDataModule
 from ..data_utils import utils
 
 logger = logging.getLogger(__name__)
@@ -44,21 +44,19 @@ class DeepmatcherBenchmark(ABC):
         self.test_pos_pair_set, self.test_neg_pair_set = self._read_pair_sets(
             pair_csv_path=self.test_csv_path
         )
-        self.train_record_dict = {
-            id_: self.record_dict[id_]
-            for pair in self.train_pos_pair_set | self.train_neg_pair_set
-            for id_ in pair
-        }
-        self.valid_record_dict = {
-            id_: self.record_dict[id_]
-            for pair in self.valid_pos_pair_set | self.valid_neg_pair_set
-            for id_ in pair
-        }
-        self.test_record_dict = {
-            id_: self.record_dict[id_]
-            for pair in self.test_pos_pair_set | self.test_neg_pair_set
-            for id_ in pair
-        }
+        (
+            self.train_record_dict,
+            self.valid_record_dict,
+            self.test_record_dict,
+        ) = utils.split_record_dict_from_id_pairs(
+            record_dict=self.record_dict,
+            train_pos_pair_set=self.train_pos_pair_set,
+            train_neg_pair_set=self.train_neg_pair_set,
+            valid_pos_pair_set=self.valid_pos_pair_set,
+            valid_neg_pair_set=self.valid_neg_pair_set,
+            test_pos_pair_set=self.test_pos_pair_set,
+            test_neg_pair_set=self.test_neg_pair_set,
+        )
 
     @property
     def local_dir_path(self) -> str:
@@ -128,7 +126,7 @@ class DeepmatcherBenchmark(ABC):
         return pos_pair_set, neg_pair_set
 
     def build_datamodule(self, record_numericalizer, batch_size, eval_batch_size, random_seed):
-        return LinkageDataModule(
+        return PairDataModule(
             train_record_dict=self.train_record_dict,
             valid_record_dict=self.valid_record_dict,
             test_record_dict=self.test_record_dict,

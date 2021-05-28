@@ -8,7 +8,7 @@ import click
 import numpy as np
 import torch
 
-from . import DeduplicationDataModule, EntityEmbed, LinkageDataModule, LinkageEmbed
+from . import EntityEmbed, LinkageEmbed, PairDataModule
 from .data_utils.field_config_parser import FieldConfigDictParser
 
 logging.basicConfig(level=logging.INFO)
@@ -87,7 +87,7 @@ def _build_datamodule(
     }
 
     if _is_record_linkage(kwargs):
-        datamodule_cls = LinkageDataModule
+        datamodule_cls = PairDataModule
         datamodule_args.update(
             {
                 "source_field": kwargs["source_field"],
@@ -95,7 +95,7 @@ def _build_datamodule(
             }
         )
     else:
-        datamodule_cls = DeduplicationDataModule
+        datamodule_cls = PairDataModule
 
     if kwargs.get("num_workers") or kwargs.get("multiprocessing_context"):
         for k in ["train_loader_kwargs", "eval_loader_kwargs"]:

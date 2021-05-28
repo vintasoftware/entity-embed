@@ -6,7 +6,7 @@ import entity_embed
 import mock
 import pytest
 from click.testing import CliRunner
-from entity_embed import DeduplicationDataModule, EntityEmbed, LinkageDataModule, LinkageEmbed, cli
+from entity_embed import EntityEmbed, LinkageEmbed, PairDataModule, cli
 from entity_embed.data_utils.numericalizer import FieldType
 
 
@@ -561,9 +561,9 @@ def test_build_datamodule(mode):
         "random_seed": 42,
     }
     if mode == "linkage":
-        expected_dm_cls = LinkageDataModule
+        expected_dm_cls = PairDataModule
     else:
-        expected_dm_cls = DeduplicationDataModule
+        expected_dm_cls = PairDataModule
 
     with mock.patch(f"entity_embed.cli.{expected_dm_cls.__name__}") as mock_datamodule:
         cli._build_datamodule(

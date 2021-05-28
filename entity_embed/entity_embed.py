@@ -435,9 +435,7 @@ class EntityEmbed(_BaseEmbed):
                 index_search_kwargs=self.index_search_kwargs,
             )
 
-            precision, recall = precision_and_recall(
-                found_pair_set, pos_pair_set, neg_pair_set=None
-            )
+            precision, recall = precision_and_recall(found_pair_set, pos_pair_set, neg_pair_set)
             metric_dict.update(
                 {
                     f"{set_name}_precision_at_{sim_threshold}": precision,
