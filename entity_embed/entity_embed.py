@@ -3,11 +3,9 @@ import os
 
 import pytorch_lightning as pl
 import torch
-import torch.nn.functional as F
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_metric_learning.distances import CosineSimilarity
 from pytorch_metric_learning.losses import NTXentLoss, SupConLoss
-from pytorch_metric_learning.utils import loss_and_miner_utils as lmu
 from tqdm.auto import tqdm
 
 from .data_utils import utils
@@ -16,6 +14,7 @@ from .early_stopping import EarlyStoppingMinEpochs, ModelCheckpointMinEpochs
 from .evaluation import f1_score, pair_entity_ratio, precision_and_recall
 from .indexes import ANNEntityIndex, ANNLinkageIndex
 from .models import BlockerNet
+from .regularizers import vicreg_loss
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +38,11 @@ class _BaseEmbed(pl.LightningModule):
         index_search_kwargs=None,
         **kwargs,
     ):
+        # Copy values to prevent mutability issues
+        loss_kwargs = dict(loss_kwargs) if loss_kwargs is not None else {}
+        vicreg_params = dict(vicreg_params) if vicreg_params is not None else {}
+        sim_threshold_list = list(sim_threshold_list)
+
         super().__init__()
         self.save_hyperparameters()
 
@@ -71,12 +75,11 @@ class _BaseEmbed(pl.LightningModule):
             )
         else:
             self.miner = None
-        self.small_val = 0.0001
         self.optimizer_cls = optimizer_cls
         self.learning_rate = learning_rate
         self.optimizer_kwargs = optimizer_kwargs if optimizer_kwargs else {}
         self.ann_k = ann_k
-        self.sim_threshold_list = list(sim_threshold_list)  # copy to avoid kwarg mutability issue
+        self.sim_threshold_list = sim_threshold_list
         self.index_build_kwargs = index_build_kwargs
         self.index_search_kwargs = index_search_kwargs
 
@@ -105,43 +108,20 @@ class _BaseEmbed(pl.LightningModule):
         sim_loss = self.loss_fn(embeddings, labels, indices_tuple=indices_tuple)
 
         if self.vicreg_params:
-            # VICReg Regularization.
-            # Based on: https://paperswithcode.com/paper/vicreg-variance-invariance-covariance
-            lbda = self.vicreg_params["lbda"]
-            mu = self.vicreg_params["mu"]
-            nu = self.vicreg_params["nu"]
-
-            # invariance loss
-            anchor_idx, pos_idx, __, __ = lmu.get_all_pairs_indices(labels)
-            z_a = embeddings[anchor_idx]
-            z_b = embeddings[pos_idx]
-            inv_loss = F.mse_loss(z_a, z_b)
-
-            # variance loss
-            std_z_a = torch.sqrt(z_a.var(dim=0) + self.small_val)
-            std_z_b = torch.sqrt(z_b.var(dim=0) + self.small_val)
-            std_loss = torch.mean(F.relu(1 - std_z_a)) + torch.mean(F.relu(1 - std_z_b))
-
-            # covariance loss
-            N, D = embeddings.size()
-            z_a = z_a - z_a.mean(dim=0)
-            z_b = z_b - z_b.mean(dim=0)
-            cov_z_a = (z_a.T @ z_a) / (N - 1)
-            cov_z_b = (z_b.T @ z_b) / (N - 1)
-            cov_loss = (
-                cov_z_a.fill_diagonal_(0).pow_(2).sum() / D
-                + cov_z_b.fill_diagonal_(0).pow_(2).sum() / D
+            (inv_loss, std_loss, cov_loss, loss) = vicreg_loss(
+                vicreg_params=self.vicreg_params,
+                embeddings=embeddings,
+                labels=labels,
+                sim_loss=sim_loss,
             )
-
-            loss = lbda * sim_loss + lbda * inv_loss + mu * std_loss + nu * cov_loss
 
             self.log("train_sim_loss", sim_loss)
             self.log("train_inv_loss", inv_loss)
             self.log("train_std_loss", std_loss)
             self.log("train_cov_loss", cov_loss)
-            self.log("train_loss", loss)
         else:
             loss = sim_loss
+        self.log("train_loss", loss)
 
         return loss
 
