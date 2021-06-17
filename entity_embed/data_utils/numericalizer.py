@@ -45,6 +45,7 @@ class FieldConfig:
     alphabet: List[str]
     max_str_len: int
     vocab: Vocab
+    n_convolutions: int
     n_channels: int
     embed_dropout_p: float
     use_attention: bool

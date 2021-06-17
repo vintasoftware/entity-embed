@@ -1,3 +1,5 @@
+import math
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -19,36 +21,59 @@ class StringEmbedCNN(nn.Module):
 
         self.alphabet_len = len(field_config.alphabet)
         self.max_str_len = field_config.max_str_len
-        self.n_channels = field_config.n_channels
         self.embedding_size = embedding_size
 
-        self.conv1 = nn.Conv1d(
-            in_channels=1,
-            out_channels=self.n_channels,
-            kernel_size=3,
-            stride=1,
-            padding=1,
-            bias=False,
-        )
+        if field_config.n_convolutions:
+            self.n_convolutions = field_config.n_convolutions
+        else:
+            # Default n_convolutions is solution of
+            # (max_str_len / 2 ** n_convolutions = 16) for n_convolutions.
+            # Check with "x / (2 ^ c) = 16 solve c" on https://www.wolframalpha.com/
+            self.n_convolutions = max(math.ceil((math.log(self.max_str_len) / math.log(2)) - 4), 1)
+        self.n_channels = field_config.n_channels
 
-        self.flat_size = (self.max_str_len // 2) * self.alphabet_len * self.n_channels
-        if self.flat_size == 0:
-            raise ValueError("Too small alphabet, self.flat_size == 0")
+        convs = []
+        for i in range(self.n_convolutions):
+            out_channels = self.alphabet_len * self.n_channels
+            in_channels = self.alphabet_len if i == 0 else out_channels
+            convs.append(
+                nn.Conv1d(  # depthwise convolution, interact positions only
+                    in_channels=in_channels,
+                    out_channels=out_channels,
+                    kernel_size=3,
+                    stride=1,
+                    padding=1,
+                    bias=False,
+                    groups=in_channels,
+                )
+            )
+            convs.append(nn.ReLU())
+            convs.append(
+                nn.MaxPool1d(
+                    kernel_size=2,
+                    padding=0,
+                )
+            )
+        self.conv = nn.Sequential(*convs)
 
-        dense_layers = [nn.Linear(self.flat_size, self.embedding_size)]
+        self.flat_size = self._compute_conv_output_flat_size()
+        dense_net_layers = [nn.Linear(self.flat_size, self.embedding_size)]
         if field_config.embed_dropout_p:
-            dense_layers.append(nn.Dropout(p=field_config.embed_dropout_p))
-        self.dense_net = nn.Sequential(*dense_layers)
+            dense_net_layers.append(nn.Dropout(p=field_config.embed_dropout_p))
+        self.dense_net = nn.Sequential(*dense_net_layers)
+
+    def _compute_conv_output_flat_size(self):
+        with torch.no_grad():
+            bsz = 1
+            in_shape = (self.alphabet_len, self.max_str_len)
+            input_ = torch.rand(bsz, *in_shape)
+            output = self.conv(input_)
+            return output.view(bsz, -1).size(1)
 
     def forward(self, x, **kwargs):
-        x = x.view(x.size(0), 1, -1)
-
-        x = F.relu(self.conv1(x))
-        x = F.max_pool1d(x, kernel_size=2)
-
-        x = x.view(x.size(0), self.flat_size)
+        x = self.conv(x)
+        x = x.view(x.size(0), -1)
         x = self.dense_net(x)
-
         return x
 
 
