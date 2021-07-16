@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- ...
+
+## 0.0.6 (2021-07-16)
+
+### Fixed
+
+- Fixed max supported version of requirements like torchtext ([Issue #30](https://github.com/vintasoftware/entity-embed/issues/30)).
+
 ## 0.0.5 (2021-05-20)
 
 ### Fixed
