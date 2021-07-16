@@ -34,9 +34,9 @@ https://entity-embed.readthedocs.io
 
 - **Python**: >= 3.6
 - **[Numpy](https://numpy.org/)**: >= 1.19.0
-- **[PyTorch](https://pytorch.org/)**: >= 1.7.1
-- **[PyTorch Lightning](https://pytorch-lightning.readthedocs.io/en/latest/)**: >= 1.1.6
-- **[N2](https://github.com/kakao/n2/)**: >= 0.1.7
+- **[PyTorch](https://pytorch.org/)**: >= 1.7.1, < 1.9
+- **[PyTorch Lightning](https://pytorch-lightning.readthedocs.io/en/latest/)**: >= 1.1.6, < 1.3
+- **[N2](https://github.com/kakao/n2/)**: >= 0.1.7, < 1.2
 
 And others, see [requirements.txt](/requirements.txt).
 

@@ -80,8 +80,6 @@ Now, here's how to set up `entity-embed` for local development.
     $ pytest
     $ tox
 
-   To get flake8 and tox, just pip install them into your virtualenv.
-
 8. Commit your changes and push your branch to GitHub::
 
     $ git add .
