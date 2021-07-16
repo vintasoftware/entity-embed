@@ -47,6 +47,6 @@ setup(
     name="entity-embed",
     packages=find_packages(include=["entity_embed", "entity_embed.*"]),
     url="https://github.com/vintasoftware/entity-embed",
-    version="0.0.5",
+    version="0.0.6",
     zip_safe=False,
 )
