@@ -2,7 +2,7 @@ import json
 import logging
 from importlib import import_module
 
-from torchtext.vocab import Vocab
+from torchtext.vocab import Vocab, Vectors
 
 from .numericalizer import (
     AVAILABLE_VOCABS,
@@ -93,7 +93,11 @@ class FieldConfigDictParser:
                     "an field name."
                 )
             vocab = Vocab(vocab_counter)
-            vocab.load_vectors(vocab_type)
+            if vocab_type in {'tx_embeddings_large.vec','tx_embeddings.vec'}:
+                vectors = Vectors(vocab_type, cache='.vector_cache')
+                vocab.load_vectors(vectors)
+            else:
+                vocab.load_vectors(vocab_type)
 
         # Compute max_str_len if necessary
         if field_type in (FieldType.STRING, FieldType.MULTITOKEN) and (max_str_len is None):
