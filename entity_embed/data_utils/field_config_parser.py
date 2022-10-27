@@ -3,8 +3,7 @@ import logging
 from importlib import import_module
 
 from torch import Tensor, nn
-from torchtext.vocab import Vocab, Vectors, build_vocab_from_iterator
-from torchtext.vocab import vocab as tt_vocab
+from torchtext.vocab import Vocab, Vectors
 
 from .numericalizer import (
     AVAILABLE_VOCABS,
@@ -98,7 +97,7 @@ class FieldConfigDictParser:
 
             vectors = Vectors(vocab_type, cache=".vector_cache")
 
-            vocab = tt_vocab(vocab_counter)
+            vocab = torchtext.vocab.vocab(vocab_counter)
 
             vectors = [vectors]
             tot_dim = sum(v.dim for v in vectors)  # 100
@@ -121,7 +120,11 @@ class FieldConfigDictParser:
 
             # pretrained_vectors = vectors  # torchtext.vocab.FastText("en")
 
-            # vocab.load_vectors(vectors)
+            #if vocab_type in {'tx_embeddings_large.vec', 'tx_embeddings.vec'}:
+                #vectors = Vectors(vocab_type, cache='.vector_cache')
+                #vocab.load_vectors(vectors)
+            #else:
+                #vocab.load_vectors(vocab_type)
 
         # Compute max_str_len if necessary
         if field_type in (FieldType.STRING, FieldType.MULTITOKEN) and (max_str_len is None):
