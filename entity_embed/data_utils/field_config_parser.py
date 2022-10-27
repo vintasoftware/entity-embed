@@ -2,7 +2,9 @@ import json
 import logging
 from importlib import import_module
 
-from torchtext.vocab import Vocab
+from torch import Tensor, nn
+from torchtext.vocab import Vocab, Vectors, build_vocab_from_iterator
+from torchtext.vocab import vocab as tt_vocab
 
 from .numericalizer import (
     AVAILABLE_VOCABS,
@@ -66,6 +68,7 @@ class FieldConfigDictParser:
         alphabet = field_config.get("alphabet", DEFAULT_ALPHABET)
         max_str_len = field_config.get("max_str_len")
         vocab = None
+        vector_tensor = None
 
         # Check if there's a key defined on the field_config,
         # useful when we want to have multiple FieldConfig for the same field
@@ -92,8 +95,33 @@ class FieldConfigDictParser:
                     "field_config if you wish to use a override "
                     "an field name."
                 )
-            vocab = Vocab(vocab_counter)
-            vocab.load_vectors(vocab_type)
+
+            vectors = Vectors(vocab_type, cache=".vector_cache")
+
+            vocab = tt_vocab(vocab_counter)
+
+            vectors = [vectors]
+            tot_dim = sum(v.dim for v in vectors)  # 100
+            vector_tensor = Tensor(len(vocab), tot_dim)
+
+            for i, token in enumerate(vocab.get_itos()):
+                start_dim = 0
+                for v in vectors:
+                    end_dim = start_dim + v.dim
+                    vector_tensor[i][start_dim:end_dim] = v[token.strip()]
+                    start_dim = end_dim
+                assert start_dim == tot_dim
+
+            print(f"Vector tensor shape: {vector_tensor.shape}")
+
+            print(len(vector_tensor))
+            print(len(vocab))
+
+            print(nn.Embedding.from_pretrained(vector_tensor))
+
+            # pretrained_vectors = vectors  # torchtext.vocab.FastText("en")
+
+            # vocab.load_vectors(vectors)
 
         # Compute max_str_len if necessary
         if field_type in (FieldType.STRING, FieldType.MULTITOKEN) and (max_str_len is None):
@@ -128,6 +156,7 @@ class FieldConfigDictParser:
             alphabet=alphabet,
             max_str_len=max_str_len,
             vocab=vocab,
+            vector_tensor=vector_tensor,
             n_channels=n_channels,
             embed_dropout_p=embed_dropout_p,
             use_attention=use_attention,
@@ -143,6 +172,7 @@ class FieldConfigDictParser:
             FieldType.SEMANTIC_STRING: SemanticStringNumericalizer,
             FieldType.SEMANTIC_MULTITOKEN: SemanticMultitokenNumericalizer,
         }
+        print(field_type_to_numericalizer_cls)
         numericalizer_cls = field_type_to_numericalizer_cls.get(field_type)
         if numericalizer_cls is None:
             raise ValueError(f"Unexpected field_type={field_type}")  # pragma: no cover

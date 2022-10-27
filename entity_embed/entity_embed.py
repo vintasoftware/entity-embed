@@ -12,10 +12,15 @@ from .data_utils import utils
 from .data_utils.datasets import RecordDataset
 from .early_stopping import EarlyStoppingMinEpochs, ModelCheckpointMinEpochs
 from .evaluation import f1_score, pair_entity_ratio, precision_and_recall
-from .indexes import ANNEntityIndex, ANNLinkageIndex
+
+from .indexes import ANNEntityIndex  # , ANNLinkageIndex
 from .models import BlockerNet
 
 logger = logging.getLogger(__name__)
+
+
+def hannah_test(n):
+    return n * 2
 
 
 class _BaseEmbed(pl.LightningModule):
@@ -42,11 +47,12 @@ class _BaseEmbed(pl.LightningModule):
         self.record_numericalizer = record_numericalizer
         for field_config in self.record_numericalizer.field_config_dict.values():
             vocab = field_config.vocab
+            vector_tensor = field_config.vector_tensor
             if vocab:
                 # We can assume that there's only one vocab type across the
                 # whole field_config_dict, so we can stop the loop once we've
                 # found a field_config with a vocab
-                valid_embedding_size = vocab.vectors.size(1)
+                valid_embedding_size = vector_tensor.size(1)
                 if valid_embedding_size != embedding_size:
                     raise ValueError(
                         f"Invalid embedding_size={embedding_size}. "
@@ -99,7 +105,7 @@ class _BaseEmbed(pl.LightningModule):
         self.log("train_loss", loss)
         return loss
 
-    def on_train_batch_end(self, outputs, batch, batch_idx, dataloader_idx):
+    def on_train_batch_end(self, outputs, batch, batch_idx, dataloader_idx=None):
         self.blocker_net.fix_pool_weights()
         self.log_dict(
             {
@@ -189,7 +195,7 @@ class _BaseEmbed(pl.LightningModule):
             "max_epochs": max_epochs,
             "check_val_every_n_epoch": check_val_every_n_epoch,
             "callbacks": [early_stop_callback, checkpoint_callback],
-            "reload_dataloaders_every_epoch": True,  # for shuffling ClusterDataset every epoch
+            "reload_dataloaders_every_n_epochs": 10,  # for shuffling ClusterDataset every epoch
         }
         if use_gpu:
             trainer_args["gpus"] = 1
@@ -205,8 +211,9 @@ class _BaseEmbed(pl.LightningModule):
                 "TensorBoardLogger or omit both to disable it"
             )
         trainer = pl.Trainer(**trainer_args)
+        print("Trainer done")
         trainer.fit(self, datamodule)
-
+        print("Model fit")
         logger.info(
             "Loading the best validation model from "
             f"{trainer.checkpoint_callback.best_model_path}..."

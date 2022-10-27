@@ -53,8 +53,8 @@ class ModelCheckpointMinEpochs(ModelCheckpoint):
             save_top_k=save_top_k,
             save_weights_only=save_weights_only,
             mode=mode,
-            period=period,
-            prefix=prefix,
+            # period=period,
+            # prefix=prefix,
         )
         self.min_epochs = min_epochs
 

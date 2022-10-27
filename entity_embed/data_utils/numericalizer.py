@@ -7,7 +7,7 @@ from typing import Callable, List
 import numpy as np
 import regex
 import torch
-from torchtext.vocab import Vocab
+from torchtext.vocab import Vocab, Vectors
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +45,7 @@ class FieldConfig:
     alphabet: List[str]
     max_str_len: int
     vocab: Vocab
+    vector_tensor: torch.Tensor
     n_channels: int
     embed_dropout_p: float
     use_attention: bool
@@ -60,7 +61,7 @@ class FieldConfig:
         repr_dict = {}
         for k, v in self.__dict__.items():
             if isinstance(v, Callable):
-                repr_dict[k] = f"{inspect.getmodule(v).__name__}.{v.__name__}"
+                repr_dict[k] = f"{inspect.getmodule(v).__name__}.{getattr(v, '.__name__', repr(v))}"
             else:
                 repr_dict[k] = v
         return "{cls}({attrs})".format(

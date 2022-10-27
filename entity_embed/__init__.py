@@ -2,7 +2,7 @@
 import logging
 
 # libgomp issue, must import n2 before torch. See: https://github.com/kakao/n2/issues/42
-import n2  # noqa: F401
+# import n2  # noqa: F401
 
 from .data_modules import *  # noqa: F401, F403
 from .data_utils.field_config_parser import FieldConfigDictParser  # noqa: F401

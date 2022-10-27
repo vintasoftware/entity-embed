@@ -58,7 +58,7 @@ class SemanticEmbedNet(nn.Module):
 
         self.embedding_size = embedding_size
         self.dense_net = nn.Sequential(
-            nn.Embedding.from_pretrained(field_config.vocab.vectors),
+            nn.Embedding.from_pretrained(field_config.vector_tensor),
             nn.Dropout(p=field_config.embed_dropout_p),
         )
 
