@@ -3,7 +3,8 @@ import logging
 from importlib import import_module
 
 from torch import Tensor, nn
-from torchtext.vocab import Vocab, Vectors
+from torchtext.vocab import Vocab, Vectors, FastText
+from torchtext.vocab import vocab as factory_vocab
 
 from .numericalizer import (
     AVAILABLE_VOCABS,
@@ -95,10 +96,16 @@ class FieldConfigDictParser:
                     "an field name."
                 )
 
-            vectors = Vectors(vocab_type, cache=".vector_cache")
+            if vocab_type in {"tx_embeddings_large.vec", "tx_embeddings.vec"}:
+                vectors = Vectors(vocab_type, cache=".vector_cache")
+            elif vocab_type == "fasttext":
+                vectors = FastText("en")  # might need to add standard fasttext
+            else:
+                vocab.load_vectors(vocab_type)  # won't work
 
-            vocab = torchtext.vocab.vocab(vocab_counter)
+            vocab = factory_vocab(vocab_counter)
 
+            # create vector tensor using tokens in vocab, order important
             vectors = [vectors]
             tot_dim = sum(v.dim for v in vectors)  # 100
             vector_tensor = Tensor(len(vocab), tot_dim)
@@ -112,19 +119,9 @@ class FieldConfigDictParser:
                 assert start_dim == tot_dim
 
             print(f"Vector tensor shape: {vector_tensor.shape}")
+            assert len(vector_tensor) == len(vocab)
 
-            print(len(vector_tensor))
-            print(len(vocab))
-
-            print(nn.Embedding.from_pretrained(vector_tensor))
-
-            # pretrained_vectors = vectors  # torchtext.vocab.FastText("en")
-
-            #if vocab_type in {'tx_embeddings_large.vec', 'tx_embeddings.vec'}:
-                #vectors = Vectors(vocab_type, cache='.vector_cache')
-                #vocab.load_vectors(vectors)
-            #else:
-                #vocab.load_vectors(vocab_type)
+            print(nn.Embedding.from_pretrained(vector_tensor))  # check embedding works
 
         # Compute max_str_len if necessary
         if field_type in (FieldType.STRING, FieldType.MULTITOKEN) and (max_str_len is None):
@@ -175,7 +172,6 @@ class FieldConfigDictParser:
             FieldType.SEMANTIC_STRING: SemanticStringNumericalizer,
             FieldType.SEMANTIC_MULTITOKEN: SemanticMultitokenNumericalizer,
         }
-        print(field_type_to_numericalizer_cls)
         numericalizer_cls = field_type_to_numericalizer_cls.get(field_type)
         if numericalizer_cls is None:
             raise ValueError(f"Unexpected field_type={field_type}")  # pragma: no cover

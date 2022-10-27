@@ -7,7 +7,7 @@ from typing import Callable, List
 import numpy as np
 import regex
 import torch
-from torchtext.vocab import Vocab, Vectors
+from torchtext.vocab import Vocab
 
 logger = logging.getLogger(__name__)
 
