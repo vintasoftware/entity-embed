@@ -19,10 +19,6 @@ from .models import BlockerNet
 logger = logging.getLogger(__name__)
 
 
-def hannah_test(n):
-    return n * 2
-
-
 class _BaseEmbed(pl.LightningModule):
     def __init__(
         self,

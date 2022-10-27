@@ -21,7 +21,7 @@ class ANNEntityIndex:
     def insert_vector_dict(self, vector_dict):
         for vector in vector_dict.values():
             vector = vector.reshape(1, len(vector))
-            # vector = faiss.normalize_L2(vector)
+            faiss.normalize_L2(vector)
             self.approx_knn_index.add(vector)
             # self.approx_knn_index.add_data(vector)
         self.vector_idx_to_id = dict(enumerate(vector_dict.keys()))
