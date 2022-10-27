@@ -167,6 +167,7 @@ class _BaseEmbed(pl.LightningModule):
         tb_save_dir=None,
         tb_name=None,
         use_gpu=True,
+        accelerator=None,
     ):
         if early_stop_mode is None:
             if "pair_entity_ratio_at" in early_stop_monitor:
@@ -199,7 +200,8 @@ class _BaseEmbed(pl.LightningModule):
         }
         if use_gpu:
             trainer_args["gpus"] = 1
-
+        if accelerator:
+            trainer_args["accelerator"] = accelerator
         if tb_name and tb_save_dir:
             trainer_args["logger"] = TensorBoardLogger(
                 tb_save_dir,
@@ -211,9 +213,9 @@ class _BaseEmbed(pl.LightningModule):
                 "TensorBoardLogger or omit both to disable it"
             )
         trainer = pl.Trainer(**trainer_args)
-        print("Trainer done")
+
         trainer.fit(self, datamodule)
-        print("Model fit")
+
         logger.info(
             "Loading the best validation model from "
             f"{trainer.checkpoint_callback.best_model_path}..."

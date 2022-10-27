@@ -20,14 +20,10 @@ class ANNEntityIndex:
 
     def insert_vector_dict(self, vector_dict):
         for vector in vector_dict.values():
-            # self.approx_knn_index.add_data(vector)
-
-            # print(vector.dtype)
-            # print(vector.shape)
-            # print(repr(vector))
-            vector = vector.reshape(1, 100)
+            vector = vector.reshape(1, len(vector))
             # vector = faiss.normalize_L2(vector)
             self.approx_knn_index.add(vector)
+            # self.approx_knn_index.add_data(vector)
         self.vector_idx_to_id = dict(enumerate(vector_dict.keys()))
 
     def build(
@@ -39,7 +35,6 @@ class ANNEntityIndex:
 
         # actual_index_build_kwargs = build_index_build_kwargs(index_build_kwargs)
         # self.approx_knn_index.build(**actual_index_build_kwargs)
-        print(self.approx_knn_index.ntotal)
         self.is_built = True
         # faiss.write_index(self.approx_knn_index, "vector.index")
 
@@ -50,55 +45,25 @@ class ANNEntityIndex:
             raise ValueError(f"sim_threshold={sim_threshold} must be <= 1 and >= 0")
 
         logger.debug("Searching on approx_knn_index...")
-        print(sim_threshold)
         distance_threshold = 1 - sim_threshold
-        print(distance_threshold)
 
         index_search_kwargs = build_index_search_kwargs(index_search_kwargs)
 
         found_pair_set = set()
-        item_ids = self.vector_idx_to_id  # .keys()
-        # print(item_ids)
+        item_ids = self.vector_idx_to_id
         for i in item_ids:
             vector = self.approx_knn_index.reconstruct(i).reshape(1, 100)
-            # print(vector.shape)
-            # print(i)
             similarities, neighbours = self.approx_knn_index.search(vector, k=k)
             left_id = self.vector_idx_to_id[i]
-            # print(similarities[0])
             for similarity, j in zip(similarities[0], neighbours[0]):
-                # print(j)
                 if i != j and similarity >= sim_threshold:
                     right_id = self.vector_idx_to_id[j]
                     # must use sorted to always have smaller id on left of pair tuple
                     pair = tuple(sorted([left_id, right_id]))
                     found_pair_set.add(pair)
 
-        print(f"found_pair_set: {len(found_pair_set)}")
-        logger.debug("Search on approx_knn_index done, building found_pair_set now...")
-
-        if False:
-            neighbor_and_distance_list_of_list = self.approx_knn_index.batch_search_by_ids(
-                item_ids=self.vector_idx_to_id.keys(),
-                k=k,
-                include_distances=True,
-                **index_search_kwargs,
-            )
-
-            logger.debug("Search on approx_knn_index done, building found_pair_set now...")
-
-            found_pair_set = set()
-            for i, neighbor_distance_list in enumerate(neighbor_and_distance_list_of_list):
-                left_id = self.vector_idx_to_id[i]
-                for j, distance in neighbor_distance_list:
-                    if i != j and distance <= distance_threshold:
-                        right_id = self.vector_idx_to_id[j]
-                        # must use sorted to always have smaller id on left of pair tuple
-                        pair = tuple(sorted([left_id, right_id]))
-                        found_pair_set.add(pair)
-
         logger.debug(
-            f"Building found_pair_set done. Found len(found_pair_set)={len(found_pair_set)} pairs."
+            f"Search on approx_knn_index and building found_pair_set done. Found len(found_pair_set)={len(found_pair_set)} pairs."
         )
 
         return found_pair_set
