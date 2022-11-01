@@ -2,6 +2,7 @@ import json
 import logging
 from importlib import import_module
 
+import torch
 from torch import Tensor, nn
 from torchtext.vocab import Vocab, Vectors, FastText
 from torchtext.vocab import vocab as factory_vocab
@@ -107,8 +108,10 @@ class FieldConfigDictParser:
 
             # create vector tensor using tokens in vocab, order important
             vectors = [vectors]
-            tot_dim = sum(v.dim for v in vectors)  # 100
-            vector_tensor = Tensor(len(vocab), tot_dim)
+            # device = torch.device("mps")
+            tot_dim = sum(v.dim for v in vectors)
+            # vector_tensor = torch.zeros(len(vocab), tot_dim)
+            vector_tensor = torch.Tensor(len(vocab), tot_dim)
 
             for i, token in enumerate(vocab.get_itos()):
                 start_dim = 0
@@ -119,6 +122,9 @@ class FieldConfigDictParser:
                 assert start_dim == tot_dim
 
             print(f"Vector tensor shape: {vector_tensor.shape}")
+            print(f"Vector tensor type: {vector_tensor.shape}")
+            print(f"Vector tensor type: {vector_tensor.device}")
+            print(f"Vector tensor type: {vector_tensor.dtype}")
             assert len(vector_tensor) == len(vocab)
 
             print(nn.Embedding.from_pretrained(vector_tensor))  # check embedding works

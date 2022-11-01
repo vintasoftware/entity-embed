@@ -73,11 +73,13 @@ class _BaseEmbed(pl.LightningModule):
         self.sim_threshold_list = sim_threshold_list
         self.index_build_kwargs = index_build_kwargs
         self.index_search_kwargs = index_search_kwargs
+        self._dev = "mps"
+        print(self.device)
+        print(self._dev)
 
     def forward(self, tensor_dict, sequence_length_dict, return_field_embeddings=False):
         tensor_dict = utils.tensor_dict_to_device(tensor_dict, device=self.device)
         sequence_length_dict = utils.tensor_dict_to_device(sequence_length_dict, device=self.device)
-
         return self.blocker_net(tensor_dict, sequence_length_dict, return_field_embeddings)
 
     def _warn_if_empty_indices_tuple(self, indices_tuple, batch_idx):
@@ -194,6 +196,7 @@ class _BaseEmbed(pl.LightningModule):
             "callbacks": [early_stop_callback, checkpoint_callback],
             "reload_dataloaders_every_n_epochs": 10,  # for shuffling ClusterDataset every epoch
         }
+        print(self.device)
         if use_gpu:
             trainer_args["gpus"] = 1
         if accelerator:
@@ -217,6 +220,8 @@ class _BaseEmbed(pl.LightningModule):
             f"{trainer.checkpoint_callback.best_model_path}..."
         )
         self.blocker_net = None
+        print(self.device)
+        print(self._dev)
         best_model = self.load_from_checkpoint(trainer.checkpoint_callback.best_model_path)
         best_model = best_model.to(self.device)
         self.blocker_net = best_model.blocker_net
