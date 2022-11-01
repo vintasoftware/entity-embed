@@ -1,5 +1,6 @@
 import logging
 import faiss
+import numpy as np
 
 # from n2 import HnswIndex
 
@@ -19,11 +20,10 @@ class ANNEntityIndex:
         print(self.approx_knn_index.is_trained)
 
     def insert_vector_dict(self, vector_dict):
-        for vector in vector_dict.values():
-            vector = vector.reshape(1, len(vector))
-            # vector = faiss.normalize_L2(vector)
-            self.approx_knn_index.add(vector)
-            # self.approx_knn_index.add_data(vector)
+        vector_array = np.array(list(vector_dict.values()))
+        l2_norm = np.linalg.norm(vector_array, ord=2, axis=1).reshape(vector_array.shape[0], 1)
+        vector_array_normalized = vector_array / l2_norm
+        self.approx_knn_index.add(vector_array_normalized)
         self.vector_idx_to_id = dict(enumerate(vector_dict.keys()))
 
     def build(
@@ -67,7 +67,6 @@ class ANNEntityIndex:
         )
 
         return found_pair_set
-
 
 # class ANNEntityIndex:
 #     def __init__(self, embedding_size):
