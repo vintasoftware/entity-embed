@@ -104,7 +104,13 @@ class FieldConfigDictParser:
             else:
                 vocab.load_vectors(vocab_type)  # won't work
 
-            vocab = factory_vocab(vocab_counter)
+            # adding <unk> token
+            unk_token = "<unk>"
+            vocab = factory_vocab(vocab_counter, specials=[unk_token])
+            # print(vocab["<unk>"])  # prints 0
+            # make default index same as index of unk_token
+            vocab.set_default_index(vocab[unk_token])
+            # print(vocab["probably out of vocab"])  # prints 0
 
             # create vector tensor using tokens in vocab, order important
             vectors = [vectors]
