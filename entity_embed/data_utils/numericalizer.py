@@ -103,9 +103,11 @@ class StringNumericalizer:
         # with characters as rows and positions as columns.
         # This is the shape expected by StringEmbedCNN.
         ord_encoded_val = self._ord_encode(val)
+        ord_encoded_val = ord_encoded_val[: self.max_str_len]  # truncate to max_str_len
         encoded_arr = np.zeros((len(self.alphabet), self.max_str_len), dtype=np.float32)
         if len(ord_encoded_val) > 0:
             encoded_arr[ord_encoded_val, range(len(ord_encoded_val))] = 1.0
+
         t = torch.from_numpy(encoded_arr)
         return t, len(val)
 
