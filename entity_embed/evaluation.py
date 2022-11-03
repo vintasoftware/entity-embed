@@ -1,5 +1,8 @@
 import csv
 import json
+from .indexes import ANNEntityIndex
+from .data_utils import utils
+import pandas as pd
 
 
 def pair_entity_ratio(found_pair_set_len, entity_count):
@@ -53,3 +56,23 @@ def evaluate_output_json(
         f1_score(precision, recall),
         pair_entity_ratio(len(found_pair_set), record_count),
     )
+
+
+class EmbeddingEvaluator:
+    def __init__(self, record_dict, vector_dict, cluster_field='cluster_id'):
+        self.record_dict = record_dict
+        self.cluster_field = cluster_field
+        embedding_size = len(next(iter(vector_dict.values())))
+        self.ann_index = ANNEntityIndex(embedding_size)
+        self.ann_index.insert_vector_dict(vector_dict)
+        self.ann_index.build()
+
+    def evaluate(self, k, sim_thresholds):
+        cluster_dict = utils.record_dict_to_cluster_dict(self.record_dict, self.cluster_field)
+        pos_pair_set = utils.cluster_dict_to_id_pairs(cluster_dict)
+        results = []
+        for sim_threshold in sim_thresholds:
+            found_pair_set = self.ann_index.search_pairs(k, sim_threshold)
+            precision, recall = precision_and_recall(found_pair_set, pos_pair_set)
+            results.append((sim_threshold, precision, recall, f1_score(precision, recall)))
+        return pd.DataFrame(results, columns=['threshold', 'precision', 'recall', 'f1_score'])

@@ -16,14 +16,15 @@ class ANNEntityIndex:
         )
         # self.approx_knn_index = HnswIndex(dimension=embedding_size, metric="angular")
         self.vector_idx_to_id = None
+        self.normalized_vector_array = None
         self.is_built = False
-        print(self.approx_knn_index.is_trained)
+        self.embedding_size = embedding_size
 
     def insert_vector_dict(self, vector_dict):
         vector_array = np.array(list(vector_dict.values()))
         l2_norm = np.linalg.norm(vector_array, ord=2, axis=1).reshape(vector_array.shape[0], 1)
-        vector_array_normalized = vector_array / l2_norm
-        self.approx_knn_index.add(vector_array_normalized)
+        self.normalized_vector_array = vector_array / l2_norm
+        self.approx_knn_index.add(self.normalized_vector_array)
         self.vector_idx_to_id = dict(enumerate(vector_dict.keys()))
 
     def build(
@@ -50,11 +51,9 @@ class ANNEntityIndex:
         index_search_kwargs = build_index_search_kwargs(index_search_kwargs)
 
         found_pair_set = set()
-        item_ids = self.vector_idx_to_id
-        for i in item_ids:
-            vector = self.approx_knn_index.reconstruct(i).reshape(1, 100)
+        for i, left_id in self.vector_idx_to_id.items():
+            vector = self.normalized_vector_array[[i], :]
             similarities, neighbours = self.approx_knn_index.search(vector, k=k)
-            left_id = self.vector_idx_to_id[i]
             for similarity, j in zip(similarities[0], neighbours[0]):
                 if i != j and similarity >= sim_threshold:
                     right_id = self.vector_idx_to_id[j]
