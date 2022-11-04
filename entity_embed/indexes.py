@@ -39,7 +39,7 @@ class ANNEntityIndex:
         self.is_built = True
         # faiss.write_index(self.approx_knn_index, "vector.index")
 
-    def search_pairs(self, k, sim_threshold, index_search_kwargs=None):
+    def search_pairs(self, k, sim_threshold, index_search_kwargs=None, query_id_subset=None):
         if not self.is_built:
             raise ValueError("Please call build first")
         if sim_threshold > 1 or sim_threshold < 0:
@@ -52,14 +52,15 @@ class ANNEntityIndex:
 
         found_pair_set = set()
         for i, left_id in self.vector_idx_to_id.items():
-            vector = self.normalized_vector_array[[i], :]
-            similarities, neighbours = self.approx_knn_index.search(vector, k=k)
-            for similarity, j in zip(similarities[0], neighbours[0]):
-                if i != j and similarity >= sim_threshold:
-                    right_id = self.vector_idx_to_id[j]
-                    # must use sorted to always have smaller id on left of pair tuple
-                    pair = tuple(sorted([left_id, right_id]))
-                    found_pair_set.add(pair)
+            if query_id_subset is None or left_id in query_id_subset:
+                vector = self.normalized_vector_array[[i], :]
+                similarities, neighbours = self.approx_knn_index.search(vector, k=k)
+                for similarity, j in zip(similarities[0], neighbours[0]):
+                    if i != j and similarity >= sim_threshold:
+                        right_id = self.vector_idx_to_id[j]
+                        # must use sorted to always have smaller id on left of pair tuple
+                        pair = tuple(sorted([left_id, right_id]))
+                        found_pair_set.add(pair)
 
         logger.debug(
             f"Search on approx_knn_index and building found_pair_set done. Found len(found_pair_set)={len(found_pair_set)} pairs."

@@ -1,5 +1,6 @@
 import csv
 import json
+import random
 from .indexes import ANNEntityIndex
 from .data_utils import utils
 import pandas as pd
@@ -66,13 +67,31 @@ class EmbeddingEvaluator:
         self.ann_index = ANNEntityIndex(embedding_size)
         self.ann_index.insert_vector_dict(vector_dict)
         self.ann_index.build()
+        self.cluster_dict = utils.record_dict_to_cluster_dict(self.record_dict, self.cluster_field)
+        self.pos_pair_set = utils.cluster_dict_to_id_pairs(self.cluster_dict)
 
-    def evaluate(self, k, sim_thresholds):
-        cluster_dict = utils.record_dict_to_cluster_dict(self.record_dict, self.cluster_field)
-        pos_pair_set = utils.cluster_dict_to_id_pairs(cluster_dict)
+    def evaluate(self, k, sim_thresholds, query_ids=None):
+        """
+        params:
+        k: int: number of nearest neighbours to retrieve
+        sim_thresholds: list of floats in the range [0,1]:
+        query_ids: list or set of ids that must be keys in self.vector_dict and self.record_dict. Indicates
+            which ids to find pairs for. If None, use all record ids as query ids
+
+        returns: pandas DataFrame of results, with one row for each threshold
+        """
+        if query_ids is None:
+            print(f"Using all {len(self.record_dict)} records to query for neighbours")
+            pos_pair_subset = self.pos_pair_set
+        else:
+            query_ids = set(query_ids)
+            print(f"Using subset of {len(query_ids)} query IDs")
+            pos_pair_subset = {pair for pair in self.pos_pair_set
+                               if pair[0] in query_ids or pair[1] in query_ids}
+
         results = []
         for sim_threshold in sim_thresholds:
-            found_pair_set = self.ann_index.search_pairs(k, sim_threshold)
-            precision, recall = precision_and_recall(found_pair_set, pos_pair_set)
+            found_pair_set = self.ann_index.search_pairs(k, sim_threshold, query_id_subset=query_ids)
+            precision, recall = precision_and_recall(found_pair_set, pos_pair_subset)
             results.append((sim_threshold, precision, recall, f1_score(precision, recall)))
         return pd.DataFrame(results, columns=['threshold', 'precision', 'recall', 'f1_score'])
