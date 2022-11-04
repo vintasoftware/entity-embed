@@ -60,7 +60,7 @@ def evaluate_output_json(
 
 
 class EmbeddingEvaluator:
-    def __init__(self, record_dict, vector_dict, cluster_field='cluster_id'):
+    def __init__(self, record_dict, vector_dict, cluster_field="cluster_id"):
         self.record_dict = record_dict
         self.cluster_field = cluster_field
         embedding_size = len(next(iter(vector_dict.values())))
@@ -70,7 +70,7 @@ class EmbeddingEvaluator:
         self.cluster_dict = utils.record_dict_to_cluster_dict(self.record_dict, self.cluster_field)
         self.pos_pair_set = utils.cluster_dict_to_id_pairs(self.cluster_dict)
 
-    def evaluate(self, k, sim_thresholds, query_ids=None):
+    def evaluate(self, k, sim_thresholds, query_ids=None, get_missing_pair_set=False):
         """
         params:
         k: int: number of nearest neighbours to retrieve
@@ -86,12 +86,24 @@ class EmbeddingEvaluator:
         else:
             query_ids = set(query_ids)
             print(f"Using subset of {len(query_ids)} query IDs")
-            pos_pair_subset = {pair for pair in self.pos_pair_set
-                               if pair[0] in query_ids or pair[1] in query_ids}
-
+            pos_pair_subset = {
+                pair for pair in self.pos_pair_set if pair[0] in query_ids or pair[1] in query_ids
+            }
         results = []
         for sim_threshold in sim_thresholds:
-            found_pair_set = self.ann_index.search_pairs(k, sim_threshold, query_id_subset=query_ids)
+            found_pair_set = self.ann_index.search_pairs(
+                k, sim_threshold, query_id_subset=query_ids
+            )
             precision, recall = precision_and_recall(found_pair_set, pos_pair_subset)
             results.append((sim_threshold, precision, recall, f1_score(precision, recall)))
-        return pd.DataFrame(results, columns=['threshold', 'precision', 'recall', 'f1_score'])
+            if get_missing_pair_set & (sim_threshold == min(sim_thresholds)):
+                self.missing_pair_set = pos_pair_subset - found_pair_set
+                id_to_name_map = {k: v["merchant_name"] for k, v in self.record_dict.items()}
+                self.missing_pair_name_set = set(
+                    map(
+                        lambda x: (id_to_name_map[x[0]], id_to_name_map[x[1]]),
+                        self.missing_pair_set,
+                    )
+                )
+
+        return pd.DataFrame(results, columns=["threshold", "precision", "recall", "f1_score"])
