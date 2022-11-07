@@ -4,7 +4,9 @@ import random
 from .indexes import ANNEntityIndex
 from .data_utils import utils
 import pandas as pd
+import logging
 
+logger = logging.getLogger(__name__)
 
 def pair_entity_ratio(found_pair_set_len, entity_count):
     return found_pair_set_len / entity_count
@@ -64,10 +66,13 @@ class EmbeddingEvaluator:
         self.record_dict = record_dict
         self.cluster_field = cluster_field
         embedding_size = len(next(iter(vector_dict.values())))
+        logging.info("Building index...")
         self.ann_index = ANNEntityIndex(embedding_size)
         self.ann_index.insert_vector_dict(vector_dict)
         self.ann_index.build()
+        logging.info("Index built! Getting cluster dict...")
         self.cluster_dict = utils.record_dict_to_cluster_dict(self.record_dict, self.cluster_field)
+        logging.info("Getting positive pairs...")
         self.pos_pair_set = utils.cluster_dict_to_id_pairs(self.cluster_dict)
 
     def evaluate(self, k, sim_thresholds, query_ids=None, get_missing_pair_set=False):
@@ -81,11 +86,11 @@ class EmbeddingEvaluator:
         returns: pandas DataFrame of results, with one row for each threshold
         """
         if query_ids is None:
-            print(f"Using all {len(self.record_dict)} records to query for neighbours")
+            logging.info(f"Using all {len(self.record_dict)} records to query for neighbours")
             pos_pair_subset = self.pos_pair_set
         else:
             query_ids = set(query_ids)
-            print(f"Using subset of {len(query_ids)} query IDs")
+            logging.info(f"Using subset of {len(query_ids)} query IDs")
             pos_pair_subset = {
                 pair for pair in self.pos_pair_set if pair[0] in query_ids or pair[1] in query_ids
             }
