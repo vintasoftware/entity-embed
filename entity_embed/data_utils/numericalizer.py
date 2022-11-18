@@ -4,10 +4,12 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Callable, List
 
+from string import punctuation
 import numpy as np
 import regex
 import torch
 from torchtext.vocab import Vocab
+from flashgeotext.geotext import GeoText, GeoTextConfiguration
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +29,7 @@ AVAILABLE_VOCABS = [
     "glove.6B.100d",
     "glove.6B.200d",
     "glove.6B.300d",
+    "tx_embeddings_large.vec",
 ]
 
 
@@ -41,10 +44,13 @@ class FieldType(Enum):
 class FieldConfig:
     key: str
     field_type: FieldType
+    pre_processor: Callable[[str], List[str]]
+    multi_pre_processor: Callable[[str], List[str]]
     tokenizer: Callable[[str], List[str]]
     alphabet: List[str]
     max_str_len: int
     vocab: Vocab
+    vector_tensor: torch.Tensor
     n_channels: int
     embed_dropout_p: float
     use_attention: bool
@@ -60,7 +66,7 @@ class FieldConfig:
         repr_dict = {}
         for k, v in self.__dict__.items():
             if isinstance(v, Callable):
-                repr_dict[k] = f"{inspect.getmodule(v).__name__}.{v.__name__}"
+                repr_dict[k] = f"{inspect.getmodule(v).__name__}.{getattr(v, '.__name__', repr(v))}"
             else:
                 repr_dict[k] = v
         return "{cls}({attrs})".format(
@@ -77,6 +83,31 @@ def default_tokenizer(val):
     return tokenizer_re.findall(val)
 
 
+def remove_space_digit_punc(val):
+    val = "".join(c for c in val if (not c.isdigit()) and (c not in punctuation))
+    return val.replace(" ", "")
+
+
+config = GeoTextConfiguration(**{"case_sensitive": False})
+geotext = GeoText(config)
+
+
+def default_pre_processor(text):
+    return text
+
+
+def remove_places(text):
+    places = geotext.extract(text)
+    found_places = []
+    for i, v in places.items():
+        for w, x in v.items():
+            word = x["found_as"][0]
+            if word not in ["at", "com", "us", "usa"]:
+                found_places.append(word)
+                text = text.replace(word, "")
+    return text
+
+
 class StringNumericalizer:
     is_multitoken = False
 
@@ -85,6 +116,8 @@ class StringNumericalizer:
         self.alphabet = field_config.alphabet
         self.max_str_len = field_config.max_str_len
         self.char_to_ord = {c: i for i, c in enumerate(self.alphabet)}
+        self.pre_processor = field_config.pre_processor
+        print(f"Found pre_processor {self.pre_processor} for field {self.field}")
 
     def _ord_encode(self, val):
         ord_encoded = []
@@ -100,10 +133,15 @@ class StringNumericalizer:
         # encoded_arr is a one hot encoded bidimensional tensor
         # with characters as rows and positions as columns.
         # This is the shape expected by StringEmbedCNN.
+        # if val != self.pre_processor(val):
+        #     print(f"{val} -> {self.pre_processor(val)} -> {self.pre_processor} -> {self.field}")
+        val = self.pre_processor(val)
         ord_encoded_val = self._ord_encode(val)
+        ord_encoded_val = ord_encoded_val[: self.max_str_len]  # truncate to max_str_len
         encoded_arr = np.zeros((len(self.alphabet), self.max_str_len), dtype=np.float32)
         if len(ord_encoded_val) > 0:
             encoded_arr[ord_encoded_val, range(len(ord_encoded_val))] = 1.0
+
         t = torch.from_numpy(encoded_arr)
         return t, len(val)
 
@@ -127,10 +165,16 @@ class MultitokenNumericalizer:
 
     def __init__(self, field, field_config):
         self.field = field
+        self.field_type = field_config.field_type
+        self.multi_pre_processor = field_config.multi_pre_processor
         self.tokenizer = field_config.tokenizer
         self.string_numericalizer = StringNumericalizer(field=field, field_config=field_config)
+        print(f"Found multi_pre_processor {self.multi_pre_processor} for field {self.field}")
 
     def build_tensor(self, val):
+        # if val != self.multi_pre_processor(val):
+        #     print(f"{val} -> {self.multi_pre_processor(val)} -> {self.multi_pre_processor} -> {self.field}")
+        val = self.multi_pre_processor(val)
         val_tokens = self.tokenizer(val)
         t_list = []
         for v in val_tokens:
@@ -149,6 +193,7 @@ class SemanticMultitokenNumericalizer(MultitokenNumericalizer):
     def __init__(self, field, field_config):
         self.field = field
         self.tokenizer = field_config.tokenizer
+        self.multi_pre_processor = field_config.multi_pre_processor
         self.string_numericalizer = SemanticStringNumericalizer(
             field=field, field_config=field_config
         )

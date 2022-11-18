@@ -1,0 +1,15 @@
+click==8.0.4
+faiss==1.5.3
+mock==4.0.3
+more_itertools==9.0.0
+numpy==1.21.5
+ordered_set==4.1.0
+pytest==7.1.1
+pytorch_lightning==1.7.7
+pytorch_metric_learning==1.6.2
+regex==2022.3.15
+setuptools==61.2.0
+sphinx_rtd_theme==1.0.0
+torch==1.13.0
+torchtext==0.14.0
+tqdm==4.64.0

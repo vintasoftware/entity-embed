@@ -3,7 +3,8 @@ import json
 import tempfile
 
 import mock
-import n2  # noqa: F401
+
+# import n2  # noqa: F401
 import pytest
 from entity_embed.data_utils.field_config_parser import FieldConfigDictParser
 from entity_embed.data_utils.numericalizer import FieldConfig, FieldType, RecordNumericalizer

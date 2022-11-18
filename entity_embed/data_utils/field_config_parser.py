@@ -2,7 +2,10 @@ import json
 import logging
 from importlib import import_module
 
-from torchtext.vocab import Vocab
+import torch
+from torch import Tensor, nn
+from torchtext.vocab import Vocab, Vectors, FastText
+from torchtext.vocab import vocab as factory_vocab
 
 from .numericalizer import (
     AVAILABLE_VOCABS,
@@ -63,9 +66,16 @@ class FieldConfigDictParser:
         tokenizer = _import_function(
             field_config.get("tokenizer", "entity_embed.default_tokenizer")
         )
+        pre_processor = _import_function(
+            field_config.get("pre_processor", "entity_embed.default_pre_processor")
+        )
+        multi_pre_processor = _import_function(
+            field_config.get("multi_pre_processor", "entity_embed.default_pre_processor")
+        )
         alphabet = field_config.get("alphabet", DEFAULT_ALPHABET)
         max_str_len = field_config.get("max_str_len")
         vocab = None
+        vector_tensor = None
 
         # Check if there's a key defined on the field_config,
         # useful when we want to have multiple FieldConfig for the same field
@@ -92,8 +102,39 @@ class FieldConfigDictParser:
                     "field_config if you wish to use a override "
                     "an field name."
                 )
-            vocab = Vocab(vocab_counter)
-            vocab.load_vectors(vocab_type)
+
+            if vocab_type in {"tx_embeddings_large.vec", "tx_embeddings.vec"}:
+                vectors = Vectors(vocab_type, cache=".vector_cache")
+            elif vocab_type == "fasttext":
+                vectors = FastText("en")  # might need to add standard fasttext
+            else:
+                vocab.load_vectors(vocab_type)  # won't work
+
+            # adding <unk> token
+            unk_token = "<unk>"
+            vocab = factory_vocab(vocab_counter, specials=[unk_token])
+            # print(vocab["<unk>"])  # prints 0
+            # make default index same as index of unk_token
+            vocab.set_default_index(vocab[unk_token])
+            # print(vocab["probably out of vocab"])  # prints 0
+
+            # create vector tensor using tokens in vocab, order important
+            vectors = [vectors]
+            # device = torch.device("mps")
+            tot_dim = sum(v.dim for v in vectors)
+            # vector_tensor = torch.zeros(len(vocab), tot_dim)
+            vector_tensor = torch.Tensor(len(vocab), tot_dim)
+
+            for i, token in enumerate(vocab.get_itos()):
+                start_dim = 0
+                for v in vectors:
+                    end_dim = start_dim + v.dim
+                    vector_tensor[i][start_dim:end_dim] = v[token.strip()]
+                    start_dim = end_dim
+                assert start_dim == tot_dim
+
+            logger.info(f"Vector tensor shape: {vector_tensor.shape}")
+            assert len(vector_tensor) == len(vocab)
 
         # Compute max_str_len if necessary
         if field_type in (FieldType.STRING, FieldType.MULTITOKEN) and (max_str_len is None):
@@ -125,9 +166,12 @@ class FieldConfigDictParser:
             key=key,
             field_type=field_type,
             tokenizer=tokenizer,
+            pre_processor=pre_processor,
+            multi_pre_processor=multi_pre_processor,
             alphabet=alphabet,
             max_str_len=max_str_len,
             vocab=vocab,
+            vector_tensor=vector_tensor,
             n_channels=n_channels,
             embed_dropout_p=embed_dropout_p,
             use_attention=use_attention,

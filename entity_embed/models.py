@@ -58,7 +58,7 @@ class SemanticEmbedNet(nn.Module):
 
         self.embedding_size = embedding_size
         self.dense_net = nn.Sequential(
-            nn.Embedding.from_pretrained(field_config.vocab.vectors),
+            nn.Embedding.from_pretrained(field_config.vector_tensor),
             nn.Dropout(p=field_config.embed_dropout_p),
         )
 
@@ -151,6 +151,7 @@ class MultitokenAvgEmbed(nn.Module):
         x_list = x.unbind(dim=1)
         x_list = [self.embed_net(x) for x in x_list]
         x = torch.stack(x_list, dim=1)
+        print(x.device)
 
         # Compute a mask for the attention on the padded sequences
         # See e.g. https://discuss.pytorch.org/t/self-attention-on-words-and-masking/5671/5

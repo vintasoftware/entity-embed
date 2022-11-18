@@ -12,7 +12,8 @@ from .data_utils import utils
 from .data_utils.datasets import RecordDataset
 from .early_stopping import EarlyStoppingMinEpochs, ModelCheckpointMinEpochs
 from .evaluation import f1_score, pair_entity_ratio, precision_and_recall
-from .indexes import ANNEntityIndex, ANNLinkageIndex
+
+from .indexes import ANNEntityIndex  # , ANNLinkageIndex
 from .models import BlockerNet
 
 logger = logging.getLogger(__name__)
@@ -42,11 +43,12 @@ class _BaseEmbed(pl.LightningModule):
         self.record_numericalizer = record_numericalizer
         for field_config in self.record_numericalizer.field_config_dict.values():
             vocab = field_config.vocab
+            vector_tensor = field_config.vector_tensor
             if vocab:
                 # We can assume that there's only one vocab type across the
                 # whole field_config_dict, so we can stop the loop once we've
                 # found a field_config with a vocab
-                valid_embedding_size = vocab.vectors.size(1)
+                valid_embedding_size = vector_tensor.size(1)
                 if valid_embedding_size != embedding_size:
                     raise ValueError(
                         f"Invalid embedding_size={embedding_size}. "
@@ -71,11 +73,11 @@ class _BaseEmbed(pl.LightningModule):
         self.sim_threshold_list = sim_threshold_list
         self.index_build_kwargs = index_build_kwargs
         self.index_search_kwargs = index_search_kwargs
+        self._dev = "mps"
 
     def forward(self, tensor_dict, sequence_length_dict, return_field_embeddings=False):
         tensor_dict = utils.tensor_dict_to_device(tensor_dict, device=self.device)
         sequence_length_dict = utils.tensor_dict_to_device(sequence_length_dict, device=self.device)
-
         return self.blocker_net(tensor_dict, sequence_length_dict, return_field_embeddings)
 
     def _warn_if_empty_indices_tuple(self, indices_tuple, batch_idx):
@@ -99,7 +101,7 @@ class _BaseEmbed(pl.LightningModule):
         self.log("train_loss", loss)
         return loss
 
-    def on_train_batch_end(self, outputs, batch, batch_idx, dataloader_idx):
+    def on_train_batch_end(self, outputs, batch, batch_idx, dataloader_idx=None):
         self.blocker_net.fix_pool_weights()
         self.log_dict(
             {
@@ -150,6 +152,7 @@ class _BaseEmbed(pl.LightningModule):
         min_epochs=5,
         max_epochs=100,
         check_val_every_n_epoch=1,
+        use_early_stop=False,
         early_stop_monitor="valid_recall_at_0.3",
         early_stop_min_delta=0.0,
         early_stop_patience=20,
@@ -157,17 +160,19 @@ class _BaseEmbed(pl.LightningModule):
         early_stop_verbose=True,
         model_save_top_k=1,
         model_save_dir=None,
+        model_save_filename=None,
         model_save_verbose=False,
         tb_save_dir=None,
         tb_name=None,
-        use_gpu=True,
+        use_gpu=False,
+        accelerator="cpu",
+        ckpt_path=None,
     ):
         if early_stop_mode is None:
             if "pair_entity_ratio_at" in early_stop_monitor:
                 early_stop_mode = "min"
             else:
                 early_stop_mode = "max"
-
         early_stop_callback = EarlyStoppingMinEpochs(
             min_epochs=min_epochs,
             monitor=early_stop_monitor,
@@ -176,24 +181,31 @@ class _BaseEmbed(pl.LightningModule):
             mode=early_stop_mode,
             verbose=early_stop_verbose,
         )
+        callbacks = []
+        if use_early_stop:
+            callbacks.append(early_stop_callback)
+            print("Using early stopping callback...")
         checkpoint_callback = ModelCheckpointMinEpochs(
             min_epochs=min_epochs,
             monitor=early_stop_monitor,
             save_top_k=model_save_top_k,
             mode=early_stop_mode,
             dirpath=model_save_dir,
+            filename=model_save_filename,
             verbose=model_save_verbose,
         )
+        callbacks.append(checkpoint_callback)
         trainer_args = {
             "min_epochs": min_epochs,
             "max_epochs": max_epochs,
             "check_val_every_n_epoch": check_val_every_n_epoch,
-            "callbacks": [early_stop_callback, checkpoint_callback],
-            "reload_dataloaders_every_epoch": True,  # for shuffling ClusterDataset every epoch
+            "callbacks": callbacks,
+            "reload_dataloaders_every_n_epochs": 10,  # for shuffling ClusterDataset every epoch
         }
         if use_gpu:
             trainer_args["gpus"] = 1
-
+        if accelerator:
+            trainer_args["accelerator"] = accelerator
         if tb_name and tb_save_dir:
             trainer_args["logger"] = TensorBoardLogger(
                 tb_save_dir,
@@ -204,8 +216,12 @@ class _BaseEmbed(pl.LightningModule):
                 'Please provide both "tb_name" and "tb_save_dir" to enable '
                 "TensorBoardLogger or omit both to disable it"
             )
+        fit_args = {}
+        if ckpt_path:
+            fit_args["ckpt_path"] = ckpt_path
         trainer = pl.Trainer(**trainer_args)
-        trainer.fit(self, datamodule)
+
+        trainer.fit(self, datamodule, **fit_args)
 
         logger.info(
             "Loading the best validation model from "
