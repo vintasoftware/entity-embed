@@ -74,8 +74,6 @@ class _BaseEmbed(pl.LightningModule):
         self.index_build_kwargs = index_build_kwargs
         self.index_search_kwargs = index_search_kwargs
         self._dev = "mps"
-        print(self.device)
-        print(self._dev)
 
     def forward(self, tensor_dict, sequence_length_dict, return_field_embeddings=False):
         tensor_dict = utils.tensor_dict_to_device(tensor_dict, device=self.device)
@@ -154,6 +152,7 @@ class _BaseEmbed(pl.LightningModule):
         min_epochs=5,
         max_epochs=100,
         check_val_every_n_epoch=1,
+        use_early_stop=False,
         early_stop_monitor="valid_recall_at_0.3",
         early_stop_min_delta=0.0,
         early_stop_patience=20,
@@ -161,18 +160,19 @@ class _BaseEmbed(pl.LightningModule):
         early_stop_verbose=True,
         model_save_top_k=1,
         model_save_dir=None,
+        model_save_filename=None,
         model_save_verbose=False,
         tb_save_dir=None,
         tb_name=None,
-        use_gpu=True,
-        accelerator=None,
+        use_gpu=False,
+        accelerator="cpu",
+        ckpt_path=None,
     ):
         if early_stop_mode is None:
             if "pair_entity_ratio_at" in early_stop_monitor:
                 early_stop_mode = "min"
             else:
                 early_stop_mode = "max"
-
         early_stop_callback = EarlyStoppingMinEpochs(
             min_epochs=min_epochs,
             monitor=early_stop_monitor,
@@ -181,22 +181,27 @@ class _BaseEmbed(pl.LightningModule):
             mode=early_stop_mode,
             verbose=early_stop_verbose,
         )
+        callbacks = []
+        if use_early_stop:
+            callbacks.append(early_stop_callback)
+            print("Using early stopping callback...")
         checkpoint_callback = ModelCheckpointMinEpochs(
             min_epochs=min_epochs,
             monitor=early_stop_monitor,
             save_top_k=model_save_top_k,
             mode=early_stop_mode,
             dirpath=model_save_dir,
+            filename=model_save_filename,
             verbose=model_save_verbose,
         )
+        callbacks.append(checkpoint_callback)
         trainer_args = {
             "min_epochs": min_epochs,
             "max_epochs": max_epochs,
             "check_val_every_n_epoch": check_val_every_n_epoch,
-            "callbacks": [early_stop_callback, checkpoint_callback],
+            "callbacks": callbacks,
             "reload_dataloaders_every_n_epochs": 10,  # for shuffling ClusterDataset every epoch
         }
-        print(self.device)
         if use_gpu:
             trainer_args["gpus"] = 1
         if accelerator:
@@ -211,17 +216,18 @@ class _BaseEmbed(pl.LightningModule):
                 'Please provide both "tb_name" and "tb_save_dir" to enable '
                 "TensorBoardLogger or omit both to disable it"
             )
+        fit_args = {}
+        if ckpt_path:
+            fit_args["ckpt_path"] = ckpt_path
         trainer = pl.Trainer(**trainer_args)
 
-        trainer.fit(self, datamodule)
+        trainer.fit(self, datamodule, **fit_args)
 
         logger.info(
             "Loading the best validation model from "
             f"{trainer.checkpoint_callback.best_model_path}..."
         )
         self.blocker_net = None
-        print(self.device)
-        print(self._dev)
         best_model = self.load_from_checkpoint(trainer.checkpoint_callback.best_model_path)
         best_model = best_model.to(self.device)
         self.blocker_net = best_model.blocker_net

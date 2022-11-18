@@ -8,6 +8,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
 def pair_entity_ratio(found_pair_set_len, entity_count):
     return found_pair_set_len / entity_count
 
@@ -70,9 +71,8 @@ class EmbeddingEvaluator:
         self.ann_index = ANNEntityIndex(embedding_size)
         self.ann_index.insert_vector_dict(vector_dict)
         self.ann_index.build()
-        logging.info("Index built! Getting cluster dict...")
+        logging.info("Index built!")
         self.cluster_dict = utils.record_dict_to_cluster_dict(self.record_dict, self.cluster_field)
-        logging.info("Getting positive pairs...")
         self.pos_pair_set = utils.cluster_dict_to_id_pairs(self.cluster_dict)
 
     def evaluate(self, k, sim_thresholds, query_ids=None, get_missing_pair_set=False):
@@ -100,7 +100,9 @@ class EmbeddingEvaluator:
                 k, sim_threshold, query_id_subset=query_ids
             )
             precision, recall = precision_and_recall(found_pair_set, pos_pair_subset)
-            results.append((sim_threshold, precision, recall, f1_score(precision, recall)))
+            results.append(
+                (sim_threshold, precision, recall, f1_score(precision, recall), len(found_pair_set))
+            )
             if get_missing_pair_set & (sim_threshold == min(sim_thresholds)):
                 self.missing_pair_set = pos_pair_subset - found_pair_set
                 id_to_name_map = {k: v["merchant_name"] for k, v in self.record_dict.items()}
@@ -111,4 +113,6 @@ class EmbeddingEvaluator:
                     )
                 )
 
-        return pd.DataFrame(results, columns=["threshold", "precision", "recall", "f1_score"])
+        return pd.DataFrame(
+            results, columns=["threshold", "precision", "recall", "f1_score", "n_pairs_found"]
+        )

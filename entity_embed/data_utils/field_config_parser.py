@@ -66,6 +66,12 @@ class FieldConfigDictParser:
         tokenizer = _import_function(
             field_config.get("tokenizer", "entity_embed.default_tokenizer")
         )
+        pre_processor = _import_function(
+            field_config.get("pre_processor", "entity_embed.default_pre_processor")
+        )
+        multi_pre_processor = _import_function(
+            field_config.get("multi_pre_processor", "entity_embed.default_pre_processor")
+        )
         alphabet = field_config.get("alphabet", DEFAULT_ALPHABET)
         max_str_len = field_config.get("max_str_len")
         vocab = None
@@ -127,13 +133,8 @@ class FieldConfigDictParser:
                     start_dim = end_dim
                 assert start_dim == tot_dim
 
-            print(f"Vector tensor shape: {vector_tensor.shape}")
-            print(f"Vector tensor type: {vector_tensor.shape}")
-            print(f"Vector tensor type: {vector_tensor.device}")
-            print(f"Vector tensor type: {vector_tensor.dtype}")
+            logger.info(f"Vector tensor shape: {vector_tensor.shape}")
             assert len(vector_tensor) == len(vocab)
-
-            print(nn.Embedding.from_pretrained(vector_tensor))  # check embedding works
 
         # Compute max_str_len if necessary
         if field_type in (FieldType.STRING, FieldType.MULTITOKEN) and (max_str_len is None):
@@ -165,6 +166,8 @@ class FieldConfigDictParser:
             key=key,
             field_type=field_type,
             tokenizer=tokenizer,
+            pre_processor=pre_processor,
+            multi_pre_processor=multi_pre_processor,
             alphabet=alphabet,
             max_str_len=max_str_len,
             vocab=vocab,

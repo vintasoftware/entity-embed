@@ -38,7 +38,7 @@ class ModelCheckpointMinEpochs(ModelCheckpoint):
         dirpath=None,
         filename=None,
         verbose=False,
-        save_last=None,
+        save_last=True,
         save_top_k=None,
         save_weights_only=False,
         period=1,

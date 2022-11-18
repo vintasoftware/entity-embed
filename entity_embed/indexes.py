@@ -55,6 +55,10 @@ class ANNEntityIndex:
             if query_id_subset is None or left_id in query_id_subset:
                 vector = self.normalized_vector_array[[i], :]
                 similarities, neighbours = self.approx_knn_index.search(vector, k=k)
+                if all(similarities[0] >= sim_threshold) & (sim_threshold > 0.4):
+                    print(
+                        f"Found pair similarities for k = {k} are all higher than threshold {sim_threshold}"
+                    )
                 for similarity, j in zip(similarities[0], neighbours[0]):
                     if i != j and similarity >= sim_threshold:
                         right_id = self.vector_idx_to_id[j]
@@ -67,6 +71,7 @@ class ANNEntityIndex:
         )
 
         return found_pair_set
+
 
 # class ANNEntityIndex:
 #     def __init__(self, embedding_size):
